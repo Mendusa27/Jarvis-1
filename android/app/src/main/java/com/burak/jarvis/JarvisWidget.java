@@ -19,7 +19,7 @@ public class JarvisWidget extends AppWidgetProvider {
     static void update(Context c, AppWidgetManager m, int id) {
         SharedPreferences sp = c.getSharedPreferences("jarvis", Context.MODE_PRIVATE);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_jarvis);
-        v.setTextViewText(R.id.w_line1, sp.getString("w1", "JARVIS hazır"));
+        v.setTextViewText(R.id.w_line1, sp.getString("w1", "Titus hazır"));
         v.setTextViewText(R.id.w_line2, sp.getString("w2", "Konuşmak için dokun"));
         v.setOnClickPendingIntent(R.id.w_talk, open(c, "listen", 31));
         v.setOnClickPendingIntent(R.id.w_brief, open(c, "brief", 32));

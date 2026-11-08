@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#03070d">
-<title>JARVIS</title>
+<title>Titus</title>
 <link rel="stylesheet" href="style.css">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -12,12 +12,12 @@
 <body>
 <div id="app">
   <header class="top">
-    <div class="brand">J.A.R.V.I.S.<small id="subtitle">KİŞİSEL ASİSTAN</small></div>
+    <div class="brand">T.I.T.U.S.<small id="subtitle">KİŞİSEL ASİSTAN</small></div>
     <div class="clock"><span id="clk">--:--</span><small id="dt"></small></div>
   </header>
 
   <main id="views">
-    <!-- JARVIS -->
+    <!-- Titus -->
     <section class="view on" id="v-home">
       <div class="core">
         <button class="reactor" id="reactor" aria-label="Konuş">
@@ -40,7 +40,7 @@
       <form class="inbar" id="inbar">
         <button type="button" class="btn mic" id="mic" aria-label="Sesli komut">🎙</button>
         <button type="button" class="btn ghost mic" id="attachBtn" aria-label="Fotoğraf ekle">📎</button>
-        <input id="q" placeholder="JARVIS'e söyle…" autocomplete="off" enterkeyhint="send">
+        <input id="q" placeholder="Titus'a söyle…" autocomplete="off" enterkeyhint="send">
         <button class="btn" type="submit">➤</button>
       </form>
       <div class="hint" id="attachInfo"></div>
@@ -81,6 +81,7 @@
         <button data-sec="lines">Replik</button>
         <button data-sec="applications">Başvuru</button>
         <button data-sec="goals">Hedef</button>
+        <button data-sec="recast">Recast</button>
         <button data-sec="radar">Radar</button>
         <button data-sec="coach">Koç</button>
       </div>
@@ -107,7 +108,7 @@
   </main>
 
   <nav class="tabbar">
-    <button data-view="home" class="on"><i>◉</i>JARVIS</button>
+    <button data-view="home" class="on"><i>◉</i>Titus</button>
     <button data-view="plan"><i>☰</i>Plan</button>
     <button data-view="life"><i>♥</i>Hayat</button>
     <button data-view="work"><i>★</i>Kariyer</button>
@@ -116,7 +117,7 @@
   </nav>
 </div>
 
-<div class="lock" id="lock"><div class="reactor" style="pointer-events:none"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span></div><p>JARVIS kilitli</p><button class="btn" id="unlockBtn">🔒 Parmak izi ile aç</button></div>
+<div class="lock" id="lock"><div class="reactor" style="pointer-events:none"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span></div><p>Titus kilitli</p><button class="btn" id="unlockBtn">🔒 Parmak izi ile aç</button></div>
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
 

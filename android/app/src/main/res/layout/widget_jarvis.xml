@@ -19,7 +19,7 @@
         <TextView android:id="@+id/w_line1"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:textColor="#FFD8F3FF" android:textSize="14sp" android:maxLines="2" android:ellipsize="end"
-            android:text="JARVIS hazır"/>
+            android:text="Titus hazır"/>
         <TextView android:id="@+id/w_line2"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:textColor="#FF7AA3B8" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"

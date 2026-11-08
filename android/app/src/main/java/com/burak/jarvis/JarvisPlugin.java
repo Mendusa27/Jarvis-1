@@ -403,7 +403,7 @@ public class JarvisPlugin extends Plugin {
         if (!nm.isNotificationPolicyAccessGranted()) {
             openSettings(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
             o.put("ok", false);
-            o.put("hata", "Rahatsız etme erişimi gerekli; ayarlar açıldı, JARVIS'i etkinleştir.");
+            o.put("hata", "Rahatsız etme erişimi gerekli; ayarlar açıldı, Titus'u etkinleştir.");
             call.resolve(o);
             return;
         }
@@ -525,7 +525,7 @@ public class JarvisPlugin extends Plugin {
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm.getNotificationChannel(ALARM_CHANNEL) != null) return;
         NotificationChannel ch = new NotificationChannel(ALARM_CHANNEL, "Hatırlatıcılar ve alarmlar", NotificationManager.IMPORTANCE_HIGH);
-        ch.setDescription("JARVIS hatırlatmaları");
+        ch.setDescription("Titus hatırlatmaları");
         ch.enableVibration(true);
         ch.setVibrationPattern(new long[] { 0, 400, 200, 400 });
         AudioAttributes aa = new AudioAttributes.Builder()
@@ -691,7 +691,7 @@ public class JarvisPlugin extends Plugin {
     /* ---------------- parmak izi / yüz kilidi ---------------- */
     @PluginMethod
     public void authenticate(PluginCall call) {
-        final String reason = call.getString("reason", "JARVIS'i aç");
+        final String reason = call.getString("reason", "Titus'u aç");
         main.post(() -> {
             JSObject o = new JSObject();
             try {
@@ -704,7 +704,7 @@ public class JarvisPlugin extends Plugin {
                     return;
                 }
                 BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("J.A.R.V.I.S.")
+                    .setTitle("T.I.T.U.S.")
                     .setSubtitle(reason)
                     .setAllowedAuthenticators(auth)
                     .build();
@@ -800,9 +800,9 @@ public class JarvisPlugin extends Plugin {
         java.io.File f = tmpFile(name);
         try {
             String rel; String envDir;
-            if ("pictures".equals(col)) { rel = "Pictures/JARVIS"; envDir = android.os.Environment.DIRECTORY_PICTURES; }
-            else if ("movies".equals(col)) { rel = "Movies/JARVIS"; envDir = android.os.Environment.DIRECTORY_MOVIES; }
-            else { rel = "Download/JARVIS"; envDir = android.os.Environment.DIRECTORY_DOWNLOADS; }
+            if ("pictures".equals(col)) { rel = "Pictures/TITUS"; envDir = android.os.Environment.DIRECTORY_PICTURES; }
+            else if ("movies".equals(col)) { rel = "Movies/TITUS"; envDir = android.os.Environment.DIRECTORY_MOVIES; }
+            else { rel = "Download/TITUS"; envDir = android.os.Environment.DIRECTORY_DOWNLOADS; }
             Uri uri;
             if (Build.VERSION.SDK_INT >= 29) {
                 Uri base;
@@ -827,7 +827,7 @@ public class JarvisPlugin extends Plugin {
                 v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0);
                 cr.update(uri, v, null, null);
             } else {
-                java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(envDir), "JARVIS");
+                java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(envDir), "Titus");
                 //noinspection ResultOfMethodCallIgnored
                 dir.mkdirs();
                 java.io.File dst = new java.io.File(dir, name);
@@ -881,7 +881,7 @@ public class JarvisPlugin extends Plugin {
                 android.content.ContentValues v = new android.content.ContentValues();
                 v.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, name);
                 v.put(android.provider.MediaStore.Video.Media.MIME_TYPE, mime);
-                v.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/JARVIS");
+                v.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/TITUS");
                 v.put(android.provider.MediaStore.Video.Media.IS_PENDING, 1);
                 android.content.ContentResolver cr = getContext().getContentResolver();
                 Uri uri = cr.insert(android.provider.MediaStore.Video.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY), v);
@@ -896,7 +896,7 @@ public class JarvisPlugin extends Plugin {
                 v.put(android.provider.MediaStore.Video.Media.IS_PENDING, 0);
                 cr.update(uri, v, null, null);
             } else {
-                java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES), "JARVIS");
+                java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES), "Titus");
                 //noinspection ResultOfMethodCallIgnored
                 dir.mkdirs();
                 java.io.File dst = new java.io.File(dir, name);
@@ -911,7 +911,7 @@ public class JarvisPlugin extends Plugin {
             f.delete();
             JSObject o = new JSObject();
             o.put("ok", true);
-            o.put("path", "Movies/JARVIS/" + name);
+            o.put("path", "Movies/TITUS/" + name);
             call.resolve(o);
         } catch (Exception e) {
             call.reject("Galeriye kaydedilemedi: " + e.getMessage());
@@ -953,7 +953,7 @@ public class JarvisPlugin extends Plugin {
 
     @PluginMethod
     public void wakeSample(PluginCall call) {
-        if (WakeService.sharedModel == null) { call.reject("Önce Hey Jarvis'i aç ve modelin yüklenmesini bekle."); return; }
+        if (WakeService.sharedModel == null) { call.reject("Önce Hey Titus'u aç ve modelin yüklenmesini bekle."); return; }
         wakeCmd(WakeService.ACTION_PAUSE);
         final int ms = call.getInt("ms", 3500);
         main.postDelayed(() -> WakeService.sample(ms, (text, err) -> {
@@ -1073,7 +1073,7 @@ public class JarvisPlugin extends Plugin {
             Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
             i.putExtra(android.provider.AlarmClock.EXTRA_HOUR, (int) call.getInt("hour", 7));
             i.putExtra(android.provider.AlarmClock.EXTRA_MINUTES, (int) call.getInt("minute", 0));
-            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "JARVIS"));
+            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "Titus"));
             i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
             i.putExtra(android.provider.AlarmClock.EXTRA_VIBRATE, true);
             JSArray days = call.getArray("days", new JSArray());
@@ -1101,7 +1101,7 @@ public class JarvisPlugin extends Plugin {
         try {
             Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_TIMER);
             i.putExtra(android.provider.AlarmClock.EXTRA_LENGTH, Math.max(1, (int) call.getInt("seconds", 60)));
-            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "JARVIS"));
+            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "Titus"));
             i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (i.resolveActivity(getContext().getPackageManager()) == null) {

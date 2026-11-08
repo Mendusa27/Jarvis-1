@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-J.A.R.V.I.S. — Bilgisayar (Windows) sürümü
-Sadece konuşarak bilgisayarı kontrol et: "Hey Jarvis" de (ya da Ctrl+Alt+J'ye bas), söyle, JARVIS yapsın.
+T.I.T.U.S. — Bilgisayar (Windows) sürümü
+Sadece konuşarak bilgisayarı kontrol et: "Hey Titus" de (ya da Ctrl+Alt+J'ye bas), söyle, Titus yapsın.
 
 Kurulum: JARVIS-masaustu-kur.bat dosyasına çift tıkla (Python 3.10+ gerekir).
 Çalıştırma: JARVIS-masaustu.bat
@@ -11,7 +11,7 @@ Neler yapar:
   • Yazı yazar, kısayol tuşlarına basar, pencere değiştirir, medyayı ve sesi kontrol eder
   • Ekrana bakıp ne gördüğünü anlatır ("ekranda ne var?", "bu hatayı açıkla")
   • Panodaki metni okur/düzenler (özetle, çevir, düzelt)
-  • Telefondaki JARVIS ile aynı hatırlatıcı/görev/not listesini kullanır (Google bağlıysa)
+  • Telefondaki Titus ile aynı hatırlatıcı/görev/not listesini kullanır (Google bağlıysa)
   • Telefondan gelen bilgisayar komutlarını da çalıştırır (eski ajanın yerine geçer)
 Güvenlik: Komut satırı çalıştırmaz, dosya silmez. Kapatma/yeniden başlatma gibi işlemler için sesli onay ister.
 """
@@ -58,7 +58,7 @@ def load_cfg():
         CFG.unlink()
     if CFG.exists():
         return json.loads(CFG.read_text("utf-8"))
-    print("=== J.A.R.V.I.S. bilgisayar kurulumu ===")
+    print("=== T.I.T.U.S. bilgisayar kurulumu ===")
     c = {
         "gemini_key": input("Gemini API anahtarı (telefonda girdiğin ile aynı olabilir): ").strip(),
         "groq_key": input("Groq anahtarı (isteğe bağlı, daha hızlı ses tanıma; boş geçebilirsin): ").strip(),
@@ -195,7 +195,7 @@ def speak(text):
     text = text.strip()
     if not text:
         return
-    print("JARVIS:", text)
+    print("Titus:", text)
     SPEAKING.set()
     try:
         for m in TTS_MODELS:
@@ -405,7 +405,7 @@ def t_list(a):
 
 
 def t_phone(a):
-    return {"hata": "Telefonu bilgisayardan kontrol etmek bu sürümde yok; telefondaki JARVIS'e söyle."}
+    return {"hata": "Telefonu bilgisayardan kontrol etmek bu sürümde yok; telefondaki Titus'a söyle."}
 
 
 def P(t, d="", e=None):
@@ -442,13 +442,13 @@ DECL = [{"functionDeclarations": [{"name": n, "description": {
     "tusa_bas": "Klavye kısayoluna basar.", "pencere": "Pencereleri yönetir.", "ekrana_bak": "Ekran görüntüsü alıp ne olduğunu anlar. Ekrandaki hatalar, sayfalar, görseller hakkında sorularda kullan.",
     "ekranda_tikla": "Ekrandaki bir düğmeye/yazıya tıklar.", "medya": "Müzik/video ve ses düzeyi kontrolü.", "pano": "Panoyu okur ya da panoya yazar.",
     "ekrani_kilitle": "Ekranı kilitler.", "guc": "Bilgisayarı kapatır/yeniden başlatır/uyutur. Önce Burak'tan sözlü onay al, onay verirse onay=true ile çağır.",
-    "hatirlatici_ekle": "Hatırlatıcı ekler (telefondaki JARVIS ile ortak).", "gorev_ekle": "Görev ekler.", "not_al": "Not alır.", "liste": "Açık hatırlatıcı ve görevleri listeler."}[n],
+    "hatirlatici_ekle": "Hatırlatıcı ekler (telefondaki Titus ile ortak).", "gorev_ekle": "Görev ekler.", "not_al": "Not alır.", "liste": "Açık hatırlatıcı ve görevleri listeler."}[n],
     **({"parameters": {"type": "OBJECT", "properties": props, "required": req}} if props else {})} for n, (props, req, _) in TOOLS.items()]}]
 
 
 def system_prompt():
     now = datetime.now()
-    return (f"Sen J.A.R.V.I.S.'sin; {C.get('name', 'Burak')}'ın kişisel asistanısın ve şu an onun Windows bilgisayarındasın. "
+    return (f"Sen Titus'sun; {C.get('name', 'Burak')}'ın kişisel asistanısın ve şu an onun Windows bilgisayarındasın. "
             f"Şu an: {now.strftime('%Y-%m-%d %H:%M, %A')}. Türkçe konuş (İngilizce sorulursa İngilizce). "
             "Cevapların sesli okunacak: kısa, doğal, en fazla 2-3 cümle; madde işareti ve emoji kullanma. "
             "Bilgisayarda bir şey yapılması istenince MUTLAKA araç kullan, yapmadan 'yaptım' deme. "
@@ -488,7 +488,7 @@ def think(text):
     return "İşlemleri yaptım."
 
 
-# ---------------- uyandırma: kısayol ve "Hey Jarvis" ----------------
+# ---------------- uyandırma: kısayol ve "Hey Titus" ----------------
 TRIGGER = threading.Event()
 BUSY = threading.Lock()
 
@@ -500,7 +500,7 @@ def ensure_vosk():
         return None
     d = MODELS_DIR / "vosk-model-small-en-us-0.15"
     if not d.exists():
-        print("'Hey Jarvis' için ses modeli indiriliyor (bir kez, ~40 MB)…")
+        print("'Hey Titus' için ses modeli indiriliyor (bir kez, ~40 MB)…")
         MODELS_DIR.mkdir(exist_ok=True)
         z = MODELS_DIR / "m.zip"
         urllib.request.urlretrieve(VOSK_URL, z)
@@ -519,11 +519,11 @@ def wake_loop():
     import vosk
     vosk.SetLogLevel(-1)
     model = vosk.Model(str(d))
-    grammar = json.dumps(["hey jarvis", "jarvis", "hey", "hello", "harvest", "service", "nervous", "[unk]"])
+    grammar = json.dumps(["hey titus", "titus", "hey", "hello", "tight", "tie", "focus", "status", "jarvis", "[unk]"])
     rec = vosk.KaldiRecognizer(model, RATE, grammar)
     rec.SetWords(True)
     q = queue.Queue()
-    print("👂 'Hey Jarvis' dinleniyor.")
+    print("👂 'Hey Titus' dinleniyor.")
     while True:
         try:
             with sd.RawInputStream(samplerate=RATE, blocksize=4000, dtype="int16", channels=1, callback=lambda d, *_: q.put(bytes(d))):
@@ -536,7 +536,7 @@ def wake_loop():
                         words = r.get("result", [])
                         txt = r.get("text", "")
                         conf = min([w.get("conf", 0) for w in words] or [0])
-                        if "jarvis" in txt and (txt.startswith("hey") or conf > 0.95) and conf > 0.85:
+                        if "titus" in txt and (txt.startswith("hey") or conf > 0.95) and conf > 0.85:
                             TRIGGER.set()
                             break
         except Exception as e:
@@ -609,7 +609,7 @@ def converse():
 def main():
     if not C.get("gemini_key"):
         print("Gemini anahtarı yok. python jarvis_desktop.py --reset ile yeniden kur."); return
-    print("=== J.A.R.V.I.S. bilgisayarda hazır ===")
+    print("=== T.I.T.U.S. bilgisayarda hazır ===")
     hotkey_setup()
     if C.get("wake", True):
         threading.Thread(target=wake_loop, daemon=True).start()

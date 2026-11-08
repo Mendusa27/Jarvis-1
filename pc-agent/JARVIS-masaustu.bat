@@ -1,4 +1,4 @@
 @echo off
-title J.A.R.V.I.S.
+title T.I.T.U.S.
 python "%~dp0jarvis_desktop.py" %*
 pause

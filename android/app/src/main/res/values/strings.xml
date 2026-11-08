@@ -1,11 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">JARVIS</string>
-    <string name="title_activity_main">JARVIS</string>
+    <string name="app_name">Titus</string>
+    <string name="title_activity_main">Titus</string>
     <string name="package_name">com.burak.jarvis</string>
     <string name="custom_url_scheme">com.burak.jarvis</string>
-    <string name="widget_desc">JARVIS ile tek dokunuşla konuş</string>
-    <string name="notif_listener">JARVIS bildirim okuyucu</string>
-    <string name="a11y_label">JARVIS ekran asistanı</string>
-    <string name="a11y_desc">JARVIS\'in senin isteğinle ekranı okumasını, düğmelere dokunmasını ve yazı yazmasını sağlar. Her dokunma/yazma işleminden önce JARVIS ekranda onay ister. Veriler cihazdan sadece \"ekranımda ne var\" dediğinde, cevap üretmek için gönderilir.</string>
+    <string name="widget_desc">Titus ile tek dokunuşla konuş</string>
+    <string name="notif_listener">Titus bildirim okuyucu</string>
+    <string name="a11y_label">Titus ekran asistanı</string>
+    <string name="a11y_desc">Titus\'un senin isteğinle ekranı okumasını, düğmelere dokunmasını ve yazı yazmasını sağlar. Her dokunma/yazma işleminden önce Titus ekranda onay ister. Veriler cihazdan sadece \"ekranımda ne var\" dediğinde, cevap üretmek için gönderilir.</string>
 </resources>

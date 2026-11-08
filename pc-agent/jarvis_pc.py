@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JARVIS bilgisayar ajanı — telefondaki JARVIS'ten gelen komutları bilgisayarında çalıştırır.
+Titus bilgisayar ajanı — telefondaki Titus'tan gelen komutları bilgisayarında çalıştırır.
 Ek kurulum gerekmez (sadece Python 3.8+). Windows, macOS ve Linux'ta çalışır.
 
 Kullanım:
@@ -30,7 +30,7 @@ def load_cfg():
         CFG.unlink()
     if CFG.exists():
         return json.loads(CFG.read_text("utf-8"))
-    print("JARVIS bilgisayar ajanı kurulumu")
+    print("Titus bilgisayar ajanı kurulumu")
     url = input("Apps Script web uygulaması URL (…/exec): ").strip()
     tok = input("Gizli anahtar (Code.gs içindeki TOKEN): ").strip()
     cfg = {"url": url, "token": tok}
@@ -50,15 +50,15 @@ def call(cfg, action, **data):
 
 # ---------------- komutlar ----------------
 def notify(msg):
-    print("JARVIS:", msg)
+    print("Titus:", msg)
     try:
         if OS == "Windows":
             import ctypes, threading
-            threading.Thread(target=lambda: ctypes.windll.user32.MessageBoxW(0, msg, "J.A.R.V.I.S.", 0x40 | 0x40000), daemon=True).start()
+            threading.Thread(target=lambda: ctypes.windll.user32.MessageBoxW(0, msg, "T.I.T.U.S.", 0x40 | 0x40000), daemon=True).start()
         elif OS == "Darwin":
-            subprocess.Popen(["osascript", "-e", f'display notification {json.dumps(msg)} with title "JARVIS"'])
+            subprocess.Popen(["osascript", "-e", f'display notification {json.dumps(msg)} with title "Titus"'])
         else:
-            subprocess.Popen(["notify-send", "JARVIS", msg])
+            subprocess.Popen(["notify-send", "Titus", msg])
     except Exception:
         pass
     return {"ok": True}
@@ -161,7 +161,7 @@ def run(cfg, cmd):
 
 def main():
     cfg = load_cfg()
-    print(f"JARVIS ajanı çalışıyor ({OS}). Kapatmak için Ctrl+C.")
+    print(f"Titus ajanı çalışıyor ({OS}). Kapatmak için Ctrl+C.")
     fails = 0
     while True:
         try:

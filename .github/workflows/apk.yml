@@ -30,6 +30,8 @@ jobs:
       - name: Android SDK lisansları
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
+      - name: JS sözdizimi kontrolü
+        run: node --check www/app.js
       - name: Bağımlılıklar
         run: npm ci
 

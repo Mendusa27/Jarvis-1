@@ -131,7 +131,7 @@
         </receiver>
 
         <!-- Ana ekran widget'ı -->
-        <receiver android:name=".JarvisWidget" android:exported="true" android:label="JARVIS">
+        <receiver android:name=".JarvisWidget" android:exported="true" android:label="Titus">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

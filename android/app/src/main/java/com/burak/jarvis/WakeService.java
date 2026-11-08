@@ -45,8 +45,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * "Hey Jarvis" uyandırma servisi.
- * Cihaz içinde, internetsiz çalışan Vosk (açık kaynak, ücretsiz) ile yalnızca "jarvis" kelimesini dinler.
+ * "Hey Titus" uyandırma servisi.
+ * Cihaz içinde, internetsiz çalışan Vosk (açık kaynak, ücretsiz) ile yalnızca "titus" kelimesini dinler.
  * Kelime duyulunca mikrofonu bırakır, JARVIS'i açar; uygulama işini bitirince RESUME ile tekrar dinler.
  */
 public class WakeService extends Service implements RecognitionListener {
@@ -63,7 +63,7 @@ public class WakeService extends Service implements RecognitionListener {
     static final int NOTIF_HIT_ID = 4202;
     static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip";
     static final String MODEL_DIR = "vosk-en";
-    static final String GRAMMAR = "[\"hey jarvis\", \"jarvis\", \"okay jarvis\", \"[unk]\"]";
+    static final String GRAMMAR = "[\"hey titus\", \"titus\", \"okay titus\", \"[unk]\"]";
 
     public interface StatusListener { void onStatus(String status, int progress, String error); }
 
@@ -146,7 +146,7 @@ public class WakeService extends Service implements RecognitionListener {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm.getNotificationChannel(CHANNEL) == null) {
-            NotificationChannel ch = new NotificationChannel(CHANNEL, "Hey Jarvis dinleme", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel ch = new NotificationChannel(CHANNEL, "Hey Titus dinleme", NotificationManager.IMPORTANCE_LOW);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
@@ -179,7 +179,7 @@ public class WakeService extends Service implements RecognitionListener {
         PendingIntent stopPi = PendingIntent.getService(this, 9, stop, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
-            .setContentTitle("JARVIS dinlemede")
+            .setContentTitle("Titus dinlemede")
             .setContentText(text)
             .setOngoing(true)
             .setSilent(true)
@@ -339,7 +339,7 @@ public class WakeService extends Service implements RecognitionListener {
         Notification n = new NotificationCompat.Builder(this, CHANNEL_HIT)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentTitle("Efendim?")
-            .setContentText("JARVIS dinliyor — dokun")
+            .setContentText("Titus dinliyor — dokun")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setAutoCancel(true)
@@ -370,7 +370,7 @@ public class WakeService extends Service implements RecognitionListener {
                 JSONObject w = res.getJSONObject(i);
                 String word = w.optString("word", "");
                 double conf = w.optDouble("conf", 0);
-                boolean target = word.equals("jarvis") || words.contains(word);
+                boolean target = word.equals("titus") || words.contains(word);
                 if (!target || conf < need) continue;
                 if (!strict) return true;
                 if (i > 0) {
@@ -408,11 +408,11 @@ public class WakeService extends Service implements RecognitionListener {
         words = customWords(this);
         boolean strict = prefs().getBoolean("wakeStrict", true);
         JSONArray g = new JSONArray();
-        g.put("hey jarvis"); g.put("okay jarvis");
-        if (!strict) g.put("jarvis");
+        g.put("hey titus"); g.put("okay titus");
+        if (!strict) g.put("titus");
         for (String w : words) { g.put("hey " + w); if (!strict) g.put(w); }
         // Sık geçen kısa kelimeler: rastgele konuşmanın "jarvis"e zorlanmasını engeller
-        for (String f : new String[] { "hey", "okay", "yes", "no", "hello", "service", "jars", "jerry", "harvest", "nervous", "travis", "davis", "chavez", "garbage", "very", "is", "us", "this", "it" }) g.put(f);
+        for (String f : new String[] { "hey", "okay", "yes", "no", "hello", "tight", "tie", "ties", "titles", "tidy", "focus", "lotus", "notice", "status", "jarvis", "very", "is", "us", "this", "it" }) g.put(f);
         g.put("[unk]");
         return g.toString();
     }

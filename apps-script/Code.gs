@@ -1,15 +1,15 @@
 /**
- * JARVIS — Google arka ucu (ücretsiz)
+ * Titus — Google arka ucu (ücretsiz)
  * Görevleri: cihazlar arası veri senkronu (Drive'da tek JSON dosyası), Google Takvim, Gmail özeti.
  * Kurulum: README.md → "Google bağlantısı".
  */
 
-// ⚠️ Bunu kendine özel uzun bir şifreyle değiştir ve aynısını JARVIS → Ayarlar → Google → Gizli anahtar'a yaz.
+// ⚠️ Bunu kendine özel uzun bir şifreyle değiştir ve aynısını Titus → Ayarlar → Google → Gizli anahtar'a yaz.
 const TOKEN = "BURAYA-UZUN-GIZLI-BIR-SIFRE-YAZ";
 const FILE_NAME = "jarvis-veri.json";
 
 function doGet() {
-  return ContentService.createTextOutput("JARVIS arka ucu çalışıyor ✓");
+  return ContentService.createTextOutput("Titus arka ucu çalışıyor ✓");
 }
 
 function doPost(e) {
@@ -33,6 +33,8 @@ function doPost(e) {
       case "pcDone":       pcDone(req.id, req.result); return out({ ok: true });
       case "pcResult":     return out({ ok: true, result: pcResultGet(req.id) });
       case "briefData":    return out(Object.assign({ ok: true }, briefData(false)));
+      case "roster":       return out(Object.assign({ ok: true }, roster(req)));
+      case "briefMails":   return out({ ok: true, mailler: briefMails(req) });
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
@@ -133,6 +135,7 @@ function gmailDraft(req) {
   if (req.fileB64 && req.fileName) {
     opts.attachments = [Utilities.newBlob(Utilities.base64Decode(req.fileB64), req.fileMime || "application/octet-stream", req.fileName)];
   }
+  if (req.bcc) opts.bcc = req.bcc;
   const d = GmailApp.createDraft(req.to || "", req.subject || "(konu yok)", req.body || "", opts);
   return { taslak: true, id: d.getId(), not: "Taslak Gmail'de hazır; kontrol edip gönder." };
 }
@@ -198,7 +201,7 @@ function radarRun() {
           fresh.push({ radar: r.name, title: t.getFirstMessageSubject(), link: "https://mail.google.com/mail/u/0/#inbox/" + t.getId(), found: fmt_(new Date()), seen: false });
         });
       } else if (r.url) {
-        const html = UrlFetchApp.fetch(r.url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (JARVIS kişisel radar)" } }).getContentText();
+        const html = UrlFetchApp.fetch(r.url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Titus kişisel radar)" } }).getContentText();
         const kws = String(r.keywords || "").split(",").map(k => k.trim().toLocaleLowerCase("tr-TR")).filter(Boolean);
         const re = /<a\s[^>]*href="([^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi; let m, n = 0;
         while ((m = re.exec(html)) && n < 300) {
@@ -221,7 +224,7 @@ function radarRun() {
   const topic = props_().getProperty("ntfy");
   if (topic) {
     const body = fresh.slice(0, 5).map(x => "• " + x.title).join("\n") + (fresh.length > 5 ? "\n+" + (fresh.length - 5) + " yeni" : "");
-    try { UrlFetchApp.fetch("https://ntfy.sh/" + encodeURIComponent(topic), { method: "post", payload: body, headers: { Title: "JARVIS radar: " + fresh.length + " yeni bulgu", Tags: "satellite" }, muteHttpExceptions: true }); } catch (e) {}
+    try { UrlFetchApp.fetch("https://ntfy.sh/" + encodeURIComponent(topic), { method: "post", payload: body, headers: { Title: "Titus radar: " + fresh.length + " yeni bulgu", Tags: "satellite" }, muteHttpExceptions: true }); } catch (e) {}
   }
 }
 /** Bir kez çalıştır (ya da radarı uygulamadan kaydet): saatlik taramayı kurar. */
@@ -277,7 +280,7 @@ function kurulumBrifing() {
 /* ---------- v2.0: Drive'a dosya kaydı ve şifreli yedek ---------- */
 function folder_(name) { const it = DriveApp.getFoldersByName(name); return it.hasNext() ? it.next() : DriveApp.createFolder(name); }
 function saveFile(req) {
-  const f = folder_(req.folder || "JARVIS");
+  const f = folder_(req.folder || "Titus");
   const blob = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || "application/octet-stream", req.name || "dosya");
   const file = f.createFile(blob);
   if (req.keep) { // eski yedekleri temizle
@@ -287,13 +290,13 @@ function saveFile(req) {
   return { id: file.getId(), url: file.getUrl(), name: file.getName() };
 }
 function getBackup(req) {
-  const f = folder_(req.folder || "JARVIS Yedek"); const files = []; const it = f.getFiles(); while (it.hasNext()) files.push(it.next());
+  const f = folder_(req.folder || "Titus Yedek"); const files = []; const it = f.getFiles(); while (it.hasNext()) files.push(it.next());
   if (!files.length) return { data: null };
   files.sort((a, b) => b.getDateCreated() - a.getDateCreated());
   return { name: files[0].getName(), data: Utilities.base64Encode(files[0].getBlob().getBytes()) };
 }
 
-/* ---------- v2.0: gece mesaisi (sen uyurken JARVIS hazırlık yapar) ---------- */
+/* ---------- v2.0: gece mesaisi (sen uyurken Titus hazırlık yapar) ---------- */
 /** Uygulamada "Gece mesaisi" açılınca Gemini anahtarı buraya kaydedilir ve her gece 05:00'te çalışır. */
 function nightJob() {
   const key = props_().getProperty("GEMINI_KEY"); if (!key) return;
@@ -302,7 +305,7 @@ function nightJob() {
   try { ctx += "OKUNMAMIŞ MAİLLER:\n" + gmail("is:unread in:inbox newer_than:1d", 12).map(m => `${m.kimden}: ${m.konu} — ${m.ozet}`).join("\n") + "\n"; } catch (e) {}
   try { radarRun(); } catch (e) {}
   try { ctx += "YENİ CASTING/İLANLAR:\n" + radarGet().filter(x => !x.seen).slice(0, 10).map(x => x.title || x.baslik || JSON.stringify(x).slice(0, 120)).join("\n") + "\n"; } catch (e) {}
-  const prompt = "Sen JARVIS'sin. Burak uyurken gece mesaisi yaptın. Aşağıdaki verilerden sabah ona okunacak, Türkçe, en fazla 8 cümlelik bir 'gece raporu' yaz: önemli mailler (cevap gerekenler), bugünkü işler, dikkat çeken casting ilanları ve öneriler. Gereksiz detay verme.\n\n" + ctx;
+  const prompt = "Sen Titus'sun. Burak uyurken gece mesaisi yaptın. Aşağıdaki verilerden sabah ona okunacak, Türkçe, en fazla 8 cümlelik bir 'gece raporu' yaz: önemli mailler (cevap gerekenler), bugünkü işler, dikkat çeken casting ilanları ve öneriler. Gereksiz detay verme.\n\n" + ctx;
   const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"];
   for (const m of models) {
     try {
@@ -317,4 +320,30 @@ function nightJob() {
 function kurulumGece() {
   const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "nightJob");
   if (!has) ScriptApp.newTrigger("nightJob").timeBased().atHour(5).everyDays(1).create();
+}
+
+
+/* ---------- v2.1: Recast brief akışı ---------- */
+/** KADRO'nun tamamını kısa satırlar halinde döndürür (oyuncu seçimi için). */
+function roster(req) {
+  const ss = SpreadsheetApp.openById(req.sheetId);
+  const sh = req.sheet ? ss.getSheetByName(req.sheet) : ss.getSheets()[0];
+  const values = sh.getDataRange().getValues();
+  if (values.length < 2) return { basliklar: [], satirlar: [] };
+  const head = values[0].map(String);
+  const rows = [];
+  for (let i = 1; i < values.length && rows.length < 600; i++) {
+    const r = values[i]; if (!r.some(c => c !== "")) continue;
+    rows.push({ n: i + 1, t: r.map((c, k) => c === "" ? "" : head[k] + ": " + (c instanceof Date ? fmt_(c).slice(0, 10) : String(c).replace(/\s+/g, " ").slice(0, 160))).filter(Boolean).join(" | ").slice(0, 420) });
+  }
+  return { sayfa: sh.getName(), basliklar: head, toplam: rows.length, satirlar: rows };
+}
+/** Son günlerde gelen casting brief'i olabilecek mailleri tam metinle döndürür. */
+function briefMails(req) {
+  const q = req.query || 'in:inbox newer_than:' + (Number(req.days) || 4) + 'd (casting OR cast OR brief OR oyuncu OR rol OR seçme OR "self tape" OR "self-tape" OR reklam OR dizi OR film)' + (req.unread ? " is:unread" : "");
+  return GmailApp.search(q, 0, Math.min(Number(req.max) || 6, 15)).map(t => {
+    const m = t.getMessages()[t.getMessages().length - 1];
+    return { id: t.getId(), kimden: m.getFrom(), yanitla: m.getReplyTo() || m.getFrom(), konu: m.getSubject(), tarih: fmt_(m.getDate()), okunmadi: t.isUnread(),
+             metin: m.getPlainBody().replace(/\n{3,}/g, "\n\n").slice(0, 6000), ekler: m.getAttachments().map(a => a.getName()).slice(0, 8) };
+  });
 }

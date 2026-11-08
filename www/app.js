@@ -1,4 +1,4 @@
-/* JARVIS — Burak'ın kişisel asistanı
+/* Titus — Burak'ın kişisel asistanı
    Android (Capacitor) + tarayıcıda çalışır. Tüm veri cihazda; isteğe bağlı Google Apps Script senkronu. */
 (() => {
 "use strict";
@@ -34,7 +34,7 @@ function toast(t, ms = 2400) { const el = $("#toast"); el.textContent = t; el.cl
 const Cap = window.Capacitor;
 const NATIVE = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 const plug = n => (NATIVE && Cap.registerPlugin) ? Cap.registerPlugin(n) : null;
-const Jarvis = plug("Jarvis");
+const Jarvis = plug("Titus");
 const LN = plug("LocalNotifications");
 const TTS = plug("TextToSpeech");
 const Prefs = plug("Preferences");
@@ -150,7 +150,7 @@ async function listen() {
       $("#q").placeholder = "● Dinliyorum… (bitince sus, kendim anlarım)";
       text = await sttCapture(); done = true;
     } catch (e) { console.warn("gemini stt", e); GEM_REC = null; }
-    $("#q").placeholder = "JARVIS'e söyle…";
+    $("#q").placeholder = "Titus'a söyle…";
   }
   try {
     if (done) { /* Gemini ile anlaşıldı */ }
@@ -212,7 +212,7 @@ function infoBox(title, html) {
   $("#modal").classList.add("on"); $("#mOk").onclick = () => $("#modal").classList.remove("on");
 }
 
-/* ================= iş mantığı (UI + JARVIS araçları ortak) ================= */
+/* ================= iş mantığı (UI + Titus araçları ortak) ================= */
 const REP = { none: "", daily: "her gün", weekdays: "hafta içi", weekly: "her hafta", monthly: "her ay" };
 const A = {
   addReminder({ text, due, repeat = "none" }) {
@@ -265,11 +265,11 @@ function plannedNotifications() {
   for (const r of S.reminders) {
     if (r.done) continue; const d = parseDate(r.due); if (!d) continue;
     const on = { hour: d.getHours(), minute: d.getMinutes() };
-    if (r.repeat === "daily") N("r" + r.id, "JARVIS", r.text, { on }, { rid: r.id });
-    else if (r.repeat === "weekly") N("r" + r.id, "JARVIS", r.text, { on: { ...on, weekday: d.getDay() + 1 } }, { rid: r.id });
-    else if (r.repeat === "monthly") N("r" + r.id, "JARVIS", r.text, { on: { ...on, day: d.getDate() } }, { rid: r.id });
-    else if (r.repeat === "weekdays") for (let w = 2; w <= 6; w++) N("r" + r.id + w, "JARVIS", r.text, { on: { ...on, weekday: w } }, { rid: r.id });
-    else if (d > now) N("r" + r.id, "JARVIS", r.text, { at: d }, { rid: r.id });
+    if (r.repeat === "daily") N("r" + r.id, "Titus", r.text, { on }, { rid: r.id });
+    else if (r.repeat === "weekly") N("r" + r.id, "Titus", r.text, { on: { ...on, weekday: d.getDay() + 1 } }, { rid: r.id });
+    else if (r.repeat === "monthly") N("r" + r.id, "Titus", r.text, { on: { ...on, day: d.getDate() } }, { rid: r.id });
+    else if (r.repeat === "weekdays") for (let w = 2; w <= 6; w++) N("r" + r.id + w, "Titus", r.text, { on: { ...on, weekday: w } }, { rid: r.id });
+    else if (d > now) N("r" + r.id, "Titus", r.text, { at: d }, { rid: r.id });
   }
   for (const s of S.shifts) {
     const st = parseDate(s.date + "T" + s.start); if (!st) continue;
@@ -382,7 +382,7 @@ async function resolveContact(who) {
   return exact || list[0];
 }
 
-/* ================= JARVIS araçları ================= */
+/* ================= Titus araçları ================= */
 const T = (name, description, props = {}, required = [], run) => ({ name, description, props, required, run });
 const str = (d, e) => ({ type: "string", description: d, ...(e ? { enum: e } : {}) });
 const num = d => ({ type: "number", description: d });
@@ -457,8 +457,8 @@ function systemPrompt() {
   const pr = S.projects.map(p => `- ${p.name}: ${p.status || "-"} → ${p.next || "-"} (${p.updated || ""})`).join("\n") || "(yok)";
   const hb = S.habits.map(h => `- ${h.name}: bugün ${h.log.includes(ymd(d)) ? "yapıldı" : "yapılmadı"}, seri ${streak(h)} gün`).join("\n") || "(yok)";
   const geo = S.geo.filter(g => g.active).map(g => `- [${g.id}] ${g.text} @ ${g.place}`).join("\n") || "(yok)";
-  const tone = SET.personality === "resmi" ? "Resmi, kibar ve kısa konuş; espri yapma." : "Iron Man'deki JARVIS gibi zeki, sakin, hafif esprili ve sadık ol; ara sıra 'efendim' de.";
-  return `Sen JARVIS'sin, ${SET.name}'ın kişisel sesli asistanısın. ${tone}
+  const tone = SET.personality === "resmi" ? "Resmi, kibar ve kısa konuş; espri yapma." : "Iron Man'deki JARVIS tarzında ama adın Titus; zeki, sakin, hafif esprili ve sadık ol; ara sıra 'efendim' de.";
+  return `Sen Titus'sun, ${SET.name}'ın kişisel sesli asistanısın. ${tone}
 Burak İstanbul'da yaşayan bir oyuncu; Recast Talent House casting ajansında çalışıyor, Kadıköy'de bir barda gece vardiyaları var, kendi uygulama ve oyunlarını geliştiriyor.
 HER ZAMAN Türkçe konuş. Cevapların sesli okunur: kısa ol (genelde 1-3 cümle), markdown, madde işareti, emoji ve link yazma. Brifing/özet istenirse en fazla 6-8 kısa cümle.
 Şu an: ${DAYS[d.getDay()]} ${localISO(d)} (Türkiye, UTC+3). "Yarın", "akşam", "2 saat sonra" gibi ifadeleri buna göre kesin zamana çevir; "sabah"=09:00, "öğlen"=12:30, "akşam"=19:00, "gece"=23:00.
@@ -718,7 +718,7 @@ async function send(text, byVoice = false, attach = null, label = null) {
   const sq = STREAMQ; STREAMQ = null;
   if (sq && STREAMED) { STREAMED = false; await sq.finish(); if (CUR_Q === sq) CUR_Q = null; }
   else { STREAMED = false; if (byVoice || SET.speakReplies) await speak(out, byVoice); }
-  // Sohbet modu: cevaptan sonra "Hey Jarvis" demeden devam et
+  // Sohbet modu: cevaptan sonra "Hey Titus" demeden devam et
   if (byVoice && (SET.convo || (SET.followUp && /\?\s*$/.test(out)))) { const t = await listen(); if (t) return send(t, true); }
   resumeWake();
 }
@@ -728,7 +728,7 @@ function setMode(m, s) { $("#reactor").className = "reactor" + (m ? " " + m : ""
 function bubble(role, text) {
   const el = document.createElement("div");
   el.className = "msg " + (role === "user" ? "u" : role === "sys" ? "sys" : "j");
-  if (role === "assistant") el.innerHTML = "<b>JARVIS</b>";
+  if (role === "assistant") el.innerHTML = "<b>Titus</b>";
   const s = document.createElement("span"); s.textContent = text; el.appendChild(s);
   $("#log").appendChild(el); $("#log").scrollTop = 1e9; return s;
 }
@@ -791,7 +791,7 @@ function listHTML(sec) {
     }
     case "focus": {
       if (FOCUS.until > Date.now()) return `<div class="card"><div class="focusring"><span id="focusLeft">--:--</span><small>${esc(FOCUS.label)}</small></div><button class="btn warn" id="focusStop" style="width:100%">Bitir</button><div class="hint">Rahatsız etme modu açık (izin verdiysen). Süre bitince alarm çalar.</div></div>`;
-      return `<div class="card"><h3>ODAK MODU</h3><div class="form"><input id="focusLabel" placeholder="Ne üzerinde çalışacaksın?"><div class="row">${[25, 45, 60, 90].map(m => `<button class="btn ghost" data-focus="${m}">${m} dk</button>`).join("")}</div></div><div class="hint">Bildirimleri susturur, bitince haber verir. "JARVIS, 45 dakika odak başlat" da diyebilirsin.</div></div>`;
+      return `<div class="card"><h3>ODAK MODU</h3><div class="form"><input id="focusLabel" placeholder="Ne üzerinde çalışacaksın?"><div class="row">${[25, 45, 60, 90].map(m => `<button class="btn ghost" data-focus="${m}">${m} dk</button>`).join("")}</div></div><div class="hint">Bildirimleri susturur, bitince haber verir. "Titus, 45 dakika odak başlat" da diyebilirsin.</div></div>`;
     }
     case "auditions": {
       const l = [...S.auditions].sort((a, b) => a.done - b.done || (a.date || "9").localeCompare(b.date || "9"));
@@ -889,12 +889,12 @@ async function renderSettings() {
     ${tg("followUp", "Soru sorunca otomatik dinle", "Kesintisiz sohbet")}
     <div class="form" style="margin-top:6px"><div class="lbl">Ses</div><select data-set="voiceIdx">${vOpts}</select>
     <div class="row"><div><div class="lbl">Hız ${SET.rate}</div><input type="range" min="0.6" max="1.6" step="0.05" data-set="rate" value="${SET.rate}"></div><div><div class="lbl">Ton ${SET.pitch}</div><input type="range" min="0.5" max="1.5" step="0.05" data-set="pitch" value="${SET.pitch}"></div></div>
-    <select data-set="personality"><option value="esprili" ${SET.personality === "esprili" ? "selected" : ""}>Kişilik: Esprili Jarvis</option><option value="resmi" ${SET.personality === "resmi" ? "selected" : ""}>Kişilik: Resmi</option></select>
+    <select data-set="personality"><option value="esprili" ${SET.personality === "esprili" ? "selected" : ""}>Kişilik: Esprili Titus</option><option value="resmi" ${SET.personality === "resmi" ? "selected" : ""}>Kişilik: Resmi</option></select>
     <button class="btn ghost sm" id="testVoice">Sesi dene</button>
     <div class="hint">Daha doğal ses için telefonda Ayarlar → Metin okuma → Google motoru → Türkçe ses verilerini indir.</div></div></div>
 
-  <div class="card"><h3>HEY JARVIS</h3>
-    ${tg("wake", "Uyandırma kelimesi", "Ekran kapalıyken bile \"Hey Jarvis\" dinler. İlk açılışta ~40 MB ses modeli iner. Pil kullanır.")}
+  <div class="card"><h3>HEY Titus</h3>
+    ${tg("wake", "Uyandırma kelimesi", "Ekran kapalıyken bile \"Hey Titus\" dinler. İlk açılışta ~40 MB ses modeli iner. Pil kullanır.")}
     <div class="hint" id="wakeStatus">${NATIVE ? "" : "Sadece Android uygulamasında çalışır."}</div></div>
 
   <div class="card"><h3>BRİFİNG</h3>
@@ -903,7 +903,7 @@ async function renderSettings() {
     <div class="lbl">Şehir (hava durumu)</div><div class="row"><input id="cityIn" value="${esc(SET.city)}"><button class="btn ghost sm" id="citySave">Kaydet</button></div></div>
 
   <div class="card"><h3>İZİNLER</h3>
-    ${NATIVE ? [P("notifications", "Bildirim", "Hatırlatıcılar için"), P("exactAlarm", "Tam zamanlı alarm", "Alarmlar dakikasında çalsın"), P("microphone", "Mikrofon", "Sesli komut"), P("contacts", "Rehber", "\"Annemi ara\""), P("phone", "Telefon", "Doğrudan arama"), P("notificationAccess", "Bildirim erişimi", "Gelen bildirimleri okuma"), P("dndAccess", "Rahatsız etme erişimi", "Odak modu"), P("location", "Konum", "Konum hatırlatmaları"), P("backgroundLocation", "Konum: her zaman", "Uygulama kapalıyken konum hatırlatması"), P("overlay", "Diğer uygulamaların üzerinde", "Hey Jarvis ile ekranı açabilmek"), P("battery", "Pil kısıtlamasız", "Arka planda kapanmasın")].join("") : `<div class="hint">İzinler Android uygulamasında görünür.</div>`}
+    ${NATIVE ? [P("notifications", "Bildirim", "Hatırlatıcılar için"), P("exactAlarm", "Tam zamanlı alarm", "Alarmlar dakikasında çalsın"), P("microphone", "Mikrofon", "Sesli komut"), P("contacts", "Rehber", "\"Annemi ara\""), P("phone", "Telefon", "Doğrudan arama"), P("notificationAccess", "Bildirim erişimi", "Gelen bildirimleri okuma"), P("dndAccess", "Rahatsız etme erişimi", "Odak modu"), P("location", "Konum", "Konum hatırlatmaları"), P("backgroundLocation", "Konum: her zaman", "Uygulama kapalıyken konum hatırlatması"), P("overlay", "Diğer uygulamaların üzerinde", "Hey Titus ile ekranı açabilmek"), P("battery", "Pil kısıtlamasız", "Arka planda kapanmasın")].join("") : `<div class="hint">İzinler Android uygulamasında görünür.</div>`}
   </div>
 
   <div class="card"><h3>GOOGLE (SENKRON · GMAIL · TAKVİM)</h3><div class="form">
@@ -917,12 +917,12 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">JARVIS v2.0 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.1 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
   const el = $("#wakeStatus"); if (!el || !r) return;
-  const M = { off: "Kapalı", downloading: `Ses modeli indiriliyor… ${r.progress || 0}%`, loading: "Model yükleniyor…", listening: "🟢 Dinliyor: \"Hey Jarvis\" de.", paused: "Duraklatıldı (konuşma sırasında)", error: "Hata: " + (r.error || "") };
+  const M = { off: "Kapalı", downloading: `Ses modeli indiriliyor… ${r.progress || 0}%`, loading: "Model yükleniyor…", listening: "🟢 Dinliyor: \"Hey Titus\" de.", paused: "Duraklatıldı (konuşma sırasında)", error: "Hata: " + (r.error || "") };
   el.textContent = M[r.status] || r.status;
 }
 async function onSetChange(el) {
@@ -986,7 +986,7 @@ function bind() {
     else if (t.dataset.perm) askPerm(t.dataset.perm);
     else if (t.id === "focusStop") endFocus(true);
     else if (t.id === "clrDone") { S.tasks = S.tasks.filter(x => !x.done); save(); }
-    else if (t.id === "testVoice") speak(`Merhaba ${SET.name}, ben JARVIS. Ses ayarlarım böyle.`, true);
+    else if (t.id === "testVoice") speak(`Merhaba ${SET.name}, ben Titus. Ses ayarlarım böyle.`, true);
     else if (t.id === "testBrain") { toast("Test ediliyor…"); try { const r = SET.provider === "claude" ? await askClaude([{ role: "user", content: "Sadece 'Bağlantı tamam' de." }], () => {}) : await askGemini([{ role: "user", content: "Sadece 'Bağlantı tamam' de." }], () => {}); toast("✓ " + r); } catch (er) { toast("✗ " + (er.message === "NOKEY" ? "Anahtar yok" : er.message), 5000); } }
     else if (t.id === "testScript") { try { const r = await script("ping"); toast("✓ Google bağlı: " + (r.email || "")); } catch (er) { toast("✗ " + er.message, 5000); } }
     else if (t.id === "syncNow") { await pushSync(); await pullSync(); toast("Senkron tamam"); }
@@ -1096,7 +1096,7 @@ function extraNotifications(N, now) {
   }
   for (const x of S.dates) {
     const d = nextDateOf(x.md); const pre = new Date(d.getTime() - 3 * 864e5); pre.setHours(10, 0, 0, 0);
-    if (pre > now) N("d1" + x.id, `3 gün sonra: ${x.name} (${x.kind})`, "Hediye ya da plan fikri ister misin? Dokun, JARVIS'e sor.", { at: pre }, { action: "ask:" + `${x.name} için ${x.kind} hediye ve kutlama fikri ver.` });
+    if (pre > now) N("d1" + x.id, `3 gün sonra: ${x.name} (${x.kind})`, "Hediye ya da plan fikri ister misin? Dokun, Titus'a sor.", { at: pre }, { action: "ask:" + `${x.name} için ${x.kind} hediye ve kutlama fikri ver.` });
     if (d > now) N("d2" + x.id, `Bugün ${x.name} için ${x.kind} 🎉`, x.note || "Aramayı ya da mesaj atmayı unutma.", { at: d });
   }
   for (const a of S.applications) {
@@ -1113,7 +1113,7 @@ function extraNotifications(N, now) {
   }
 }
 
-/* ================= proaktif JARVIS ================= */
+/* ================= proaktif Titus ================= */
 async function proactive(force = false) {
   if (!SET.proactive) return;
   const now = Date.now();
@@ -1151,7 +1151,7 @@ async function proactive(force = false) {
 }
 
 /* ================= rutinler ================= */
-const STEP_TR = { dnd: "Rahatsız etme", torch: "Fener", speak: "Söyle", reminder: "Hatırlatıcı", shiftEnd: "Vardiya bitişine alarm", whatsapp: "WhatsApp", app: "Uygulama aç", focus: "Odak", brief: "Brifing", plan: "Yarının planı", sleep: "Uyku modu", webhook: "Akıllı ev", url: "Link aç", wake: "Hey Jarvis" };
+const STEP_TR = { dnd: "Rahatsız etme", torch: "Fener", speak: "Söyle", reminder: "Hatırlatıcı", shiftEnd: "Vardiya bitişine alarm", whatsapp: "WhatsApp", app: "Uygulama aç", focus: "Odak", brief: "Brifing", plan: "Yarının planı", sleep: "Uyku modu", webhook: "Akıllı ev", url: "Link aç", wake: "Hey Titus" };
 function seedRoutines() {
   if (META.seeded || S.routines.length) { META.seeded = true; saveMeta(); return; }
   const P = SET.partnerName || "Kübra";
@@ -1159,7 +1159,7 @@ function seedRoutines() {
     { id: uid(), name: "Vardiyaya çıkıyorum", triggers: ["vardiyaya çıkıyorum", "vardiyaya gidiyorum", "işe çıkıyorum"], steps: [{ type: "dnd", on: true }, { type: "shiftEnd" }, { type: "whatsapp", kim: P, mesaj: "Vardiyaya çıktım, bitince yazarım ❤️" }, { type: "speak", text: "İyi vardiyalar Burak. Bitişte eve dönüş için haber vereceğim." }] },
     { id: uid(), name: "Eve geldim", triggers: ["eve geldim", "evdeyim", "eve vardım"], steps: [{ type: "dnd", on: false }, { type: "whatsapp", kim: P, mesaj: "Eve vardım 🏠" }, { type: "plan" }] },
     { id: uid(), name: "İyi geceler", triggers: ["iyi geceler", "yatıyorum", "uyku modu"], steps: [{ type: "sleep" }] },
-    { id: uid(), name: "Günaydın", triggers: ["günaydın jarvis", "günaydın"], steps: [{ type: "dnd", on: false }, { type: "brief" }] }
+    { id: uid(), name: "Günaydın", triggers: ["günaydın titus", "günaydın"], steps: [{ type: "dnd", on: false }, { type: "brief" }] }
   );
   META.seeded = true; saveMeta(); save();
 }
@@ -1312,7 +1312,7 @@ async function selfTape() {
   let stream;
   try { stream = await open(); } catch (e) { toast("Kamera açılamadı: " + e.message); return; }
   $("#modalBox").innerHTML = `<h2>SELF-TAPE</h2><div style="position:relative"><video id="tpV" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;max-height:55vh;transform:scaleX(${facing === "user" ? -1 : 1})"></video><div id="tpC" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;color:#fff;text-shadow:0 0 20px #000"></div><div id="tpL" style="position:absolute;left:8px;right:8px;bottom:8px;background:rgba(0,0,0,.6);border-radius:8px;padding:6px;font-size:14px;display:none"></div></div>
-    <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="tpFlip">↺ Kamera</button><button class="btn ghost sm" id="tpX">Kapat</button><button class="btn" id="tpGo">● Kayda başla</button></div><div class="hint">Kayıtta diğer karakterleri JARVIS okur. Senin repliğinde ekrana dokununca devam eder (ya da süre dolunca).</div>`;
+    <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="tpFlip">↺ Kamera</button><button class="btn ghost sm" id="tpX">Kapat</button><button class="btn" id="tpGo">● Kayda başla</button></div><div class="hint">Kayıtta diğer karakterleri Titus okur. Senin repliğinde ekrana dokununca devam eder (ya da süre dolunca).</div>`;
   $("#modal").classList.add("on");
   const v = $("#tpV"); v.srcObject = stream;
   const close = () => { try { stream.getTracks().forEach(t => t.stop()); } catch {} $("#modal").classList.remove("on"); resumeWake(); TAPE = null; };
@@ -1342,7 +1342,7 @@ async function selfTape() {
     const ext = (rec.mimeType || "").includes("mp4") ? "mp4" : "webm";
     const name = `selftape-${ymd(new Date())}-${Date.now().toString().slice(-5)}.${ext}`;
     META.lastLines = Date.now(); saveMeta();
-    try { await saveVideo(blob, name); toast("🎬 Galeriye kaydedildi: Movies/JARVIS/" + name, 4500); } catch (e) { toast("Kaydedilemedi: " + e.message, 5000); }
+    try { await saveVideo(blob, name); toast("🎬 Galeriye kaydedildi: Movies/TITUS/" + name, 4500); } catch (e) { toast("Kaydedilemedi: " + e.message, 5000); }
     close();
   };
 }
@@ -1441,7 +1441,7 @@ async function pcCommand(action, arg = "", arg2 = "") {
     const r = await script("pcResult", { id: q.id });
     if (r.result) return r.result;
   }
-  return { bekliyor: true, not: "Bilgisayar 30 sn içinde cevap vermedi. JARVIS PC ajanı açık mı?" };
+  return { bekliyor: true, not: "Bilgisayar 30 sn içinde cevap vermedi. Titus PC ajanı açık mı?" };
 }
 
 /* ================= radar ================= */
@@ -1455,7 +1455,7 @@ async function lockCheck() {
   if (!SET.lock || !Jarvis) return;
   if (Date.now() - (META.unlockedAt || 0) < 5 * 6e4) return;
   $("#lock").classList.add("on");
-  const r = await nat(() => Jarvis.authenticate({ reason: "JARVIS'i aç" }), null);
+  const r = await nat(() => Jarvis.authenticate({ reason: "Titus'u aç" }), null);
   if (r && r.ok) { META.unlockedAt = Date.now(); saveMeta(); $("#lock").classList.remove("on"); }
 }
 
@@ -1485,7 +1485,7 @@ TOOLS.push(
   T("ekrana_yaz", "Açık uygulamadaki odaklanmış yazı alanına metin yazar.", { metin: str("Metin") }, ["metin"], async a => (await a11yOk()) ? Jarvis.a11yType({ text: a.metin }) : { hata: "Ekran erişimi kapalı" }),
   T("ekran_hareket", "Geri, ana ekran, son uygulamalar, bildirimler veya kaydırma yapar.", { hareket: str("Hareket", ["geri", "ana_ekran", "son_uygulamalar", "bildirimler", "asagi_kaydir", "yukari_kaydir"]) }, ["hareket"], async a => (await a11yOk()) ? Jarvis.a11yGlobal({ action: a.hareket }) : { hata: "Ekran erişimi kapalı" }),
   T("akilli_ev", "Akıllı ev cihazını/webhook'u tetikler (ışık, priz...).", { ad: str("Cihaz/eylem adı, Ayarlar'daki gibi") }, ["ad"], a => fireWebhook(a.ad)),
-  T("bilgisayar", "Bilgisayardaki JARVIS ajanına komut verir. open_app: uygulama aç; open_url: link aç; find_file: dosya ara; mail_file: dosyayı Gmail taslağına ekle (arg=dosya adı, arg2=alıcı); lock: kilitle; notify: bilgisayarda mesaj göster; ask: bilgisayardaki JARVIS'e serbest görev ver (arg=görev, ör. "Word'ü aç ve toplantı notu başlığı yaz") — bilgisayarda JARVIS masaüstü sürümü çalışıyorsa.", { action: str("Komut", ["open_app", "open_url", "find_file", "mail_file", "lock", "notify", "ask"]), arg: str("Uygulama/link/dosya adı/mesaj"), arg2: str("Ek bilgi (ör. alıcı e-posta)") }, ["action"],
+  T("bilgisayar", "Bilgisayardaki Titus ajanına komut verir. open_app: uygulama aç; open_url: link aç; find_file: dosya ara; mail_file: dosyayı Gmail taslağına ekle (arg=dosya adı, arg2=alıcı); lock: kilitle; notify: bilgisayarda mesaj göster; ask: bilgisayardaki Titus'a serbest görev ver (arg=görev, ör. Word'ü aç ve toplantı notu başlığı yaz) — bilgisayarda Titus masaüstü sürümü çalışıyorsa.", { action: str("Komut", ["open_app", "open_url", "find_file", "mail_file", "lock", "notify", "ask"]), arg: str("Uygulama/link/dosya adı/mesaj"), arg2: str("Ek bilgi (ör. alıcı e-posta)") }, ["action"],
     async a => { if (["lock", "mail_file"].includes(a.action) && !(await confirmBox(`Bilgisayarda: ${a.action} ${a.arg || ""} ${a.arg2 || ""}`, "Gönder"))) return { iptal: true }; return pcCommand(a.action, a.arg, a.arg2); }),
   T("yol_suresi", "Bir yere arabayla tahmini süre (İstanbul trafiği payı dahil) ve ne zaman çıkılması gerektiği.", { yer: str("Hedef"), varis: str("Varış saati YYYY-MM-DDTHH:mm (ops.)") }, ["yer"],
     async a => { const t = await travelMinutes(a.yer); const out = { tahmini_dk: t.min, yer: t.yer }; if (a.varis) { const d = parseDate(a.varis); if (d) out.cikis = localISO(new Date(d - (t.min + 15) * 6e4)); } return out; }),
@@ -1569,7 +1569,7 @@ listHTML = function (sec) {
 };
 const _baseLines = linesHTML;
 linesHTML = function () {
-  return _baseLines() + (LINES.list.length ? `<div class="card"><h3>KAYIT</h3><div class="row"><button class="btn" id="tapeBtn">🎬 Self-tape çek</button><button class="btn ghost" id="perfBtn">🎭 Performansımı değerlendir</button></div><div class="hint">Self-tape: 3-2-1 sonra kayıt başlar, diğer karakterleri ben okurum, video galeriye (Movies/JARVIS) kaydedilir.</div></div>` : "");
+  return _baseLines() + (LINES.list.length ? `<div class="card"><h3>KAYIT</h3><div class="row"><button class="btn" id="tapeBtn">🎬 Self-tape çek</button><button class="btn ghost" id="perfBtn">🎭 Performansımı değerlendir</button></div><div class="hint">Self-tape: 3-2-1 sonra kayıt başlar, diğer karakterleri ben okurum, video galeriye (Movies/TITUS) kaydedilir.</div></div>` : "");
 };
 
 /* ================= yeni ayar kartları ================= */
@@ -1583,23 +1583,23 @@ renderSettings = async function () {
     <div class="row"><div><div class="lbl">Adın</div><input data-set="name" value="${esc(SET.name)}"></div><div><div class="lbl">Partner (rutinlerde)</div><input data-set="partnerName" value="${esc(SET.partnerName)}"></div></div>
     <div class="lbl">Aylık bütçe (₺, 0 = kapalı)</div><input data-set="budget" type="number" inputmode="decimal" value="${SET.budget || 0}">
     <div class="row"><span class="hint" style="margin:0">Ev konumu: ${SET.homeLat ? "✓ kayıtlı" : "kayıtlı değil"}</span><button class="btn ghost sm" id="homeHere">📍 Burası evim</button></div>
-    ${tg("proactive", "Proaktif JARVIS", "Yağmur uyarısı, bekleyen görevler, seçme hazırlığı, haftalık rapor")}</div></div>
+    ${tg("proactive", "Proaktif Titus", "Yağmur uyarısı, bekleyen görevler, seçme hazırlığı, haftalık rapor")}</div></div>
 
   <div class="card"><h3>GÜVENLİK VE KISAYOLLAR</h3>
     ${tg("lock", "Parmak izi kilidi", "Açılışta ve 5 dk sonra parmak izi/yüz ister")}
-    ${tg("headset", "Kulaklık tuşu", "Kulaklığın tuşuna basınca JARVIS dinler (müzik çalmıyorken)")}
+    ${tg("headset", "Kulaklık tuşu", "Kulaklığın tuşuna basınca Titus dinler (müzik çalmıyorken)")}
     ${tg("autoSendWa", "WhatsApp'ı otomatik gönder", "Onayından sonra gönder tuşuna kendisi basar (Ekran erişimi gerekli)")}
     ${NATIVE ? `<div class="perm"><span>Ekran erişimi (Erişilebilirlik)<br><small style="color:var(--dim)">Ekranı görme, dokunma, yazma</small></span>${PERM.a11y ? `<span class="ok">✓ Açık</span>` : `<button class="btn sm" data-perm="a11y">Aç</button>`}</div>
     <div class="perm"><span>Kamera<br><small style="color:var(--dim)">Self-tape, fotoğraf</small></span>${PERM.camera ? `<span class="ok">✓ Açık</span>` : `<button class="btn sm" data-perm="camera">İzin ver</button>`}</div>
-    <div class="hint">Android 13+: Ekran erişimi gri görünürse Ayarlar → Uygulamalar → JARVIS → ⋮ → "Kısıtlanmış ayarlara izin ver".</div>` : ""}</div>
+    <div class="hint">Android 13+: Ekran erişimi gri görünürse Ayarlar → Uygulamalar → Titus → ⋮ → "Kısıtlanmış ayarlara izin ver".</div>` : ""}</div>
 
-  <div class="card"><h3>HEY JARVIS · SESİME UYARLA</h3>
-    <div class="hint" style="margin-top:0">5 kez "Hey Jarvis" dersin; senin telaffuzunda nasıl duyulduğunu öğrenip algılamayı iyileştiririm.</div>
+  <div class="card"><h3>HEY Titus · SESİME UYARLA</h3>
+    <div class="hint" style="margin-top:0">5 kez "Hey Titus" dersin; senin telaffuzunda nasıl duyulduğunu öğrenip algılamayı iyileştiririm.</div>
     <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="calibWake">🎙 Kalibre et</button><button class="btn ghost sm" id="calibReset">Sıfırla</button></div>
     <div class="hint">Ek kelimeler: ${(wk.words || []).length ? esc(wk.words.join(", ")) : "yok"}</div></div>
 
   <div class="card"><h3>DOĞAL TÜRKÇE SES (İNTERNETSİZ)</h3>
-    <div class="hint" style="margin-top:0">1) "sherpa-onnx TTS Engine" uygulamasının APK'sını kur (k2-fsa GitHub sayfası). 2) İçinden Türkçe Piper sesini seç (ör. tr_TR-dfki / fahrettin). 3) Aşağıdaki düğmeyle tercih edilen motoru o yap. 4) JARVIS → Ses'ten yeni sesi seç.</div>
+    <div class="hint" style="margin-top:0">1) "sherpa-onnx TTS Engine" uygulamasının APK'sını kur (k2-fsa GitHub sayfası). 2) İçinden Türkçe Piper sesini seç (ör. tr_TR-dfki / fahrettin). 3) Aşağıdaki düğmeyle tercih edilen motoru o yap. 4) Titus → Ses'ten yeni sesi seç.</div>
     ${NATIVE ? `<button class="btn ghost sm" id="ttsSettings" style="margin-top:8px">Metin okuma ayarlarını aç</button>` : ""}</div>
 
   <div class="card"><h3>İŞ BAĞLANTILARI</h3><div class="form">
@@ -1617,7 +1617,7 @@ renderSettings = async function () {
   <div class="card"><h3>AKILLI EV (WEBHOOK)</h3>
     ${(SET.webhooks || []).map((w, i) => `<div class="step"><span><b>${esc(w.name)}</b> · ${esc(w.method || "POST")} ${esc(w.url.slice(0, 40))}…</span><button class="btn ghost sm" data-testwh="${i}">▶</button><button class="x" data-delwh="${i}">✕</button></div>`).join("") || `<div class="hint" style="margin-top:0">Webhook yok.</div>`}
     <div class="form" style="margin-top:6px"><div class="row"><input id="whName" placeholder="Ad (ör. Salon ışığı aç)"><select id="whMethod" style="max-width:90px"><option>POST</option><option>GET</option></select></div><input id="whUrl" placeholder="https://… (Home Assistant, IFTTT, Smart Life webhook)"><div class="row"><input id="whBody" placeholder='Gövde (ops.) {"state":"on"}'><button class="btn sm" id="whAdd">+</button></div>
-    <div class="hint">"JARVIS, salon ışığını aç" dediğinde adıyla eşleşen webhook'u tetikler. Rutin adımı olarak da kullanılabilir.</div></div></div>
+    <div class="hint">"Titus, salon ışığını aç" dediğinde adıyla eşleşen webhook'u tetikler. Rutin adımı olarak da kullanılabilir.</div></div></div>
 
   <div class="card"><h3>BİLGİSAYAR AJANI</h3>
     <div class="hint" style="margin-top:0">Bilgisayarında <code>pc-agent/jarvis_pc.py</code> dosyasını çalıştır (README → Bilgisayar ajanı). Aynı Google bağlantısını kullanır.</div>
@@ -1659,17 +1659,17 @@ onSetChange = async function (el) {
 async function calibrateWake() {
   if (!Jarvis) return;
   const st = await nat(() => Jarvis.wakeStatus(), {});
-  if (!st || !["listening", "paused"].includes(st.status)) return toast("Önce Hey Jarvis'i aç ve modelin inmesini bekle.");
+  if (!st || !["listening", "paused"].includes(st.status)) return toast("Önce Hey Titus'u aç ve modelin inmesini bekle.");
   const heard = [];
   for (let i = 1; i <= 5; i++) {
-    toast(`${i}/5 — "Hey Jarvis" de`, 3500);
-    await speak(i === 1 ? "Bip sesinden sonra hey jarvis de." : "Bir daha.", true);
+    toast(`${i}/5 — "Hey Titus" de`, 3500);
+    await speak(i === 1 ? "Bip sesinden sonra hey titus de." : "Bir daha.", true);
     const r = await nat(() => Jarvis.wakeSample({ ms: 3500 }), null);
     if (r && r.text) heard.push(r.text);
   }
   const STOP = new Set(["hey", "okay", "ok", "the", "a", "uh", "um", "huh", "oh", "and", "i", "it", "is", "to", "of"]);
   const cnt = {}; heard.join(" ").split(/\s+/).filter(w => w && !STOP.has(w)).forEach(w => cnt[w] = (cnt[w] || 0) + 1);
-  const words = Object.entries(cnt).filter(([w, n]) => n >= 2 && w !== "jarvis").map(([w]) => w).slice(0, 4);
+  const words = Object.entries(cnt).filter(([w, n]) => n >= 2 && w !== "titus" && w !== "jarvis").map(([w]) => w).slice(0, 4);
   await nat(() => Jarvis.setWakeWords({ words }));
   resumeWake();
   infoBox("KALİBRASYON", `<p style="font-size:15px">Duyduklarım:</p><p style="font-size:14px;color:var(--dim)">${heard.map(esc).join("<br>") || "(hiçbir şey)"}</p><p style="font-size:15px">${words.length ? "Eklenen kelimeler: <b>" + esc(words.join(", ")) + "</b>" : (heard.some(h => h.includes("jarvis")) ? "\"jarvis\" kelimesini zaten doğru duyuyorum ✓" : "Belirgin bir kelime çıkmadı; daha net ve yakından tekrar dene.")}</p>`);
@@ -1735,7 +1735,7 @@ document.addEventListener("click", async e => {
     }
     else if (t.dataset.delwh) { SET.webhooks.splice(Number(t.dataset.delwh), 1); await saveSet(); renderSettings(); }
     else if (t.dataset.testwh) { const r = await fireWebhook(SET.webhooks[Number(t.dataset.testwh)].name); toast(r.ok ? "✓ Tetiklendi" : "✗ " + (r.hata || r.durum)); }
-    else if (t.id === "pcTest") { toast("Bilgisayara gönderiliyor…"); const r = await pcCommand("notify", "Merhaba Burak, JARVIS bağlantısı çalışıyor ✓"); toast(r.bekliyor ? "Bilgisayar cevap vermedi (ajan açık mı?)" : "✓ Bilgisayar cevap verdi", 4000); }
+    else if (t.id === "pcTest") { toast("Bilgisayara gönderiliyor…"); const r = await pcCommand("notify", "Merhaba Burak, Titus bağlantısı çalışıyor ✓"); toast(r.bekliyor ? "Bilgisayar cevap vermedi (ajan açık mı?)" : "✓ Bilgisayar cevap verdi", 4000); }
     else if (t.id === "unlockBtn") { META.unlockedAt = 0; lockCheck(); }
   } catch (err) { toast(String(err.message || err), 4000); }
 });
@@ -1804,13 +1804,13 @@ function relDelta(t) {
 }
 
 /* ================= gerçek alarm ve zamanlayıcı (Saat uygulaması) ================= */
-async function setClockAlarm({ h, m, label = "JARVIS", days = null }) {
+async function setClockAlarm({ h, m, label = "Titus", days = null }) {
   if (!Jarvis) { const d = new Date(); d.setHours(h, m, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); A.addReminder({ text: "⏰ " + label, due: localISO(d) }); return { ok: true, yedek: "hatırlatıcı" }; }
   const r = await Jarvis.setAlarm({ hour: h, minute: m, message: label, days: days || [] });
-  if (!r || !r.ok) { const d = new Date(); d.setHours(h, m, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); A.addReminder({ text: "⏰ " + label, due: localISO(d) }); return { ok: true, yedek: "hatırlatıcı", not: (r && r.error) || "Saat uygulamasına alarm kurulamadı, JARVIS alarmı kuruldu." }; }
+  if (!r || !r.ok) { const d = new Date(); d.setHours(h, m, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); A.addReminder({ text: "⏰ " + label, due: localISO(d) }); return { ok: true, yedek: "hatırlatıcı", not: (r && r.error) || "Saat uygulamasına alarm kurulamadı, Titus alarmı kuruldu." }; }
   return { ok: true, saat: `${pad(h)}:${pad(m)}`, gunler: days || [] };
 }
-async function setClockTimer(seconds, label = "JARVIS") {
+async function setClockTimer(seconds, label = "Titus") {
   if (!Jarvis) { A.addReminder({ text: "⏱ " + label, due: localISO(new Date(Date.now() + seconds * 1000)) }); return { ok: true, yedek: "hatırlatıcı" }; }
   const r = await Jarvis.setTimer({ seconds, message: label });
   if (!r || !r.ok) { A.addReminder({ text: "⏱ " + label, due: localISO(new Date(Date.now() + seconds * 1000)) }); return { ok: true, yedek: "hatırlatıcı" }; }
@@ -1826,7 +1826,7 @@ async function quickCommand(raw) {
   // ZAMANLAYICI
   if (/(zamanlayıcı|zamanlayici|geri ?sayım|kronometre|sayaç|timer)/.test(t)) {
     const s = relDelta(t); if (!s) return null;
-    const r = await setClockTimer(s, "JARVIS");
+    const r = await setClockTimer(s, "Titus");
     return { reply: `Zamanlayıcı başladı: ${durTR(s)}.`, act: "⏱ zamanlayıcı", r };
   }
   // ALARM / UYANDIR
@@ -1834,25 +1834,25 @@ async function quickCommand(raw) {
     const rel = /sonra/.test(t) ? relDelta(t) : null;
     if (rel) {
       const d = new Date(Date.now() + rel * 1000);
-      if (rel < 60 * 60 * 24) { const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "JARVIS" }); return { reply: `Alarm ${pad(d.getHours())}:${pad(d.getMinutes())} için kuruldu.`, act: "⏰ alarm", r }; }
+      if (rel < 60 * 60 * 24) { const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "Titus" }); return { reply: `Alarm ${pad(d.getHours())}:${pad(d.getMinutes())} için kuruldu.`, act: "⏰ alarm", r }; }
     }
     const c = parseClock(t); if (!c) return null;
-    const label = (raw.match(/(?:için|icin)\s+(.{2,40})$/i) || [])[1] || "JARVIS";
+    const label = (raw.match(/(?:için|icin)\s+(.{2,40})$/i) || [])[1] || "Titus";
     const days = DAYS_FOR[c.repeat] || (c.repeat === "weekly" && c.weekday !== null ? [c.weekday] : null);
     const when = clockToDate(c);
     const within24 = when - Date.now() < 864e5 + 6e4;
     if (days || within24) {
       const r = await setClockAlarm({ h: c.h, m: c.m, label, days });
       const dtxt = days ? (c.repeat === "daily" ? "her gün " : c.repeat === "weekdays" ? "hafta içi her gün " : c.repeat === "weekend" ? "hafta sonları " : `her ${DAYS[c.weekday]} `) : `${fmtWhen(localISO(when)).split(" ")[0]} `;
-      return { reply: `Alarm kuruldu: ${dtxt}${pad(c.h)}:${pad(c.m)}.${r.yedek ? " (Saat uygulaması yerine JARVIS alarmı.)" : ""}`, act: "⏰ alarm", r };
+      return { reply: `Alarm kuruldu: ${dtxt}${pad(c.h)}:${pad(c.m)}.${r.yedek ? " (Saat uygulaması yerine Titus alarmı.)" : ""}`, act: "⏰ alarm", r };
     }
-    // 24 saatten uzak tarih: Saat uygulaması tarih desteklemez → JARVIS alarmı (bildirim) kur
-    A.addReminder({ text: "⏰ Alarm" + (label !== "JARVIS" ? ": " + label : ""), due: localISO(when) });
+    // 24 saatten uzak tarih: Saat uygulaması tarih desteklemez → Titus alarmı (bildirim) kur
+    A.addReminder({ text: "⏰ Alarm" + (label !== "Titus" ? ": " + label : ""), due: localISO(when) });
     return { reply: `${fmtWhen(localISO(when))} için alarm kurdum.`, act: "⏰ alarm" };
   }
   // HATIRLATICI (net kalıplar)
   if (/hatırlat|hatirlat|unutturma/.test(t)) {
-    const what = s => s.replace(/(bana|beni|lütfen|jarvis|hey)/g, " ").replace(/\b(mi|mı|da|de)\b/g, " ").replace(/\s+/g, " ").trim();
+    const what = s => s.replace(/(bana|beni|lütfen|titus|jarvis|hey)/g, " ").replace(/\b(mi|mı|da|de)\b/g, " ").replace(/\s+/g, " ").trim();
     const m1 = t.match(/(\d+(?::30)?)\s*(dakika|dk|saat)\s*sonra\s+(.+?)\s*(?:diye\s*)?(?:hatırlat|hatirlat|unutturma)/);
     const m2 = m1 ? null : t.match(/(.+?)\s+(\d+(?::30)?)\s*(dakika|dk|saat)\s*sonra\s*(?:hatırlat|hatirlat)/);
     if (m1 || m2) {
@@ -1886,7 +1886,7 @@ async function listenGemini() {
   const hadSpeech = !!speechAt; const b64 = await rec.stop(); GEM_REC = null;
   if (!hadSpeech) return null;
   setMode("think", "Anlıyorum…");
-  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir (ör. JARVIS, Netflix, self-tape): her kelimeyi söylendiği dilde ve doğru yazımla yaz. Saatleri rakamla yaz (ör. 07:30). Sadece dökümü yaz; açıklama, tırnak, yorum ekleme. Anlaşılır bir konuşma yoksa sadece ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }], null, { model: SET.sttModel || "gemini-3.5-flash-lite", fallback: ["gemini-3.1-flash-lite"], temperature: 0, max: 300 });
+  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir (ör. Titus, Netflix, self-tape): her kelimeyi söylendiği dilde ve doğru yazımla yaz. Saatleri rakamla yaz (ör. 07:30). Sadece dökümü yaz; açıklama, tırnak, yorum ekleme. Anlaşılır bir konuşma yoksa sadece ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }], null, { model: SET.sttModel || "gemini-3.5-flash-lite", fallback: ["gemini-3.1-flash-lite"], temperature: 0, max: 300 });
   const clean = String(txt || "").replace(/^["'“]|["'”]$/g, "").trim();
   return !clean || clean.includes("###") ? null : clean;
 }
@@ -1898,8 +1898,8 @@ const CLAIM_RX = /(kurdum|kuruldu|ekledim|eklendi|ayarladım|ayarlandı|kaydetti
 /* ================= yeni araçlar ================= */
 TOOLS.unshift(
   T("alarm_kur", "Telefonun Saat uygulamasına GERÇEK alarm kurar (çalar saat). 'Alarm kur', 'beni uyandır' isteklerinde bunu kullan. Tarih desteklemez; 24 saatten uzak tek seferlik alarmlar için hatirlatici_ekle kullan.", { saat: str("HH:mm (24 saat)"), etiket: str("Alarm adı"), tekrar: str("Tekrar", ["none", "daily", "weekdays", "weekend"]) }, ["saat"],
-    async a => { const [h, m] = String(a.saat).split(":").map(Number); if (isNaN(h)) return { hata: "Saat anlaşılmadı" }; return setClockAlarm({ h, m: m || 0, label: a.etiket || "JARVIS", days: DAYS_FOR[a.tekrar] || null }); }),
-  T("zamanlayici_kur", "Saat uygulamasında geri sayım zamanlayıcısı başlatır.", { saniye: num("Toplam saniye"), etiket: str("Ad") }, ["saniye"], a => setClockTimer(Math.max(1, Math.round(a.saniye)), a.etiket || "JARVIS"))
+    async a => { const [h, m] = String(a.saat).split(":").map(Number); if (isNaN(h)) return { hata: "Saat anlaşılmadı" }; return setClockAlarm({ h, m: m || 0, label: a.etiket || "Titus", days: DAYS_FOR[a.tekrar] || null }); }),
+  T("zamanlayici_kur", "Saat uygulamasında geri sayım zamanlayıcısı başlatır.", { saniye: num("Toplam saniye"), etiket: str("Ad") }, ["saniye"], a => setClockTimer(Math.max(1, Math.round(a.saniye)), a.etiket || "Titus"))
 );
 Object.assign(ACT_TR, { alarm_kur: "⏰ alarm", zamanlayici_kur: "⏱ zamanlayıcı" });
 
@@ -1913,19 +1913,19 @@ async function diagnostics() {
     ok(p.notifications, "Bildirim izni", p.notifications ? "" : "Ayarlar → İzinler → Bildirim");
     ok(p.exactAlarm, "Tam zamanlı alarm", p.exactAlarm ? "" : "Olmadan hatırlatıcılar gecikebilir");
     ok(p.microphone, "Mikrofon");
-    const al = await nat(() => Jarvis.canSetAlarm(), {}); ok(al && al.ok, "Saat uygulamasına alarm", al && al.app ? al.app : "Saat uygulaması bulunamadı → JARVIS alarmı kullanılır");
-    const pend = await nat(() => LN.getPending(), { notifications: [] }); ok(true, "Bekleyen JARVIS alarmı", String((pend.notifications || []).length));
-    const w = await nat(() => Jarvis.wakeStatus(), {}); ok(!SET.wake || (w && w.status === "listening"), "Hey Jarvis", w ? w.status : "-");
+    const al = await nat(() => Jarvis.canSetAlarm(), {}); ok(al && al.ok, "Saat uygulamasına alarm", al && al.app ? al.app : "Saat uygulaması bulunamadı → Titus alarmı kullanılır");
+    const pend = await nat(() => LN.getPending(), { notifications: [] }); ok(true, "Bekleyen Titus alarmı", String((pend.notifications || []).length));
+    const w = await nat(() => Jarvis.wakeStatus(), {}); ok(!SET.wake || (w && w.status === "listening"), "Hey Titus", w ? w.status : "-");
     ok(p.battery, "Pil kısıtlaması kapalı", p.battery ? "" : "Arka planda kapanabilir");
   }
   const trv = voices.filter(v => /^tr/i.test(v.lang)).length; ok(trv > 0 || SET.voiceEngine === "gemini", "Ses", SET.voiceEngine === "gemini" ? "Gemini doğal ses" : `${trv} Türkçe telefon sesi`);
   if (SET.groqKey) { try { await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel, messages: [{ role: "user", content: "ok" }], max_tokens: 2 }, { Authorization: "Bearer " + SET.groqKey }); ok(true, "Groq (hız + yedek)"); } catch (e) { ok(false, "Groq", e.message); } }
   ok(!!SET.live && Date.now() > LIVE_OFF_UNTIL, "Canlı konuşma", SET.live ? (Date.now() > LIVE_OFF_UNTIL ? (SET.liveModel || "hazır") : "geçici olarak kapalı (kota/hata)") : "kapalı");
-  if (NATIVE) rows.push(`<div class="hint">Vivo: Ayarlar → Pil → Arka planda yüksek güç tüketimi → JARVIS'i aç; Ayarlar → Uygulamalar → Otomatik başlatma → JARVIS'i aç. Yoksa Hey Jarvis ve alarmlar kapanabilir.</div>`);
+  if (NATIVE) rows.push(`<div class="hint">Vivo: Ayarlar → Pil → Arka planda yüksek güç tüketimi → Titus'u aç; Ayarlar → Uygulamalar → Otomatik başlatma → Titus'u aç. Yoksa Hey Titus ve alarmlar kapanabilir.</div>`);
   ok(SET.stt === "gemini" ? !!SET.geminiKey : true, "Ses tanıma", SET.stt === "gemini" ? "Gemini (Türkçe + İngilizce)" : "Google (cihaz)");
   infoBox("SİSTEM TESTİ", rows.join("") + `<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="testNotif">1 dk sonra test bildirimi</button><button class="btn ghost sm" id="testAlarm">2 dk sonra test alarmı</button></div>`);
   $("#testNotif").onclick = () => { A.addReminder({ text: "Test bildirimi ✓ Hatırlatıcılar çalışıyor.", due: localISO(new Date(Date.now() + 65e3)) }); toast("1 dakika sonra bildirim gelecek"); };
-  $("#testAlarm").onclick = async () => { const d = new Date(Date.now() + 2 * 6e4 + 3e4); const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "JARVIS test" }); toast(r.yedek ? "Saat uygulaması yok → JARVIS alarmı kuruldu" : `Saat uygulamasına ${pad(d.getHours())}:${pad(d.getMinutes())} alarmı kuruldu`, 4000); };
+  $("#testAlarm").onclick = async () => { const d = new Date(Date.now() + 2 * 6e4 + 3e4); const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "Titus test" }); toast(r.yedek ? "Saat uygulaması yok → Titus alarmı kuruldu" : `Saat uygulamasına ${pad(d.getHours())}:${pad(d.getMinutes())} alarmı kuruldu`, 4000); };
 }
 
 /* ================= ayarlara: ses tanıma ve uyandırma hassasiyeti ================= */
@@ -1937,8 +1937,8 @@ async function diagnostics() {
     if (ses) ses.querySelector(".form").insertAdjacentHTML("afterbegin", `<div class="lbl">Ses tanıma motoru</div><select data-set="stt"><option value="gemini" ${SET.stt === "gemini" ? "selected" : ""}>Gemini — Türkçe + İngilizce, en doğru</option><option value="google" ${SET.stt === "google" ? "selected" : ""}>Google (cihaz) — en hızlı, internetsiz de çalışır</option></select>
       <div class="lbl">Cevap hızı</div><select data-set="speed"><option value="hizli" ${SET.speed !== "akilli" ? "selected" : ""}>Hızlı — günlük komutlar için (önerilen)</option><option value="akilli" ${SET.speed === "akilli" ? "selected" : ""}>Akıllı — daha derin düşünür, daha yavaş</option></select>
       <label class="toggle"><span>Uyanınca "Efendim?" de<small>Kapalıyken sadece kısa bip sesi: daha hızlı</small></span><input type="checkbox" class="sw" data-set="greetVoice" ${SET.greetVoice ? "checked" : ""}></label>`);
-    const hj = [...document.querySelectorAll("#b-set .card")].find(c => /^HEY JARVIS$/.test(c.querySelector("h3").textContent.trim()));
-    if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Jarvis" ile uyan<small>Tek başına "Jarvis" yetmez; yanlış uyanmayı büyük ölçüde engeller</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
+    const hj = [...document.querySelectorAll("#b-set .card")].find(c => /^HEY Titus$/.test(c.querySelector("h3").textContent.trim()));
+    if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Titus" ile uyan<small>Tek başına "Titus" yetmez; yanlış uyanmayı büyük ölçüde engeller</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
       <div class="lbl">Hassasiyet</div><select data-set="wakeConf"><option value="0.96" ${SET.wakeConf >= 0.95 ? "selected" : ""}>Düşük — çok nadir yanlış uyanır</option><option value="0.92" ${SET.wakeConf >= 0.9 && SET.wakeConf < 0.95 ? "selected" : ""}>Orta (önerilen)</option><option value="0.85" ${SET.wakeConf < 0.9 ? "selected" : ""}>Yüksek — uzaktan da duyar, ara sıra yanılır</option></select>`);
     $("#b-set").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row"><div class="hint" style="margin:0">Bir şey çalışmıyorsa önce sistem testini çalıştır.</div><button class="btn sm" id="diagBtn">🩺 Sistem testi</button></div></div>`);
   };
@@ -2014,7 +2014,7 @@ class LiveSession {
       const d = e.inputBuffer.getChannelData(0); const n = Math.floor(d.length / ratio); const pcm = new Int16Array(n);
       let q = 0; for (let i = 0; i < n; i++) { const v = d[Math.floor(i * ratio)]; q += v * v; pcm[i] = Math.max(-1, Math.min(1, v)) * 0x7fff; }
       const rms = Math.sqrt(q / n);
-      // Hoparlörden çıkan sesi geri duymasın: JARVIS konuşurken sadece yüksek sesle söz kesilebilir
+      // Hoparlörden çıkan sesi geri duymasın: Titus konuşurken sadece yüksek sesle söz kesilebilir
       if (this.isPlaying() && rms < (SET.liveDuplex ? 0.02 : 0.09)) pcm.fill(0); else if (rms > 0.03) this.lastAct = Date.now();
       pend.push(pcm);
       if (pend.length >= 2) { const tot = pend.reduce((s, a) => s + a.length, 0), all = new Int16Array(tot); let o = 0; for (const a of pend) { all.set(a, o); o += a.length; } pend = [];
@@ -2201,7 +2201,7 @@ async function groqTranscribe(b64wav) {
   const fd = new FormData();
   fd.append("file", new Blob([b64ToBytes(b64wav)], { type: "audio/wav" }), "ses.wav");
   fd.append("model", "whisper-large-v3-turbo"); fd.append("language", "tr"); fd.append("temperature", "0"); fd.append("response_format", "json");
-  fd.append("prompt", "Hey Jarvis, alarm kur, hatırlat, Kübra, Recast, KADRO, Netflix, self-tape, seçme, vardiya, Kadıköy.");
+  fd.append("prompt", "Hey Titus, alarm kur, hatırlat, Kübra, Recast, KADRO, Netflix, self-tape, seçme, vardiya, Kadıköy.");
   const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + SET.groqKey }, body: fd });
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error("Groq yanıtı okunamadı"); }
   if (!r.ok) { const e = new Error((j.error && j.error.message) || "Groq hata " + r.status); e.status = r.status; throw e; }
@@ -2256,7 +2256,7 @@ async function summarizeWeek() {
   const last = S.journal.length ? S.journal[S.journal.length - 1].at : 0;
   if (Date.now() - last < 6 * 864e5 || CHAT.length < 10) return;
   try {
-    const txt = await plainGemini("Aşağıdaki sohbetten Burak için 4-6 maddelik kısa bir haftalık özet çıkar: neler planlandı, ne yapıldı, önemli kararlar, tekrar eden ihtiyaçlar. Sadece maddeleri yaz.\n\n" + CHAT.slice(-40).map(m => (m.role === "user" ? "Burak: " : "JARVIS: ") + m.content.slice(0, 300)).join("\n"), [], null, { max: 500 });
+    const txt = await plainGemini("Aşağıdaki sohbetten Burak için 4-6 maddelik kısa bir haftalık özet çıkar: neler planlandı, ne yapıldı, önemli kararlar, tekrar eden ihtiyaçlar. Sadece maddeleri yaz.\n\n" + CHAT.slice(-40).map(m => (m.role === "user" ? "Burak: " : "Titus: ") + m.content.slice(0, 300)).join("\n"), [], null, { max: 500 });
     if (txt) { S.journal.push({ at: Date.now(), week: weekKey(), text: txt }); S.journal = S.journal.slice(-12); save(); }
   } catch {}
 }
@@ -2274,14 +2274,14 @@ async function summarizeWeek() {
     const html = `<div class="card"><h3>CANLI KONUŞMA VE DOĞAL SES</h3>
       ${tg("live", "Canlı konuşma modu", "Gerçek zamanlı sesli sohbet: anında cevap, sözünü kesebilirsin. Kota dolarsa normal moda geçer.")}
       <div class="row"><div><div class="lbl">Canlı ses</div><select data-set="liveVoice">${opt("liveVoice", V)}</select></div><div><div class="lbl">Sessizlikte kapanma (sn)</div><input type="number" data-set="liveIdle" value="${SET.liveIdle}" min="8" max="120"></div></div>
-      ${tg("liveDuplex", "Kulaklık takılıyken kullanıyorum", "Açıkken JARVIS konuşurken hafif sesle de sözünü kesebilirsin (hoparlörde yankı yapabilir)")}
-      ${tg("convo", "Sohbet modu", "Cevaptan sonra tekrar 'Hey Jarvis' demeden konuşmaya devam et")}
+      ${tg("liveDuplex", "Kulaklık takılıyken kullanıyorum", "Açıkken Titus konuşurken hafif sesle de sözünü kesebilirsin (hoparlörde yankı yapabilir)")}
+      ${tg("convo", "Sohbet modu", "Cevaptan sonra tekrar 'Hey Titus' demeden konuşmaya devam et")}
       <div class="lbl">Normal modda ses</div><select data-set="voiceEngine"><option value="gemini" ${SET.voiceEngine === "gemini" ? "selected" : ""}>Gemini doğal ses (önerilen)</option><option value="android" ${SET.voiceEngine !== "gemini" ? "selected" : ""}>Telefonun sesi (internetsiz, robotik)</option></select>
       <div class="lbl">Doğal ses karakteri</div><select data-set="ttsVoice">${opt("ttsVoice", V)}</select>
       <button class="btn ghost sm" id="testNatural" style="margin-top:8px">Doğal sesi dene</button></div>
       <div class="card"><h3>GROQ (ÜCRETSİZ HIZ VE YEDEK)</h3><div class="form">
       <div class="lbl">Groq API anahtarı</div><input data-set="groqKey" type="password" value="${esc(SET.groqKey)}" placeholder="gsk_…">
-      <div class="hint">console.groq.com → API Keys → Create. Kart istemez. Ses tanıma çok hızlanır; Gemini kotası dolarsa JARVIS Groq ile devam eder.</div>
+      <div class="hint">console.groq.com → API Keys → Create. Kart istemez. Ses tanıma çok hızlanır; Gemini kotası dolarsa Titus Groq ile devam eder.</div>
       <button class="btn ghost sm" id="testGroq">Groq'u test et</button></div></div>`;
     const first = document.querySelector("#b-set .card:nth-of-type(2)");
     (first || $("#b-set").firstElementChild).insertAdjacentHTML("afterend", html);
@@ -2295,7 +2295,7 @@ async function summarizeWeek() {
   };
 }
 document.addEventListener("click", async e => {
-  if (e.target.closest("#testNatural")) { try { if (!SET.geminiKey) return toast("Önce Gemini anahtarı"); const b = await geminiTtsBuffer(`Merhaba ${SET.name}, ben JARVIS. Sesim artık böyle.`); await playBuffer(b); } catch (er) { toast("Doğal ses: " + (er.status === 429 ? "günlük ücretsiz ses kotası doldu, telefonun sesi kullanılacak" : er.message), 5000); } }
+  if (e.target.closest("#testNatural")) { try { if (!SET.geminiKey) return toast("Önce Gemini anahtarı"); const b = await geminiTtsBuffer(`Merhaba ${SET.name}, ben Titus. Sesim artık böyle.`); await playBuffer(b); } catch (er) { toast("Doğal ses: " + (er.status === 429 ? "günlük ücretsiz ses kotası doldu, telefonun sesi kullanılacak" : er.message), 5000); } }
   if (e.target.closest("#testGroq")) { try { const r = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel, messages: [{ role: "user", content: "Sadece 'tamam' yaz." }], max_tokens: 5 }, { Authorization: "Bearer " + SET.groqKey }); toast("✓ Groq: " + ((r.choices[0].message.content) || "tamam")); } catch (er) { toast("✗ Groq: " + er.message, 5000); } }
 });
 
@@ -2323,7 +2323,7 @@ async function saveFile(blob, name, collection = "downloads") {
   return { ok: true, yer: r.path, uri: r.uri };
 }
 async function shareSaved(f) { if (Jarvis && f.uri) return Jarvis.share({ uri: f.uri, mime: f.mime }); toast("Paylaşım sadece telefonda"); }
-async function toDrive(blob, name) { const data = await blobToB64(blob); return script("saveFile", { name, mime: blob.type, data, folder: "JARVIS" }); }
+async function toDrive(blob, name) { const data = await blobToB64(blob); return script("saveFile", { name, mime: blob.type, data, folder: "Titus" }); }
 
 /* ---------- JSON üretimi ---------- */
 async function geminiJSON(prompt, parts = []) {
@@ -2647,7 +2647,7 @@ document.addEventListener("click", async e => {
   else if (t.id === "pfGo") { const r = await busyRun("Portfolyo hazırlanıyor", () => portfolioSite()); if (r) toast("✓ portfolyo kaydedildi → " + r.yer, 5000); }
   else if (t.id === "edPick") { const [f] = await pickFiles("image/*"); if (!f) return; ED.img = await fileImg(f); ED.mask = null; renderSec("studio"); previewPhoto(); }
   else if (t.id === "edSave") { const r = await busyRun("Kaydediliyor", () => savePhoto()); if (r) toast("✓ Kaydedildi → " + r.yer); }
-  else if (t.id === "edBatch") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const n = await busyRun(`${fs.length} fotoğraf işleniyor`, () => batchEdit(fs, "foto")); if (n) toast(`✓ ${n} fotoğraf kaydedildi (Pictures/JARVIS)`, 4000); }
+  else if (t.id === "edBatch") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const n = await busyRun(`${fs.length} fotoğraf işleniyor`, () => batchEdit(fs, "foto")); if (n) toast(`✓ ${n} fotoğraf kaydedildi (Pictures/TITUS)`, 4000); }
   else if (t.id === "edSmart") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const r = await busyRun(`${fs.length} fotoğraf değerlendiriliyor`, () => smartPick(fs)); if (r) { ED._smart = r; $("#smartRes").innerHTML = `<div class="card"><h3>EN İYİLER</h3>${r.map((x, i) => `<div class="item"><img src="${x.url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="t"><div class="h">${x.score}/100</div><div class="meta">${esc(x.reason)}</div></div>${i < 10 ? `<button class="btn ghost sm" data-smsave="${i}">Kaydet</button>` : ""}</div>`).join("")}</div>`; } }
   else if (t.dataset.smsave) { const x = ED._smart[+t.dataset.smsave]; await saveFile(x.f, x.f.name, "pictures"); toast("✓ Kaydedildi"); }
   else if (t.id === "giGo") { const txt = $("#giTxt").value.trim(); if (!txt) return toast("Tarif yaz"); const r = await busyRun("Görsel üretiliyor", () => runTool("gorsel_uret", { aciklama: txt, oran: $("#giRatio").value })); if (r && r.ok) { toast("✓ Galeriye kaydedildi"); renderSec("studio"); } else if (r) toast("✗ " + r.hata, 5000); }
@@ -2763,7 +2763,7 @@ function modeFor(prompt) { const t = trLower(prompt); for (const [k, m] of Objec
   };
 }
 
-/* ---------- 3) HATA GÜNLÜĞÜ (kendini düzelten JARVIS) ---------- */
+/* ---------- 3) HATA GÜNLÜĞÜ (kendini düzelten Titus) ---------- */
 function logIssue(type, detail) { S.issues = [...(S.issues || []), { at: localISO(new Date()), type, detail: String(detail).slice(0, 160) }].slice(-100); save(); }
 {
   const baseRun = runTool;
@@ -2816,10 +2816,10 @@ async function askLocal(history, onAct) {
 async function deriveKey(pass, salt) { const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]); return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" }, k, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]); }
 async function encryptState(pass) { const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)); const key = await deriveKey(pass, salt); const data = new TextEncoder().encode(JSON.stringify({ S, SET: { ...SET, geminiKey: "", claudeKey: "", groqKey: "", cfToken: "", scriptToken: "" }, CHAT })); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data)); const out = new Uint8Array(28 + ct.length); out.set(salt); out.set(iv, 16); out.set(ct, 28); return bytesToB64(out); }
 async function decryptState(b64, pass) { const u = b64ToBytes(b64); const key = await deriveKey(pass, u.slice(0, 16)); const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u.slice(16, 28) }, key, u.slice(28)); return JSON.parse(new TextDecoder().decode(pt)); }
-async function backupNow() { if (!SET.backupPass) throw new Error("Önce yedek şifresi belirle (Ayarlar → Yedek)."); const b = await encryptState(SET.backupPass); await script("saveFile", { name: `jarvis-yedek-${ymd(new Date())}.enc`, mime: "application/octet-stream", data: b, folder: "JARVIS Yedek", keep: 14 }); META.lastBackup = Date.now(); saveMeta(); return { ok: true }; }
+async function backupNow() { if (!SET.backupPass) throw new Error("Önce yedek şifresi belirle (Ayarlar → Yedek)."); const b = await encryptState(SET.backupPass); await script("saveFile", { name: `jarvis-yedek-${ymd(new Date())}.enc`, mime: "application/octet-stream", data: b, folder: "Titus Yedek", keep: 14 }); META.lastBackup = Date.now(); saveMeta(); return { ok: true }; }
 setTimeout(() => autoBackup(), 20000);
 async function autoBackup() { if (SET.scriptUrl && SET.backupPass && Date.now() - (META.lastBackup || 0) > 864e5) { try { await backupNow(); } catch (e) { console.warn("yedek", e); } } }
-async function restoreLatest(pass) { const r = await script("getBackup", { folder: "JARVIS Yedek" }); if (!r.data) throw new Error("Yedek bulunamadı"); const obj = await decryptState(r.data, pass); S = Object.assign(EMPTY(), obj.S); CHAT = obj.CHAT || CHAT; const keep = { geminiKey: SET.geminiKey, groqKey: SET.groqKey, claudeKey: SET.claudeKey, cfToken: SET.cfToken, scriptToken: SET.scriptToken, scriptUrl: SET.scriptUrl }; SET = Object.assign({ ...DEF_SET }, obj.SET, keep); await saveSet(); saveChat(); save(); return { ok: true, tarih: r.name }; }
+async function restoreLatest(pass) { const r = await script("getBackup", { folder: "Titus Yedek" }); if (!r.data) throw new Error("Yedek bulunamadı"); const obj = await decryptState(r.data, pass); S = Object.assign(EMPTY(), obj.S); CHAT = obj.CHAT || CHAT; const keep = { geminiKey: SET.geminiKey, groqKey: SET.groqKey, claudeKey: SET.claudeKey, cfToken: SET.cfToken, scriptToken: SET.scriptToken, scriptUrl: SET.scriptUrl }; SET = Object.assign({ ...DEF_SET }, obj.SET, keep); await saveSet(); saveChat(); save(); return { ok: true, tarih: r.name }; }
 
 /* ---------- 6) ÖNEMLİ KİŞİLER ---------- */
 A.addPerson = ({ name, every = 7 }) => { const p = { id: uid(), name, every: Number(every) || 7, last: "" }; S.people = [...(S.people || []), p]; save(); return p; };
@@ -2927,7 +2927,7 @@ TOOLS.push(
   T("isinma", "Sesli ısınma rutini başlatır.", { tur: str("Tür", ["ses", "beden"]) }, [], a => { warmup(a.tur || "ses"); return { ok: true }; }),
   T("karakter_analizi", "Replik bölümündeki sahne için karakter analizi yapar ve not olarak kaydeder.", {}, [], async () => ({ analiz: await characterAnalysis() })),
   T("hedef_plani", "Büyük bir hedefi (ör. 'bu ay 10 castinge başvur') günlere yayılmış görev ve hatırlatıcılara böler.", { hedef: str("Hedef"), gun: num("Kaç gün") }, ["hedef"], a => missionPlan(a)),
-  T("yedekle", "Tüm JARVIS verilerini şifreli olarak Google Drive'a yedekler.", {}, [], () => backupNow())
+  T("yedekle", "Tüm Titus verilerini şifreli olarak Google Drive'a yedekler.", {}, [], () => backupNow())
 );
 Object.assign(ACT_TR, { bilgi_ara: "📚 bilgi", bilgiye_ekle: "📚 kaydet", kisi_ekle: "👥 kişi", kisi_gorustum: "👥 görüşme", koc_baslat: "🎓 koç", isinma: "🔥 ısınma", karakter_analizi: "🎭 analiz", hedef_plani: "🎯 plan", yedekle: "🔐 yedek" });
 
@@ -2935,7 +2935,7 @@ Object.assign(ACT_TR, { bilgi_ara: "📚 bilgi", bilgiye_ekle: "📚 kaydet", ki
 {
   const baseList3 = listHTML;
   listHTML = function (sec) {
-    if (sec === "kb") return `<div class="card"><h3>BİLGİ BANKASI</h3><div class="row"><button class="btn" id="kbFile">📄 Belge ekle (PDF, metin, fotoğraf)</button><button class="btn ghost" id="kbNotes">Notları ekle</button></div><div class="hint">Senaryolar, CV, Recast belgeleri… JARVIS sorularında bunlardan cevap verir. Örnek: "Lefter'deki rolümün adı neydi?"</div><div class="hint" id="kbBusy"></div></div>` +
+    if (sec === "kb") return `<div class="card"><h3>BİLGİ BANKASI</h3><div class="row"><button class="btn" id="kbFile">📄 Belge ekle (PDF, metin, fotoğraf)</button><button class="btn ghost" id="kbNotes">Notları ekle</button></div><div class="hint">Senaryolar, CV, Recast belgeleri… Titus sorularında bunlardan cevap verir. Örnek: "Lefter'deki rolümün adı neydi?"</div><div class="hint" id="kbBusy"></div></div>` +
       ((S.kbDocs || []).map(d => `<div class="item"><div class="ic">📚</div><div class="t"><div class="h">${esc(d.title)}</div><div class="meta">${d.chunks} parça · ${fmtWhen(d.at)}</div></div><button class="x" data-kbdel="${d.id}">✕</button></div>`).join("") || `<div class="empty">Belge yok.</div>`);
     if (sec === "people") { const od = new Set(overduePeople().map(p => p.id)); return `<div class="card"><form class="form" data-add="people"><div class="row"><input name="name" placeholder="Kişi (ör. Annem)" required><input name="every" type="number" value="7" style="max-width:80px"><button class="btn">+</button></div><div class="hint">Kaç günde bir aramak/görüşmek istiyorsun? Zamanı gelince hatırlatırım.</div></form></div>` +
       ((S.people || []).map(p => `<div class="item ${od.has(p.id) ? "late" : ""}"><div class="ic">👥</div><div class="t"><div class="h">${esc(p.name)}</div><div class="meta">her ${p.every} gün · son: ${p.last ? fmtWhen(p.last, false) : "—"}</div></div><button class="btn ghost sm" data-ptouch="${p.id}">Görüştüm</button><button class="x" data-del="people:${p.id}">✕</button></div>`).join("") || `<div class="empty">Kişi yok.</div>`); }
@@ -2993,8 +2993,8 @@ function prompt2(label) { return new Promise(res => { $("#modalBox").innerHTML =
     <div class="card"><h3>OYUNCU PROFİLİ (RADAR PUANLAMA)</h3><textarea data-set="actorProfile" placeholder="ör. 28 yaş, erkek, 1.80, İstanbul, dram ve dönem dizisi deneyimi, İngilizce orta" style="min-height:60px">${esc(SET.actorProfile || "")}</textarea></div>
     <div class="card"><h3>GİZLİLİK VE YEREL BEYİN</h3>${tg("privacy", "Gizlilik modu", "Şifre, banka, sağlık, maaş gibi konular buluta gönderilmez")}
       <div class="form"><div class="lbl">Yerel beyin adresi (bilgisayarında Ollama)</div><input data-set="localUrl" value="${esc(SET.localUrl || "")}" placeholder="http://192.168.1.20:11434"><div class="lbl">Yerel model</div><input data-set="localModel" value="${esc(SET.localModel || "qwen2.5:3b")}"><div class="hint">Bilgisayarda ollama.com'dan Ollama'yı kur, "ollama pull qwen2.5:3b" yaz, OLLAMA_HOST=0.0.0.0 ile çalıştır. Aynı Wi-Fi'de telefon bu beyni kullanır.</div></div></div>
-    <div class="card"><h3>GECE MESAİSİ</h3><div class="hint" style="margin-top:0">Sen uyurken (05:00) Google tarafında JARVIS mailleri, takvimi ve casting radarını tarar, sabah brifingine "gece raporu" ekler. Bunun için Gemini anahtarın kendi Google Apps Script'ine (sadece senin hesabında) kaydedilir.</div><div class="row"><button class="btn ghost sm" id="nightOn">Gece mesaisini aç</button><button class="btn ghost sm" id="nightOff">Kapat</button></div></div>
-    <div class="card"><h3>ŞİFRELİ YEDEK</h3><div class="form"><div class="lbl">Yedek şifresi (unutma; kurtarılamaz)</div><input data-set="backupPass" type="password" value="${esc(SET.backupPass || "")}"><div class="row"><button class="btn ghost sm" id="bkNow">Şimdi yedekle</button><button class="btn ghost sm" id="bkRestore">Son yedeği geri yükle</button></div><div class="hint">Google bağlıysa her gün otomatik, şifreli olarak Drive'daki "JARVIS Yedek" klasörüne yedeklenir (son 14 gün).</div></div></div>
+    <div class="card"><h3>GECE MESAİSİ</h3><div class="hint" style="margin-top:0">Sen uyurken (05:00) Google tarafında Titus mailleri, takvimi ve casting radarını tarar, sabah brifingine "gece raporu" ekler. Bunun için Gemini anahtarın kendi Google Apps Script'ine (sadece senin hesabında) kaydedilir.</div><div class="row"><button class="btn ghost sm" id="nightOn">Gece mesaisini aç</button><button class="btn ghost sm" id="nightOff">Kapat</button></div></div>
+    <div class="card"><h3>ŞİFRELİ YEDEK</h3><div class="form"><div class="lbl">Yedek şifresi (unutma; kurtarılamaz)</div><input data-set="backupPass" type="password" value="${esc(SET.backupPass || "")}"><div class="row"><button class="btn ghost sm" id="bkNow">Şimdi yedekle</button><button class="btn ghost sm" id="bkRestore">Son yedeği geri yükle</button></div><div class="hint">Google bağlıysa her gün otomatik, şifreli olarak Drive'daki "Titus Yedek" klasörüne yedeklenir (son 14 gün).</div></div></div>
     <div class="card"><h3>KULLANIM (BUGÜN)</h3><div class="hint" style="margin-top:0">${Object.entries(QUOTA.n).map(([k, v]) => `${k}: ${v}`).join(" · ") || "henüz yok"}${Date.now() < GEMINI_OFF_UNTIL ? " · Gemini kotası dolu → Groq kullanılıyor" : ""}</div>
       <div class="hint">Son hatalar: ${(S.issues || []).slice(-3).map(i => esc(i.detail)).join(" · ") || "yok"}</div></div>`);
   };
@@ -3006,6 +3006,160 @@ function prompt2(label) { return new Promise(res => { $("#modalBox").innerHTML =
   pushSync = async function () { S.chat = CHAT.slice(-30); return basePush(); };
   const basePull = pullSync;
   pullSync = async function () { const before = S.updatedAt; await basePull(); if (S.updatedAt !== before && Array.isArray(S.chat) && S.chat.length) { CHAT = S.chat.slice(); saveChat(); drawChat(); } };
+}
+
+TOOL_GROUPS.push(
+  [/sunum|slayt|powerpoint|pptx/, ["sunum_hazirla"]],
+  [/belge|word|docx|dilekçe|rapor|cv|özgeçmiş|mektup|sözleşme/, ["belge_hazirla"]],
+  [/görsel|resim çiz|çiz|afiş|poster|kapak|logo|illüstrasyon/, ["gorsel_uret"]],
+  [/fotoğraf|foto|siyah beyaz|filtre|kırp|arka plan|bulanık/, ["fotograf_duzenle"]],
+  [/portfolyo|site|web sayfa/, ["portfolyo_sitesi"]],
+  [/stüdyo|video|reels|showreel|altyazı|kompozit|zed kart|self-?tape/, ["studyo_ac"]],
+  [/neydi|ne zaman|hangi|belge|senaryo|cv|özgeçmiş|bilgi bankası|dosyamda|metinde|yazıyor/, ["bilgi_ara"]],
+  [/bilgi bankasına|kaydet bunu|bunu sakla/, ["bilgiye_ekle"]],
+  [/aramadım|görüşmedim|görüştüm|aradım|her .* günde|ilgilen|kişi ekle|annemi|babamı/, ["kisi_ekle", "kisi_gorustum"]],
+  [/koç|pratik|ingilizce konuş|diksiyon|sınav|partner|sahne çalış|prova/, ["koc_baslat"]],
+  [/ısın|egzersiz|nefes/, ["isinma"]],
+  [/karakter|analiz/, ["karakter_analizi"]],
+  [/hedef|bu ay|planla|adım adım/, ["hedef_plani"]],
+  [/yedek/, ["yedekle"]]
+);
+/* =====================================================================
+   v2.1 — RECAST BRIEF AKIŞI (yarı otomatik: Titus hazırlar, Burak onaylar)
+   Brief → roller → KADRO'dan uygun oyuncular → müşteriye mail taslağı (+ oyunculara duyuru)
+   ===================================================================== */
+let RB = { mails: [], brief: null, plan: null, busy: "", mailId: "", from: "" };
+const RB_KEY = "rb_seen";
+
+async function rbParse(text) {
+  return geminiJSON(`Sen Recast Talent House'un (casting ajansı) asistanısın. Aşağıdaki casting brief'ini çözümle. Türkçe JSON:
+{"proje":"","tur":"dizi/film/reklam/tiyatro/klip/diğer","musteri":"","musteri_mail":"","cekim_tarihi":"","son_tarih":"","ucret":"","yer":"","roller":[{"ad":"","cinsiyet":"kadın/erkek/farketmez","yas":"ör. 25-35","tip":"fiziksel özellikler","ozellik":"yetenek/dil/deneyim","adet":1,"not":""}],"istenenler":"(self-tape, fotoğraf, CV vb.)","eksik_bilgiler":["brief'te eksik olan önemli bilgi"]}
+BRIEF:
+${String(text).slice(0, 9000)}`);
+}
+
+async function rbMatch(brief) {
+  if (!SET.kadroSheetId) throw new Error("KADRO tablosu bağlı değil (Ayarlar → İş bağlantıları).");
+  const r = await script("roster", { sheetId: SET.kadroSheetId });
+  if (!r.satirlar || !r.satirlar.length) throw new Error("KADRO tablosu boş görünüyor");
+  const list = r.satirlar.map(x => `#${x.n} ${x.t}`).join("\n");
+  const plan = await geminiJSON(`Casting ajansı Recast için oyuncu öner. Her rol için KADRO'dan en uygun oyuncuları seç (rol başına en fazla ${SET.rbPerRole || 6}). Sadece listedeki kişileri seç, uydurma. Yaş, cinsiyet, tip, yetenek, şehir ve deneyime bak; tam uymayanları alma.
+JSON: {"roller":[{"rol":"","oyuncular":[{"satir":0,"ad":"","puan":0-100,"neden":"kısa","link":"varsa profil/fotoğraf/showreel linki","mail":"varsa","telefon":"varsa"}]}],"uyari":"kadroda bu rol için uygun kimse yoksa belirt"}
+ROLLER: ${JSON.stringify(brief.roller)}
+PROJE: ${brief.proje} (${brief.tur})
+KADRO (${r.toplam} kişi):
+${list.slice(0, 120000)}`);
+  (plan.roller || []).forEach(ro => (ro.oyuncular || []).forEach(o => { o.on = (o.puan ?? 70) >= 60; }));
+  return plan;
+}
+
+function rbSelected() { return (RB.plan?.roller || []).map(r => ({ rol: r.rol, oyuncular: (r.oyuncular || []).filter(o => o.on) })).filter(r => r.oyuncular.length); }
+
+async function rbClientMail() {
+  const sel = rbSelected(); if (!sel.length) throw new Error("Hiç oyuncu seçili değil");
+  const b = RB.brief;
+  const body = await plainGemini(`Recast Talent House adına, müşteriye gönderilecek kurumsal ve sıcak bir Türkçe e-posta yaz. İmza: ${SET.name} — Recast Talent House. Proje: ${b.proje}. Müşteri: ${b.musteri || "-"}.
+Her rol için başlık aç, altında önerilen oyuncuları madde madde yaz: ad soyad — tek cümlelik neden uygun — varsa link. Sonunda self-tape/seçme için uygun oldukları ve dönüş beklediğini belirt. Uydurma bilgi ekleme. Sadece e-posta gövdesini yaz.
+SEÇİLENLER: ${JSON.stringify(sel)}`, [], null, { max: 1800 });
+  const to = RB.from || b.musteri_mail || "";
+  const subject = `${b.proje || "Casting"} — Recast oyuncu önerileri`;
+  return script("gmailDraft", { to: (to.match(/[\w.+-]+@[\w-]+\.[\w.]+/) || [""])[0], subject, body });
+}
+
+async function rbActorMail() {
+  const sel = rbSelected(); const b = RB.brief;
+  const mails = [...new Set(sel.flatMap(r => r.oyuncular.map(o => o.mail).filter(m => m && /@/.test(m))))];
+  const body = await plainGemini(`Recast Talent House'tan oyunculara gidecek kısa bir Türkçe duyuru e-postası yaz: yeni proje, rol bilgileri, tarih/ücret (varsa), istenenler ve son tarih. Uygunluk durumlarını bu maile cevap vererek bildirmelerini iste. İmza: ${SET.name} — Recast Talent House. Uydurma bilgi ekleme.
+BRIEF: ${JSON.stringify({ proje: b.proje, tur: b.tur, cekim: b.cekim_tarihi, son: b.son_tarih, ucret: b.ucret, yer: b.yer, roller: b.roller, istenenler: b.istenenler })}`, [], null, { max: 900 });
+  const r = await script("gmailDraft", { to: "recasttalent@gmail.com", subject: `Yeni proje: ${b.proje || "casting"} — uygunluk`, body: body + (mails.length ? "" : "\n\n(Oyuncuların mail adresi KADRO'da yok; WhatsApp'tan iletebilirsin.)"), bcc: mails.join(",") });
+  return { ...r, alici: mails.length };
+}
+
+async function rbRun({ metin, mailId } = {}) {
+  RB.busy = "Brief okunuyor…"; renderRB();
+  try {
+    let text = metin;
+    if (mailId) { const m = RB.mails.find(x => x.id === mailId); if (m) { text = `Konu: ${m.konu}\nKimden: ${m.kimden}\n\n${m.metin}`; RB.from = m.yanitla || m.kimden; RB.mailId = m.id; } }
+    if (!text) throw new Error("Brief metni yok");
+    RB.brief = await rbParse(text);
+    RB.busy = "KADRO taranıyor, oyuncular seçiliyor…"; renderRB();
+    RB.plan = await rbMatch(RB.brief);
+    S.rbHistory = [{ at: localISO(new Date()), proje: RB.brief.proje, roller: (RB.plan.roller || []).length }, ...(S.rbHistory || [])].slice(0, 30); save();
+    if (RB.mailId) { META[RB_KEY] = [...new Set([...(META[RB_KEY] || []), RB.mailId])].slice(-80); saveMeta(); }
+    return { proje: RB.brief.proje, roller: (RB.plan.roller || []).map(r => `${r.rol}: ${(r.oyuncular || []).filter(o => o.on).map(o => o.ad).join(", ") || "uygun yok"}`), eksik: RB.brief.eksik_bilgiler, not: "Kariyer → Recast'te onayla; müşteri mail taslağını tek dokunuşla oluşturabilirsin." };
+  } finally { RB.busy = ""; renderRB(); }
+}
+
+function renderRB() { if (CUR.work === "recast" && $("#b-work")) renderSec("work"); }
+
+function rbHTML() {
+  const b = RB.brief, p = RB.plan;
+  let h = `<div class="card"><h3>RECAST — BRIEF'TEN TEKLİFE</h3><div class="hint" style="margin-top:0">Brief'i yapıştır ya da Gmail'den seç. Titus rolleri çıkarır, KADRO'dan oyuncuları seçer, müşteri mailini taslak olarak hazırlar. Sen onaylamadan hiçbir şey gönderilmez.</div>
+    <textarea id="rbText" placeholder="Casting brief'ini buraya yapıştır…" style="min-height:90px"></textarea>
+    <div class="row" style="margin-top:6px"><button class="btn" id="rbGo">⚡ Hazırla</button><button class="btn ghost" id="rbMails">✉️ Gmail'den getir</button></div>
+    ${RB.busy ? `<div class="hint">⏳ ${esc(RB.busy)}</div>` : ""}</div>`;
+  if (RB.mails.length) h += `<div class="card"><h3>SON BRIEF MAİLLERİ</h3>${RB.mails.map(m => `<div class="item"><div class="ic">${m.okunmadi ? "🆕" : "✉️"}</div><div class="t"><div class="h">${esc(m.konu || "(konu yok)")}</div><div class="meta">${esc(m.kimden.replace(/<.*>/, ""))} · ${fmtWhen(m.tarih)}${(META[RB_KEY] || []).includes(m.id) ? " · ✓ hazırlandı" : ""}</div></div><button class="btn sm" data-rbmail="${m.id}">Hazırla</button></div>`).join("")}</div>`;
+  if (b) h += `<div class="card"><h3>${esc(b.proje || "Proje")}</h3><div class="hint" style="margin-top:0">${[b.tur, b.musteri, b.cekim_tarihi && "Çekim: " + b.cekim_tarihi, b.son_tarih && "Son: " + b.son_tarih, b.ucret && "Ücret: " + b.ucret, b.yer].filter(Boolean).map(esc).join(" · ")}</div>
+    ${(b.eksik_bilgiler || []).length ? `<div class="hint">⚠️ Eksik: ${b.eksik_bilgiler.map(esc).join(", ")}</div>` : ""}</div>`;
+  if (p) {
+    h += (p.roller || []).map((r, ri) => `<div class="card"><h3>${esc(r.rol)}</h3>${(r.oyuncular || []).map((o, oi) => `<label class="toggle"><span>${esc(o.ad)} <b style="color:var(--cyan)">${o.puan ?? ""}</b><small>${esc(o.neden || "")}${o.link ? " · " + esc(o.link.slice(0, 40)) : ""}</small></span><input type="checkbox" class="sw" data-rbpick="${ri}:${oi}" ${o.on ? "checked" : ""}></label>`).join("") || `<div class="empty">Kadroda uygun oyuncu bulunamadı.</div>`}</div>`).join("");
+    if (p.uyari) h += `<div class="hint">ℹ️ ${esc(p.uyari)}</div>`;
+    h += `<div class="card"><div class="form"><button class="btn" id="rbClient">📨 Müşteri mail taslağını oluştur</button><button class="btn ghost" id="rbActors">📣 Seçilen oyunculara duyuru taslağı (BCC)</button><div class="hint">Taslaklar Gmail'de hazırlanır; kontrol edip sen gönderirsin.</div></div></div>`;
+  }
+  return h;
+}
+
+{
+  const base = listHTML;
+  listHTML = function (sec) { return sec === "recast" ? rbHTML() : base(sec); };
+}
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#rbGo,#rbMails,[data-rbmail],#rbClient,#rbActors"); if (!t) return;
+  try {
+    if (t.id === "rbGo") { const v = $("#rbText").value.trim(); if (!v) return toast("Brief'i yapıştır"); await rbRun({ metin: v }); }
+    else if (t.id === "rbMails") { RB.busy = "Gmail taranıyor…"; renderRB(); try { RB.mails = await script("briefMails", { days: 7, max: 10 }).then(r => r.mailler || []); } finally { RB.busy = ""; renderRB(); } if (!RB.mails.length) toast("Son 7 günde brief gibi görünen mail yok"); }
+    else if (t.dataset.rbmail) await rbRun({ mailId: t.dataset.rbmail });
+    else if (t.id === "rbClient") { toast("Mail yazılıyor…"); const r = await rbClientMail(); toast("✓ Müşteri mail taslağı Gmail'de hazır", 4500); }
+    else if (t.id === "rbActors") { toast("Duyuru yazılıyor…"); const r = await rbActorMail(); toast(`✓ Duyuru taslağı hazır (${r.alici} oyuncu BCC)`, 4500); }
+  } catch (er) { RB.busy = ""; renderRB(); toast("✗ " + (er.message === "NOKEY" ? "Gemini anahtarı yok" : er.message), 5000); }
+});
+document.addEventListener("change", e => {
+  const t = e.target.closest("[data-rbpick]"); if (!t) return;
+  const [ri, oi] = t.dataset.rbpick.split(":").map(Number); const o = RB.plan?.roller?.[ri]?.oyuncular?.[oi]; if (o) o.on = t.checked;
+});
+
+TOOLS.push(
+  T("recast_brief", "Recast için casting brief'ini hazırlar: rolleri çıkarır, KADRO'dan uygun oyuncuları seçer. 'Yeni brief'i hazırla', 'son casting mailini hazırla' gibi isteklerde kullan. Metin verilmezse Gmail'deki en son brief mailini kullanır.", { metin: str("Brief metni (yoksa boş)") }, [],
+    async a => { if (!a.metin) { RB.mails = (await script("briefMails", { days: 7, max: 6 })).mailler || []; const m = RB.mails.find(x => !(META[RB_KEY] || []).includes(x.id)) || RB.mails[0]; if (!m) return { hata: "Son 7 günde brief maili bulunamadı" }; const r = await rbRun({ mailId: m.id }); return r; } return rbRun({ metin: a.metin }); }),
+  T("recast_teklif_maili", "Seçilen oyuncularla müşteriye gidecek mail taslağını Gmail'de oluşturur (göndermez). recast_brief'ten sonra Burak onaylayınca kullan.", {}, [], async () => { await rbClientMail(); return { ok: true, not: "Gmail taslağı hazır" }; }),
+  T("recast_duyuru", "Seçilen oyunculara proje duyurusu taslağı (BCC) oluşturur.", {}, [], () => rbActorMail())
+);
+Object.assign(ACT_TR, { recast_brief: "🎬 brief", recast_teklif_maili: "📨 teklif", recast_duyuru: "📣 duyuru" });
+TOOL_GROUPS.push([/brief|recast|teklif|oyuncu öner|casting mail|müşteri/, ["recast_brief", "recast_teklif_maili", "recast_duyuru"]]);
+
+/* yeni brief maili gelince proaktif haber ver */
+{
+  const baseP = proactive;
+  proactive = async function (force) {
+    await baseP(force);
+    if (!SET.scriptUrl || !SET.kadroSheetId || !SET.rbWatch) return;
+    if (!force && Date.now() - (META.rbCheck || 0) < 2 * 36e5) return;
+    META.rbCheck = Date.now(); saveMeta();
+    try {
+      const ms = (await script("briefMails", { days: 2, max: 5, unread: true })).mailler || [];
+      const fresh = ms.filter(m => !(META.rbNotified || []).includes(m.id) && !(META[RB_KEY] || []).includes(m.id));
+      if (fresh.length) { META.rbNotified = [...(META.rbNotified || []), ...fresh.map(m => m.id)].slice(-80); saveMeta(); RB.mails = ms; bubble("assistant", `💼 Yeni casting brief'i geldi: "${fresh[0].konu}". "Brief'i hazırla" dersen KADRO'dan oyuncuları seçip müşteri mailini taslak yaparım.`); }
+    } catch {}
+  };
+}
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    $("#b-set").insertAdjacentHTML("beforeend", `<div class="card"><h3>RECAST BRIEF</h3><label class="toggle"><span>Yeni brief maillerini haber ver<small>2 saatte bir Gmail'e bakar; KADRO bağlı olmalı</small></span><input type="checkbox" class="sw" data-set="rbWatch" ${SET.rbWatch ? "checked" : ""}></label>
+      <div class="form"><div class="lbl">Rol başına en fazla öneri</div><input data-set="rbPerRole" type="number" value="${SET.rbPerRole || 6}"></div></div>`);
+  };
 }
 
 /* ================= açılış ================= */
