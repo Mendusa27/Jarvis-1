@@ -15,3 +15,29 @@ Ekran ajanı (gör, dokun, yaz, gezin) · çok adımlı görevler · internetsiz
 3. **Senin yerine konuşan JARVIS:** Bilinmeyen aramaları karşılama ve özetleme, canlı çeviri, toplantı asistanı
 4. **Merkez:** Apex Trader durum raporu (sadece okuma), oyun/uygulama projelerinin derleme durumu, sesle yeni beceri ekleme
 5. **Ürün:** Recast ekip sürümü, "Oyuncu JARVIS'i" (abonelik), iPhone + Play Store yayını, uçtan uca şifreli bulut yedek
+
+---
+
+# MEDYA VE BİLGİSAYAR YOL HARİTASI (9 Kasım 2026)
+
+## ⏳ Medya Faz 1
+- **Sunum ve belge:** Sesle sunum hazırlama → PowerPoint (.pptx) + PDF, hazır temalar; CV, teklif, oyuncu dosyası (Word/PDF)
+- **Fotoğraf:** Telefonda düzenleme (kırpma, ışık, filtre, yazı, arka plan bulanıklaştırma/kaldırma, headshot boyutları), sesle komut
+- **Görsel üretme:** Cloudflare Workers AI (Flux, günlük ücretsiz kota)
+- **Video:** Reels/showreel yapıcı (kesme, birleştirme, başlık, müzik, 9:16), otomatik Türkçe altyazı (Groq Whisper), self-tape düzenleme (kırpma + slate), fotoğraftan video + doğal ses anlatım
+
+## ⏳ Medya Faz 2
+- **Oyuncu/ajans:** Kompozit kart (zed card) PDF, KADRO'dan toplu üretim; akıllı fotoğraf seçimi (göz kapalı/bulanık eleme); toplu düzenleme (kırp, adlandır, filigran, klasörle); doğal rötuş
+- **Video zekâsı:** Self-tape performans analizi (Gemini video), akıllı showreel (sahne bulma, ritme göre kurgu), ses temizleme, İngilizce altyazı, teleprompter kayıt
+- **İçerik:** Marka kiti (Recast, Açık Stüdyo, Raw Frame), sunum provası koçu, Instagram içerik takvimi, Drive'a otomatik kayıt
+- **Ağır işler bilgisayarda:** Uzun video işleme bilgisayar ajanına (ffmpeg)
+
+## ⏳ Faz 3 — Dijital ikiz + bilgisayarda JARVIS
+Donanım: GTX 1650 (4 GB). Ağır modeller (video üretimi, model eğitimi) ücretsiz bulut GPU'larında (Kaggle/Colab); bilgisayarda hafif işler.
+- **Bilgisayarda tam JARVIS:** Windows'a kurulan masaüstü uygulaması. "Hey Jarvis" ile uyanma, sadece konuşarak bilgisayarı kontrol: uygulama/pencere yönetimi, dosya işlemleri, klavye/fare otomasyonu, ekranı görüp anlama, tarayıcıda işlem yapma. Telefonla aynı hafıza ve görevler.
+- **Güçlü bilgisayar ajanları:** Telefondan bilgisayara iş devretme, uzun işler (render, toplu düzenleme) arka planda; bitince bildirim.
+- **Fotoğraf:** Kendi yüz modelin (Flux LoRA, Kaggle/Colab'da eğitim) ile rol denemesi görselleri; Gemini tarifli akıllı galeri araması
+- **Video:** Açık kaynak video modelleri (Kaggle GPU), oyunlar için otomatik fragman (ffmpeg), deneysel İngilizce dudak senkronlu self-tape
+- **Ses/müzik:** Kendi sesinle seslendirme (sadece kendi sesin), telifsiz müzik üretimi (açık modeller, bulut GPU)
+- **Sunum:** Canlı sunum asistanı (Live API), otomatik portfolyo sitesi (GitHub Pages)
+- **Ürün:** Çok ajanlı içerik üretimi, Recast/atölyelere medya paketi
