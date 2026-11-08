@@ -23,7 +23,9 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - uses: android-actions/setup-android@v3
+      # GitHub'ın Ubuntu sunucusunda Android SDK hazır kurulu (ANDROID_HOME)
+      - name: Android SDK lisansları
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Bağımlılıklar
         run: npm ci
