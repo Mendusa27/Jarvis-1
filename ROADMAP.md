@@ -41,3 +41,11 @@ Donanım: GTX 1650 (4 GB). Ağır modeller (video üretimi, model eğitimi) ücr
 - **Ses/müzik:** Kendi sesinle seslendirme (sadece kendi sesin), telifsiz müzik üretimi (açık modeller, bulut GPU)
 - **Sunum:** Canlı sunum asistanı (Live API), otomatik portfolyo sitesi (GitHub Pages)
 - **Ürün:** Çok ajanlı içerik üretimi, Recast/atölyelere medya paketi
+
+## ⏳ Faz 4 — Her alanda JARVIS
+1. **Beyin:** Kişisel bilgi bankası (senaryolar, CV, belgeler, notlar, mailler üzerinde anlamsal arama), kendini düzelten JARVIS (hata kayıtları + haftalık rapor), uzman modlar (oyunculuk koçu, yazılım danışmanı, ajans yöneticisi, planlayıcı)
+2. **Etkileşim:** Sürüş modu (Bluetooth ile), görüntülü JARVIS (Live API kamera), cihazlar arası konuşma devamı
+3. **Yazılım geliştirme:** Sesle kod (plan → kod → GitHub → derleme → test linki), oyunlardan hata raporları, tüm projeler için proje panosu
+4. **Kariyer:** Casting radarı 2.0 (uygunluk puanı + başvuru maili + self-tape planı), drama eğitmenliği asistanı, Recast ajans otomasyonu (taslak + onay)
+5. **Günlük hayat:** Akıllı gün planı (vardiya/seçme/ulaşım çakışmaları), ev arama asistanı (gece ulaşım puanı), kişisel finans koçu
+6. **Güvenlik ve altyapı:** Şifreli günlük Drive yedeği, gizlilik modu (hassas konular cihazda), ücretsiz kota yöneticisi
