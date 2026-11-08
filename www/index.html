@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#03070d">
+<title>JARVIS</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">J.A.R.V.I.S.<small id="subtitle">KİŞİSEL ASİSTAN</small></div>
+    <div class="clock"><span id="clk">--:--</span><small id="dt"></small></div>
+  </header>
+
+  <main id="views">
+    <!-- JARVIS -->
+    <section class="view on" id="v-home">
+      <div class="core">
+        <button class="reactor" id="reactor" aria-label="Konuş">
+          <span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span>
+        </button>
+        <div class="status" id="status">Hazır</div>
+        <div class="chips" id="chips">
+          <button class="chip" data-q="__brief">☀️ Brifing</button>
+          <button class="chip" data-q="Bugün ve yarın neler var? Takvimimi ve görevlerimi kontrol et.">📅 Bugün</button>
+          <button class="chip" data-q="Okunmamış bildirimlerimi kısaca özetle.">🔔 Bildirimler</button>
+          <button class="chip" data-q="Son maillerimi özetle, önemli olan var mı?">✉️ Mailler</button>
+          <button class="chip" data-q="__evening">🌙 Gün sonu</button>
+          <button class="chip" data-act="memo">🎙 Sesli not</button>
+          <button class="chip" data-act="photo">📷 Fotoğraf</button>
+          <button class="chip" data-q="Ekranımda ne var? Kısaca özetle.">👁 Ekran</button>
+          <button class="chip" data-q="__weekly">📊 Hafta</button>
+        </div>
+      </div>
+      <div class="log" id="log"></div>
+      <form class="inbar" id="inbar">
+        <button type="button" class="btn mic" id="mic" aria-label="Sesli komut">🎙</button>
+        <button type="button" class="btn ghost mic" id="attachBtn" aria-label="Fotoğraf ekle">📎</button>
+        <input id="q" placeholder="JARVIS'e söyle…" autocomplete="off" enterkeyhint="send">
+        <button class="btn" type="submit">➤</button>
+      </form>
+      <div class="hint" id="attachInfo"></div>
+    </section>
+
+    <!-- PLAN -->
+    <section class="view" id="v-plan">
+      <div class="seg" data-group="plan">
+        <button data-sec="reminders" class="on">Hatırlatıcı</button>
+        <button data-sec="tasks">Görev</button>
+        <button data-sec="notes">Not</button>
+        <button data-sec="geo">Konum</button>
+        <button data-sec="routines">Rutin</button>
+        <button data-sec="dates">Özel gün</button>
+      </div>
+      <div class="secbody" id="b-plan"></div>
+    </section>
+
+    <!-- HAYAT -->
+    <section class="view" id="v-life">
+      <div class="seg" data-group="life">
+        <button data-sec="expenses" class="on">Harcama</button>
+        <button data-sec="habits">Alışkanlık</button>
+        <button data-sec="bills">Fatura</button>
+        <button data-sec="focus">Odak</button>
+      </div>
+      <div class="secbody" id="b-life"></div>
+    </section>
+
+    <!-- KARİYER -->
+    <section class="view" id="v-work">
+      <div class="seg" data-group="work">
+        <button data-sec="auditions" class="on">Seçme/Çekim</button>
+        <button data-sec="shifts">Vardiya</button>
+        <button data-sec="projects">Projeler</button>
+        <button data-sec="lines">Replik</button>
+        <button data-sec="applications">Başvuru</button>
+        <button data-sec="goals">Hedef</button>
+        <button data-sec="radar">Radar</button>
+      </div>
+      <div class="secbody" id="b-work"></div>
+    </section>
+
+    <!-- AYARLAR -->
+    <section class="view" id="v-set">
+      <div class="secbody" id="b-set"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="home" class="on"><i>◉</i>JARVIS</button>
+    <button data-view="plan"><i>☰</i>Plan</button>
+    <button data-view="life"><i>♥</i>Hayat</button>
+    <button data-view="work"><i>★</i>Kariyer</button>
+    <button data-view="set"><i>⚙</i>Ayarlar</button>
+  </nav>
+</div>
+
+<div class="lock" id="lock"><div class="reactor" style="pointer-events:none"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span></div><p>JARVIS kilitli</p><button class="btn" id="unlockBtn">🔒 Parmak izi ile aç</button></div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="capacitor.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "jarvis-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JARVIS - Burak'ın kişisel sesli asistanı",
+  "scripts": {
+    "sync": "npx cap sync android",
+    "build:apk": "npx cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor-community/text-to-speech": "^8.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  }
+}

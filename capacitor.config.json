@@ -1,0 +1,10 @@
+{
+  "appId": "com.burak.jarvis",
+  "appName": "JARVIS",
+  "webDir": "www",
+  "android": { "allowMixedContent": false, "backgroundColor": "#03070d" },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true },
+    "LocalNotifications": { "smallIcon": "ic_stat_jarvis", "iconColor": "#4fd8ff" }
+  }
+}
