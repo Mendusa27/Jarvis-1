@@ -43,14 +43,15 @@ const Haptics = plug("Haptics");
 async function nat(fn, fallback = null) { try { return await fn(); } catch (e) { console.warn(e); return fallback; } }
 
 /* ================= depolama ================= */
-const EMPTY = () => ({ reminders: [], tasks: [], notes: [], geo: [], memory: [], expenses: [], habits: [], auditions: [], shifts: [], projects: [], routines: [], dates: [], bills: [], applications: [], goals: [], updatedAt: 0 });
+const EMPTY = () => ({ reminders: [], tasks: [], notes: [], geo: [], memory: [], expenses: [], habits: [], auditions: [], shifts: [], projects: [], routines: [], dates: [], bills: [], applications: [], goals: [], journal: [], updatedAt: 0 });
 const DEF_SET = {
   provider: "gemini", geminiKey: "", geminiModel: "gemini-3.8-flash", claudeKey: "", claudeModel: "claude-haiku-5-5", claudeSmart: "claude-sonnet-5-5",
   personality: "esprili", voiceIdx: -1, rate: 1.0, pitch: 0.9, speakReplies: true, followUp: true,
   wake: false, scriptUrl: "", scriptToken: "", briefTime: "08:30", briefOn: true, eveningTime: "", city: "İstanbul", lat: 41.01, lng: 28.98,
   name: "Burak", budget: 0, lock: false, headset: false, homeLat: null, homeLng: null, partnerName: "Kübra", autoSendWa: false,
   kadroSheetId: "", ntfyTopic: "", radars: [], webhooks: [], proactive: true,
-  stt: "gemini", wakeStrict: true, wakeConf: 0.92, speed: "hizli", greetVoice: false, sttModel: "gemini-3.5-flash-lite"
+  stt: "gemini", wakeStrict: true, wakeConf: 0.92, speed: "hizli", greetVoice: false, sttModel: "gemini-3.5-flash-lite",
+  live: true, liveVoice: "Charon", liveIdle: 25, liveDuplex: false, voiceEngine: "gemini", ttsVoice: "Charon", groqKey: "", groqModel: "llama-3.3-70b-versatile", convo: true
 };
 let S = EMPTY(), SET = { ...DEF_SET }, CHAT = [];
 async function kvGet(k) {
@@ -143,11 +144,11 @@ async function listen() {
   listening = true; $("#mic").classList.add("on"); setMode("listen", "Dinliyorum…");
   if (Haptics) nat(() => Haptics.impact({ style: "LIGHT" }));
   let text = null, done = false;
-  if (SET.stt === "gemini" && SET.geminiKey && navigator.onLine && navigator.mediaDevices) {
+  if (((SET.stt === "groq" && SET.groqKey) || (SET.stt === "gemini" && SET.geminiKey)) && navigator.onLine && navigator.mediaDevices) {
     try {
       if (Jarvis) await nat(() => Jarvis.pauseWake());
       $("#q").placeholder = "● Dinliyorum… (bitince sus, kendim anlarım)";
-      text = await listenGemini(); done = true;
+      text = await sttCapture(); done = true;
     } catch (e) { console.warn("gemini stt", e); GEM_REC = null; }
     $("#q").placeholder = "JARVIS'e söyle…";
   }
@@ -178,6 +179,7 @@ async function listen() {
 }
 async function stopListen() { if (GEM_REC) { GEM_REC.stopNow = true; return; } if (Jarvis) await nat(() => Jarvis.stopListen()); else try { webRec && webRec.stop(); } catch {} }
 async function voiceTurn(greet = false) {
+  if (SET.live && !LIVE) { if (greet && !SET.greetVoice) beepUp(); if (await startLive()) return; }
   if (greet) { if (SET.greetVoice) await speak("Efendim?", true); else { beepUp(); if (Haptics) nat(() => Haptics.impact({ style: "MEDIUM" })); } }
   const t = await listen();
   if (t) await send(t, true); else resumeWake();
@@ -476,6 +478,7 @@ PROJELER:\n${pr}
 ALIŞKANLIKLAR:\n${hb}
 ${FOCUS.until > Date.now() ? "ODAK MODU AÇIK: " + Math.round((FOCUS.until - Date.now()) / 6e4) + " dk kaldı" : ""}
 RUTİNLER: ${S.routines.map(r => r.name).join(", ") || "(yok)"}
+GEÇMİŞ HAFTALARIN ÖZETİ:\n${(S.journal || []).slice(-4).map(j => `(${j.week}) ${j.text}`).join("\n") || "(yok)"}
 ÖZEL GÜNLER:\n${S.dates.map(x => `- [${x.id}] ${x.name} ${x.kind} ${x.md}`).join("\n") || "(yok)"}
 FATURA/ABONELİK:\n${S.bills.map(b => `- [${b.id}] ${b.name} ayın ${b.day}'i ${b.amount ? money(b.amount) : ""}`).join("\n") || "(yok)"}
 BAŞVURULAR:\n${S.applications.filter(a => !["olumsuz"].includes(a.status)).slice(-25).map(a => `- [${a.id}] ${a.project}${a.role ? " / " + a.role : ""} · ${a.status} · ${a.date}${a.followUp ? " · takip " + a.followUp : ""}${a.contact ? " · " + a.contact : ""}`).join("\n") || "(yok)"}
@@ -585,7 +588,7 @@ async function askGemini(history, onAct, attach) {
   const models = [SET.geminiModel, ...GEMINI_FALLBACK.filter(m => m !== SET.geminiModel)];
   let mi = 0;
   const body = () => {
-    const gc = { temperature: 0.4, maxOutputTokens: 2048 }; const th = thinkCfg(models[mi], SET.speed === "akilli" ? "medium" : "low"); if (th) gc.thinkingConfig = th;
+    const gc = { temperature: 0.4, maxOutputTokens: 2048 }; const th = thinkCfg(models[mi], (SET.speed === "akilli" || CUR_DEEP) ? "medium" : "low"); if (th) gc.thinkingConfig = th;
     return { systemInstruction: { parts: [{ text: sys }] }, contents, tools: [{ functionDeclarations: decl }], generationConfig: gc };
   };
   for (let step = 0; step < 12; step++) {
@@ -595,7 +598,7 @@ async function askGemini(history, onAct, attach) {
       catch (e) {
         if (e.status === 400 && /thinking/i.test(e.message) && !NO_THINK.has(models[mi])) { NO_THINK.add(models[mi]); continue; }
         if ((e.status === 404 || e.status === 429 || e.status === 400 && /model/i.test(e.message)) && mi < models.length - 1) { mi++; continue; }
-        if (e.status === 429) throw new Error("Ücretsiz Gemini kotası doldu, biraz sonra tekrar dene.");
+        if (e.status === 429) { const q = new Error("Ücretsiz Gemini kotası doldu, biraz sonra tekrar dene."); q.status = 429; throw q; }
         throw e;
       }
     }
@@ -637,7 +640,7 @@ async function askClaude(history, onAct, smart, attach) {
 }
 const ACT_TR = { hatirlatici_ekle: "⏰ hatırlatıcı", gorev_ekle: "✅ görev", not_al: "📝 not", hafiza_kaydet: "🧠 hafıza", harcama_ekle: "💸 harcama", takvim_listele: "📅 takvim", takvim_ekle: "📅 takvime ekle", mail_ozeti: "✉️ mail", bildirimleri_oku: "🔔 bildirimler", hava_durumu: "🌤 hava", ara: "📞 arama", whatsapp_mesaj: "💬 WhatsApp", uygulama_ac: "📱 uygulama", konum_hatirlatici_ekle: "📍 konum", odak_baslat: "🎯 odak", secme_ekle: "🎭 seçme", vardiya_ekle: "🍸 vardiya" };
 
-let busy = false;
+let busy = false, STREAMQ = null, STREAMED = false;
 async function send(text, byVoice = false, attach = null, label = null) {
   text = String(text || "").trim(); if (!text) return;
   if (busy) return toast("Bir saniye, önceki isteği bitiriyorum.");
@@ -667,7 +670,11 @@ async function send(text, byVoice = false, attach = null, label = null) {
   }
   const shown = label ? null : (text.startsWith("__") ? null : text);
   let prompt = text;
-  if (text === "__brief") prompt = "Günaydın! Günlük brifingimi ver: hava durumu, bugünkü takvim ve hatırlatıcılar, seçme/çekim ve vardiyalar, açık görevler, varsa önemli okunmamış mailler. Sonunda kısa bir motivasyon cümlesi.";
+  if (text === "__brief") {
+    let pre = null; try { pre = await prefetchBrief(); } catch {}
+    prompt = "Günaydın! Günlük brifingimi ver: hava durumu, bugünkü takvim ve hatırlatıcılar, seçme/çekim ve vardiyalar, açık görevler, varsa önemli okunmamış mailler. Sonunda kısa bir motivasyon cümlesi." +
+      (pre ? "\nHAZIR VERİLER (bunları kullan, takvim/mail/hava araçlarını tekrar çağırma):\n" + JSON.stringify({ hava: pre.hava, takvim: pre.takvim, mailler: (pre.mailler || []).slice(0, 6) }).slice(0, 6000) : "");
+  }
   if (text === "__evening") prompt = "Gün sonu özeti: bugün ne yaptım (tamamlanan görevler, alışkanlıklar, harcamalar), neler kaldı, yarın beni ne bekliyor? Yarın için 1-2 öneri ver.";
   CHAT.push({ role: "user", content: prompt }); saveChat();
   if (shown) bubble("user", shown); else bubble("sys", label || (text === "__brief" ? "☀️ Günlük brifing" : "🌙 Gün sonu özeti"));
@@ -678,8 +685,16 @@ async function send(text, byVoice = false, attach = null, label = null) {
   try {
     const hist = CHAT.slice(-14);
     const smart = /plan|strateji|analiz|detaylı|uzun/i.test(prompt) || text === "__evening";
+    CUR_DEEP = smart || /karşılaştır|neden|nasıl yap|öner|hazırla|haftamı|değerlendir|fikir/i.test(prompt) || prompt.length > 220;
+    if ((byVoice || SET.speakReplies) && !attach) { STREAMQ = new SpeechQueue(); CUR_Q = STREAMQ; ON_DELTA = d => { STREAMED = true; STREAMQ.push(d); }; }
     const useClaude = SET.provider === "claude" && SET.claudeKey && !(attach && attach.some(a => !a.mime.startsWith("image/")));
-    out = useClaude ? await askClaude(hist, onAct, smart, attach) : await askGemini(hist, onAct, attach);
+    try { out = useClaude ? await askClaude(hist, onAct, smart, attach) : await askGemini(hist, onAct, attach); }
+    catch (e1) {
+      // Gemini kotası/arızası: Groq yedek beyne geç
+      if (!useClaude && SET.groqKey && !attach && (e1.status === 429 || e1.status >= 500 || /kota|quota|overload|unavailable/i.test(e1.message))) { onAct("groq"); out = await askGroq(hist, onAct); }
+      else throw e1;
+    }
+    ON_DELTA = null;
     out = out || "Tamamdır.";
     // Model bir işi "yaptım" deyip aracı hiç çağırmadıysa: bir kez daha, bu sefer aracı kullanmaya zorla
     if (!acts.length && !attach && CMD_RX.test(prompt) && CLAIM_RX.test(out)) {
@@ -695,12 +710,16 @@ async function send(text, byVoice = false, attach = null, label = null) {
     else if (offline) out = "İnternet yok. Hatırlatıcı, not, görev, fener, uygulama açma, arama ve rutinler gibi temel komutları yine yapabilirim.";
     else out = "Bir aksaklık oldu: " + e.message;
   }
+  ON_DELTA = null;
   span.textContent = out;
   { const a = document.createElement("div"); a.className = "acts"; a.textContent = [...acts, LAST_MS ? (LAST_MS / 1000).toFixed(1) + " sn" : ""].filter(Boolean).join(" · "); if (a.textContent) span.parentElement.appendChild(a); LAST_MS = 0; }
   CHAT.push({ role: "assistant", content: out }); saveChat();
   busy = false; setMode("", "Hazır");
-  if (byVoice || SET.speakReplies) await speak(out, byVoice);
-  if (byVoice && SET.followUp && /\?\s*$/.test(out)) { const t = await listen(); if (t) return send(t, true); }
+  const sq = STREAMQ; STREAMQ = null;
+  if (sq && STREAMED) { STREAMED = false; await sq.finish(); if (CUR_Q === sq) CUR_Q = null; }
+  else { STREAMED = false; if (byVoice || SET.speakReplies) await speak(out, byVoice); }
+  // Sohbet modu: cevaptan sonra "Hey Jarvis" demeden devam et
+  if (byVoice && (SET.convo || (SET.followUp && /\?\s*$/.test(out)))) { const t = await listen(); if (t) return send(t, true); }
   resumeWake();
 }
 
@@ -898,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">JARVIS v1.4 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">JARVIS v1.5 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -941,8 +960,8 @@ function updateWidget() {
 /* ================= olaylar ================= */
 function bind() {
   $("#inbar").onsubmit = e => { e.preventDefault(); const t = $("#q").value.trim(); $("#q").value = ""; if (t) send(t); };
-  $("#mic").onclick = () => listening ? stopListen() : voiceTurn(false);
-  $("#reactor").onclick = () => speaking ? stopSpeaking().then(() => voiceTurn(false)) : listening ? stopListen() : voiceTurn(false);
+  $("#mic").onclick = () => LIVE ? LIVE.stop() : listening ? stopListen() : voiceTurn(false);
+  $("#reactor").onclick = () => LIVE ? LIVE.stop() : speaking ? stopSpeaking().then(() => voiceTurn(false)) : listening ? stopListen() : voiceTurn(false);
   document.querySelectorAll(".chip").forEach(c => c.onclick = () => send(c.dataset.q));
   document.querySelectorAll(".tabbar button").forEach(b => b.onclick = () => go(b.dataset.view));
   document.querySelectorAll(".seg button").forEach(b => b.onclick = () => openSec(b.parentElement.dataset.group, b.dataset.sec));
@@ -1899,7 +1918,10 @@ async function diagnostics() {
     const w = await nat(() => Jarvis.wakeStatus(), {}); ok(!SET.wake || (w && w.status === "listening"), "Hey Jarvis", w ? w.status : "-");
     ok(p.battery, "Pil kısıtlaması kapalı", p.battery ? "" : "Arka planda kapanabilir");
   }
-  const trv = voices.filter(v => /^tr/i.test(v.lang)).length; ok(trv > 0, "Türkçe ses", `${trv} ses`);
+  const trv = voices.filter(v => /^tr/i.test(v.lang)).length; ok(trv > 0 || SET.voiceEngine === "gemini", "Ses", SET.voiceEngine === "gemini" ? "Gemini doğal ses" : `${trv} Türkçe telefon sesi`);
+  if (SET.groqKey) { try { await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel, messages: [{ role: "user", content: "ok" }], max_tokens: 2 }, { Authorization: "Bearer " + SET.groqKey }); ok(true, "Groq (hız + yedek)"); } catch (e) { ok(false, "Groq", e.message); } }
+  ok(!!SET.live && Date.now() > LIVE_OFF_UNTIL, "Canlı konuşma", SET.live ? (Date.now() > LIVE_OFF_UNTIL ? (SET.liveModel || "hazır") : "geçici olarak kapalı (kota/hata)") : "kapalı");
+  if (NATIVE) rows.push(`<div class="hint">Vivo: Ayarlar → Pil → Arka planda yüksek güç tüketimi → JARVIS'i aç; Ayarlar → Uygulamalar → Otomatik başlatma → JARVIS'i aç. Yoksa Hey Jarvis ve alarmlar kapanabilir.</div>`);
   ok(SET.stt === "gemini" ? !!SET.geminiKey : true, "Ses tanıma", SET.stt === "gemini" ? "Gemini (Türkçe + İngilizce)" : "Google (cihaz)");
   infoBox("SİSTEM TESTİ", rows.join("") + `<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="testNotif">1 dk sonra test bildirimi</button><button class="btn ghost sm" id="testAlarm">2 dk sonra test alarmı</button></div>`);
   $("#testNotif").onclick = () => { A.addReminder({ text: "Test bildirimi ✓ Hatırlatıcılar çalışıyor.", due: localISO(new Date(Date.now() + 65e3)) }); toast("1 dakika sonra bildirim gelecek"); };
@@ -1933,6 +1955,350 @@ async function diagnostics() {
 }
 document.addEventListener("click", e => { if (e.target.closest("#diagBtn")) diagnostics(); });
 
+/* =====================================================================
+   v1.5 — CANLI KONUŞMA, AKIŞLI CEVAP, DOĞAL SES, GROQ
+   ===================================================================== */
+const rawFetch = (...a) => (window.CapacitorWebFetch || window.fetch).apply(window, a);
+const b64ToBytes = b64 => { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+const bytesToB64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+let OUT_CTX = null;
+function outCtx() { if (!OUT_CTX || OUT_CTX.state === "closed") OUT_CTX = new (window.AudioContext || window.webkitAudioContext)(); if (OUT_CTX.state === "suspended") OUT_CTX.resume(); return OUT_CTX; }
+function pcm16ToBuffer(ctx, u8, rate = 24000) {
+  const n = Math.floor(u8.length / 2), dv = new DataView(u8.buffer, u8.byteOffset, n * 2), buf = ctx.createBuffer(1, n, rate), ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
+  return buf;
+}
+
+/* ================= 1) CANLI KONUŞMA (Gemini Live API) ================= */
+const LIVE_MODELS = ["gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025"];
+let LIVE = null, LIVE_OFF_UNTIL = 0;
+class LiveSession {
+  constructor() { this.ws = null; this.playing = []; this.nextT = 0; this.userTxt = ""; this.botTxt = ""; this.uSpan = null; this.bSpan = null; this.lastAct = Date.now(); this.closed = false; this.acts = []; }
+  async open(model) {
+    return new Promise((res, rej) => {
+      const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(SET.geminiKey)}`);
+      this.ws = ws; let ready = false;
+      const to = setTimeout(() => { if (!ready) { try { ws.close(); } catch {} rej(new Error("zaman aşımı")); } }, 8000);
+      ws.onopen = () => {
+        const decl = TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; });
+        ws.send(JSON.stringify({ setup: {
+          model: "models/" + model,
+          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.liveVoice || "Charon" } } } },
+          systemInstruction: { parts: [{ text: systemPrompt() + "\nŞU AN CANLI SESLİ SOHBETTESİN: doğal, akıcı ve kısa konuş; Türkçe konuş. Bir işlem istenirse önce aracı çağır, sonra kısaca söyle." }] },
+          tools: [{ functionDeclarations: decl }],
+          inputAudioTranscription: {}, outputAudioTranscription: {}
+        } }));
+      };
+      ws.onmessage = async ev => {
+        let msg; try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : await ev.data.text()); } catch { return; }
+        if (msg.setupComplete && !ready) { ready = true; clearTimeout(to); res(); return; }
+        this.onMsg(msg);
+      };
+      ws.onerror = () => {};
+      ws.onclose = ev => { clearTimeout(to); if (!ready) rej(new Error(ev.reason || "bağlantı kapandı " + ev.code)); else if (!this.closed) { if (/quota|exceed|limit/i.test(ev.reason || "")) LIVE_OFF_UNTIL = Date.now() + 36e5; this.stop(ev.reason ? "Canlı oturum kapandı: " + ev.reason : null); } };
+    });
+  }
+  async start() {
+    const models = [SET.liveModel, ...LIVE_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
+    let err = null;
+    for (const m of models) { try { await this.open(m); if (SET.liveModel !== m) { SET.liveModel = m; saveSet(); } err = null; break; } catch (e) { err = e; } }
+    if (err) throw err;
+    // mikrofon
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    this.inCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = this.inCtx.createMediaStreamSource(this.stream);
+    this.proc = this.inCtx.createScriptProcessor(2048, 1, 1);
+    const ratio = this.inCtx.sampleRate / 16000; let pend = [];
+    this.proc.onaudioprocess = e => {
+      if (!this.ws || this.ws.readyState !== 1) return;
+      const d = e.inputBuffer.getChannelData(0); const n = Math.floor(d.length / ratio); const pcm = new Int16Array(n);
+      let q = 0; for (let i = 0; i < n; i++) { const v = d[Math.floor(i * ratio)]; q += v * v; pcm[i] = Math.max(-1, Math.min(1, v)) * 0x7fff; }
+      const rms = Math.sqrt(q / n);
+      // Hoparlörden çıkan sesi geri duymasın: JARVIS konuşurken sadece yüksek sesle söz kesilebilir
+      if (this.isPlaying() && rms < (SET.liveDuplex ? 0.02 : 0.09)) pcm.fill(0); else if (rms > 0.03) this.lastAct = Date.now();
+      pend.push(pcm);
+      if (pend.length >= 2) { const tot = pend.reduce((s, a) => s + a.length, 0), all = new Int16Array(tot); let o = 0; for (const a of pend) { all.set(a, o); o += a.length; } pend = [];
+        this.ws.send(JSON.stringify({ realtimeInput: { audio: { data: bytesToB64(new Uint8Array(all.buffer)), mimeType: "audio/pcm;rate=16000" } } })); }
+    };
+    src.connect(this.proc); this.proc.connect(this.inCtx.destination);
+    this.idle = setInterval(() => { if (!this.isPlaying() && Date.now() - this.lastAct > (SET.liveIdle || 25) * 1000) this.stop(); }, 1000);
+    setMode("listen", "Canlı · konuş"); $("#mic").classList.add("on");
+  }
+  isPlaying() { return OUT_CTX && this.nextT > OUT_CTX.currentTime + 0.05; }
+  stopAudio() { for (const s of this.playing) { try { s.stop(); } catch {} } this.playing = []; this.nextT = 0; }
+  play(b64) {
+    const ctx = outCtx(); const buf = pcm16ToBuffer(ctx, b64ToBytes(b64), 24000);
+    const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination);
+    const t = Math.max(ctx.currentTime + 0.02, this.nextT); s.start(t); this.nextT = t + buf.duration;
+    this.playing.push(s); s.onended = () => { this.playing = this.playing.filter(x => x !== s); };
+    setMode("speak", "Canlı · konuşuyor");
+  }
+  async onMsg(msg) {
+    const sc = msg.serverContent;
+    if (sc) {
+      if (sc.interrupted) { this.stopAudio(); setMode("listen", "Canlı · dinliyor"); }
+      if (sc.inputTranscription && sc.inputTranscription.text) {
+        this.userTxt += sc.inputTranscription.text; this.lastAct = Date.now();
+        if (!this.uSpan) this.uSpan = bubble("user", ""); this.uSpan.textContent = this.userTxt.trim();
+      }
+      if (sc.modelTurn && sc.modelTurn.parts) for (const p of sc.modelTurn.parts) if (p.inlineData && p.inlineData.data) this.play(p.inlineData.data);
+      if (sc.outputTranscription && sc.outputTranscription.text) {
+        this.botTxt += sc.outputTranscription.text; if (!this.bSpan) this.bSpan = bubble("assistant", ""); this.bSpan.textContent = this.botTxt.trim();
+        $("#log").scrollTop = 1e9;
+      }
+      if (sc.turnComplete || sc.generationComplete) {
+        if (this.userTxt.trim()) CHAT.push({ role: "user", content: this.userTxt.trim() });
+        if (this.botTxt.trim()) CHAT.push({ role: "assistant", content: this.botTxt.trim() });
+        if (this.acts.length && this.bSpan) { const a = document.createElement("div"); a.className = "acts"; a.textContent = this.acts.join(" · ") + " · canlı"; this.bSpan.parentElement.appendChild(a); }
+        saveChat(); this.userTxt = ""; this.botTxt = ""; this.uSpan = null; this.bSpan = null; this.acts = []; this.lastAct = Date.now();
+        setTimeout(() => { if (!this.closed && !this.isPlaying()) setMode("listen", "Canlı · dinliyor"); }, 300);
+      }
+    }
+    if (msg.toolCall && msg.toolCall.functionCalls) {
+      const responses = [];
+      for (const fc of msg.toolCall.functionCalls) { this.acts.push(ACT_TR[fc.name] || fc.name); const r = await runTool(fc.name, fc.args || {}); responses.push({ id: fc.id, name: fc.name, response: { result: r } }); }
+      if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+      this.lastAct = Date.now();
+    }
+    if (msg.goAway) this.stop();
+  }
+  stop(note) {
+    if (this.closed) return; this.closed = true;
+    clearInterval(this.idle);
+    try { this.proc && this.proc.disconnect(); } catch {}
+    try { this.stream && this.stream.getTracks().forEach(t => t.stop()); } catch {}
+    try { this.inCtx && this.inCtx.close(); } catch {}
+    try { this.ws && this.ws.close(); } catch {}
+    setTimeout(() => this.stopAudio(), 1500);
+    if (this.userTxt.trim()) { CHAT.push({ role: "user", content: this.userTxt.trim() }); saveChat(); }
+    if (LIVE === this) LIVE = null;
+    $("#mic").classList.remove("on"); setMode("", "Hazır");
+    if (note) toast(note, 4000);
+    resumeWake();
+  }
+}
+async function startLive() {
+  if (LIVE) { LIVE.stop(); return true; }
+  if (!SET.live || !SET.geminiKey || !navigator.onLine || Date.now() < LIVE_OFF_UNTIL || !window.WebSocket) return false;
+  if (Jarvis) await nat(() => Jarvis.pauseWake());
+  await stopSpeaking();
+  const s = new LiveSession(); LIVE = s; setMode("think", "Canlı bağlanıyor…");
+  try { await s.start(); go("home"); return true; }
+  catch (e) { console.warn("live", e); try { s.ws && s.ws.close(); s.stream && s.stream.getTracks().forEach(t => t.stop()); } catch {} s.closed = true; LIVE = null; setMode("", "Hazır"); LIVE_OFF_UNTIL = Date.now() + 10 * 6e4; toast("Canlı mod açılamadı, normal moda geçtim (" + (e.message || e) + ")", 4500); return false; }
+}
+
+/* ================= 2) DOĞAL SES (Gemini TTS) ================= */
+const TTS_MODELS = ["gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
+const TTS_CACHE = new Map(); let TTS_OFF_UNTIL = 0, CUR_SRC = null;
+async function geminiTtsBuffer(text) {
+  const key = (SET.ttsVoice || "Charon") + "|" + text; if (TTS_CACHE.has(key)) return TTS_CACHE.get(key);
+  const models = [SET.ttsModel, ...TTS_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
+  for (let i = 0; i < models.length; i++) {
+    try {
+      const j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${models[i]}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, {
+        contents: [{ parts: [{ text: `Doğal, sıcak ve akıcı bir Türkçeyle, bir asistan gibi söyle: ${text}` }] }],
+        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.ttsVoice || "Charon" } } } }
+      });
+      const part = (((j.candidates || [])[0] || {}).content || {}).parts?.find(p => p.inlineData);
+      if (!part) throw new Error("ses yok");
+      const rate = Number((part.inlineData.mimeType.match(/rate=(\d+)/) || [])[1] || 24000);
+      const buf = pcm16ToBuffer(outCtx(), b64ToBytes(part.inlineData.data), rate);
+      if (SET.ttsModel !== models[i]) { SET.ttsModel = models[i]; saveSet(); }
+      if (text.length < 80) { TTS_CACHE.set(key, buf); if (TTS_CACHE.size > 40) TTS_CACHE.delete(TTS_CACHE.keys().next().value); }
+      return buf;
+    } catch (e) { if (e.status === 429) { TTS_OFF_UNTIL = Date.now() + 30 * 6e4; throw e; } if (i === models.length - 1) throw e; }
+  }
+}
+function playBuffer(buf) {
+  return new Promise(res => {
+    const ctx = outCtx(); const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination);
+    CUR_SRC = s; s.onended = () => { if (CUR_SRC === s) CUR_SRC = null; res(); }; s.start();
+  });
+}
+// Konuşma kuyruğu: cümleler sırayla, bir sonraki önceden hazırlanarak
+class SpeechQueue {
+  constructor() { this.q = []; this.buf = ""; this.running = null; this.stopped = false; }
+  push(delta) {
+    this.buf += delta;
+    let m; while ((m = this.buf.match(/^([\s\S]*?[.!?…:])(\s+|$)/)) && m[1].trim().length > 1) { if (m[2] === "" && this.buf.length === m[1].length) break; this.add(m[1]); this.buf = this.buf.slice(m[0].length); }
+  }
+  add(sentence) {
+    const t = sentence.replace(/[*_#`>|]/g, "").trim(); if (!t || this.stopped) return;
+    const natural = SET.voiceEngine === "gemini" && SET.geminiKey && Date.now() > TTS_OFF_UNTIL;
+    this.q.push({ t, p: natural ? geminiTtsBuffer(t).catch(() => null) : null });
+    if (!this.running) this.running = this.run();
+  }
+  async run() {
+    speaking = true; setMode("speak", "Konuşuyor");
+    while (this.q.length && !this.stopped) {
+      const it = this.q.shift(); const buf = it.p ? await it.p : null;
+      if (this.stopped) break;
+      if (buf) await playBuffer(buf); else await androidSpeak(it.t);
+    }
+    this.running = null; if (!this.q.length) { speaking = false; setMode("", "Hazır"); }
+  }
+  async finish() { if (this.buf.trim()) { this.add(this.buf); this.buf = ""; } while (this.running) await this.running; }
+  stop() { this.stopped = true; this.q = []; }
+}
+let CUR_Q = null;
+async function androidSpeak(clean) {
+  try {
+    if (TTS) { const o = { text: clean, lang: "tr-TR", rate: SET.rate, pitch: SET.pitch, volume: 1, category: "playback", queueStrategy: 0 }; if (SET.voiceIdx >= 0) o.voice = SET.voiceIdx; await TTS.speak(o); }
+    else if ("speechSynthesis" in window) await new Promise(res => { const u = new SpeechSynthesisUtterance(clean); u.lang = "tr-TR"; u.rate = SET.rate; u.pitch = SET.pitch; const vs = speechSynthesis.getVoices(); if (SET.voiceIdx >= 0 && vs[SET.voiceIdx]) u.voice = vs[SET.voiceIdx]; u.onend = u.onerror = res; speechSynthesis.speak(u); });
+  } catch {}
+}
+// speak'i kuyruk tabanlı yap
+speak = async function (text, force = false) {
+  if (!text || (!SET.speakReplies && !force)) return;
+  const clean = String(text).replace(/[*_#`>|]/g, "").replace(/https?:\/\/\S+/g, "link");
+  if (CUR_Q) CUR_Q.stop();
+  const q = new SpeechQueue(); CUR_Q = q;
+  const parts = clean.match(/[^.!?…]+[.!?…]*/g) || [clean];
+  for (const p of parts) q.add(p);
+  await q.finish(); if (CUR_Q === q) CUR_Q = null;
+};
+stopSpeaking = async function () {
+  speaking = false; if (CUR_Q) { CUR_Q.stop(); CUR_Q = null; }
+  if (CUR_SRC) { try { CUR_SRC.stop(); } catch {} CUR_SRC = null; }
+  if (TTS) await nat(() => TTS.stop()); else try { speechSynthesis.cancel(); } catch {}
+};
+
+/* ================= 3) AKIŞLI CEVAP (Gemini SSE) ================= */
+async function geminiStream(model, body, onDelta) {
+  const r = await rawFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(SET.geminiKey)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) { let m = "HTTP " + r.status; try { const j = await r.json(); m = (j.error && j.error.message) || m; } catch {} const e = new Error(m); e.status = r.status; throw e; }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "", parts = [], role = "model";
+  for (;;) {
+    const { value, done } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:")) continue;
+      let j; try { j = JSON.parse(line.slice(5)); } catch { continue; }
+      const c = j.candidates && j.candidates[0]; const ps = (c && c.content && c.content.parts) || [];
+      for (const p of ps) { parts.push(p); if (p.text && !p.thought && onDelta) onDelta(p.text); }
+    }
+  }
+  return { candidates: [{ content: { role, parts } }] };
+}
+let STREAM_OK = true, CUR_DEEP = false, ON_DELTA = null;
+// httpJson'u Gemini generateContent için akışlıya yönlendir (onDelta varsa)
+{
+  const baseHttp = httpJson;
+  httpJson = async function (url, body, headers) {
+    const m = String(url).match(/models\/([^:]+):generateContent\?key=/);
+    if (m && ON_DELTA && STREAM_OK && body && body.tools && !(body.generationConfig && body.generationConfig.responseModalities)) {
+      try { return await geminiStream(m[1], body, ON_DELTA); }
+      catch (e) { if (e.status) throw e; STREAM_OK = false; console.warn("stream off", e); }
+    }
+    return baseHttp(url, body, headers);
+  };
+}
+
+/* ================= 4) GROQ: hızlı ses tanıma + yedek beyin ================= */
+const WHISPER_JUNK = /altyazı|abone ol|izlediğiniz için|teşekkürler\.?$|^\W*$|amara\.org|subtitles/i;
+async function groqTranscribe(b64wav) {
+  const fd = new FormData();
+  fd.append("file", new Blob([b64ToBytes(b64wav)], { type: "audio/wav" }), "ses.wav");
+  fd.append("model", "whisper-large-v3-turbo"); fd.append("language", "tr"); fd.append("temperature", "0"); fd.append("response_format", "json");
+  fd.append("prompt", "Hey Jarvis, alarm kur, hatırlat, Kübra, Recast, KADRO, Netflix, self-tape, seçme, vardiya, Kadıköy.");
+  const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + SET.groqKey }, body: fd });
+  const t = await r.text(); let j; try { j = JSON.parse(t); } catch { throw new Error("Groq yanıtı okunamadı"); }
+  if (!r.ok) { const e = new Error((j.error && j.error.message) || "Groq hata " + r.status); e.status = r.status; throw e; }
+  const txt = String(j.text || "").trim();
+  return !txt || WHISPER_JUNK.test(txt) ? null : txt;
+}
+async function recordUtterance() {
+  const rec = new WavRecorder(); GEM_REC = rec;
+  let base = 0, nBase = 0, speechAt = 0, lastLoud = 0; const t0 = Date.now();
+  rec.onLevel = rms => { const now = Date.now(); if (now - t0 < 300) { base += rms; nBase++; return; } const thr = Math.max(0.018, (nBase ? base / nBase : 0.005) * 3.2); if (rms > thr) { if (!speechAt) speechAt = now; lastLoud = now; } };
+  await rec.start();
+  await new Promise(res => { const iv = setInterval(() => { const now = Date.now(); if (rec.stopNow || (speechAt && now - lastLoud > 900) || (!speechAt && now - t0 > 7000) || now - t0 > 20000) { clearInterval(iv); res(); } }, 100); });
+  const had = !!speechAt; const b64 = await rec.stop(); GEM_REC = null; return had ? b64 : null;
+}
+async function sttCapture() {
+  const b64 = await recordUtterance(); if (!b64) return null;
+  setMode("think", "Anlıyorum…");
+  if (SET.stt === "groq" && SET.groqKey) { try { return await groqTranscribe(b64); } catch (e) { console.warn("groq stt", e); if (!SET.geminiKey) throw e; } }
+  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir: her kelimeyi söylendiği dilde yaz. Saatleri rakamla yaz. Sadece dökümü yaz. Anlaşılır konuşma yoksa ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }], null, { model: SET.sttModel || "gemini-3.5-flash-lite", fallback: ["gemini-3.1-flash-lite"], temperature: 0, max: 300 });
+  const clean = String(txt || "").replace(/^["'“]|["'”]$/g, "").trim();
+  return !clean || clean.includes("###") ? null : clean;
+}
+async function askGroq(history, onAct) {
+  if (!SET.groqKey) throw new Error("NOGROQ");
+  const t0 = Date.now();
+  const tools = pickTools(history).map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: schemaFor(t, false) } }));
+  const messages = [{ role: "system", content: systemPrompt() }, ...history.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }))];
+  for (let step = 0; step < 8; step++) {
+    const j = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel || "llama-3.3-70b-versatile", messages, tools, tool_choice: "auto", temperature: 0.3, max_tokens: 800 }, { Authorization: "Bearer " + SET.groqKey });
+    const msg = j.choices && j.choices[0] && j.choices[0].message; if (!msg) break;
+    if (!msg.tool_calls || !msg.tool_calls.length) { LAST_MS = Date.now() - t0; return (msg.content || "").trim(); }
+    messages.push({ role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls });
+    const results = [];
+    for (const tc of msg.tool_calls) { let args = {}; try { args = JSON.parse(tc.function.arguments || "{}"); } catch {} onAct(tc.function.name); const res = await runTool(tc.function.name, args); results.push({ name: tc.function.name, res }); messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(res) }); }
+    if (step === 0) { const q = quickConfirm(results); if (q) { LAST_MS = Date.now() - t0; return q; } }
+  }
+  LAST_MS = Date.now() - t0; return "İşlemleri yaptım.";
+}
+
+/* ================= 5) HAZIR BRİFİNG ================= */
+let BRIEF_CACHE = null;
+async function prefetchBrief(force = false) {
+  if (!force && BRIEF_CACHE && Date.now() - BRIEF_CACHE.at < 30 * 6e4) return BRIEF_CACHE;
+  const [g, w] = await Promise.all([SET.scriptUrl ? script("briefData").catch(() => null) : null, weather().catch(() => null)]);
+  BRIEF_CACHE = { at: Date.now(), takvim: g && g.etkinlikler, mailler: g && g.mailler, hava: w };
+  return BRIEF_CACHE;
+}
+
+/* ================= 6) SOHBET ÖZETİ (uzun süreli hafıza) ================= */
+async function summarizeWeek() {
+  if (!SET.geminiKey) return; S.journal = S.journal || [];
+  const last = S.journal.length ? S.journal[S.journal.length - 1].at : 0;
+  if (Date.now() - last < 6 * 864e5 || CHAT.length < 10) return;
+  try {
+    const txt = await plainGemini("Aşağıdaki sohbetten Burak için 4-6 maddelik kısa bir haftalık özet çıkar: neler planlandı, ne yapıldı, önemli kararlar, tekrar eden ihtiyaçlar. Sadece maddeleri yaz.\n\n" + CHAT.slice(-40).map(m => (m.role === "user" ? "Burak: " : "JARVIS: ") + m.content.slice(0, 300)).join("\n"), [], null, { max: 500 });
+    if (txt) { S.journal.push({ at: Date.now(), week: weekKey(), text: txt }); S.journal = S.journal.slice(-12); save(); }
+  } catch {}
+}
+
+/* ================= v1.5 ayar kartı ================= */
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    const V = ["Charon", "Puck", "Fenrir", "Orus", "Iapetus", "Kore", "Aoede", "Leda", "Zephyr"];
+    const opt = (k, list) => list.map(v => `<option ${SET[k] === v ? "selected" : ""}>${v}</option>`).join("");
+    const tg = (k, label, sub) => `<label class="toggle"><span>${label}${sub ? `<small>${sub}</small>` : ""}</span><input type="checkbox" class="sw" data-set="${k}" ${SET[k] ? "checked" : ""}></label>`;
+    const sttSel = document.querySelector('select[data-set="stt"]');
+    if (sttSel && !sttSel.querySelector('option[value="groq"]')) sttSel.insertAdjacentHTML("afterbegin", `<option value="groq" ${SET.stt === "groq" ? "selected" : ""}>Groq Whisper — en hızlı ve çok doğru (Groq anahtarı gerekir)</option>`);
+    const html = `<div class="card"><h3>CANLI KONUŞMA VE DOĞAL SES</h3>
+      ${tg("live", "Canlı konuşma modu", "Gerçek zamanlı sesli sohbet: anında cevap, sözünü kesebilirsin. Kota dolarsa normal moda geçer.")}
+      <div class="row"><div><div class="lbl">Canlı ses</div><select data-set="liveVoice">${opt("liveVoice", V)}</select></div><div><div class="lbl">Sessizlikte kapanma (sn)</div><input type="number" data-set="liveIdle" value="${SET.liveIdle}" min="8" max="120"></div></div>
+      ${tg("liveDuplex", "Kulaklık takılıyken kullanıyorum", "Açıkken JARVIS konuşurken hafif sesle de sözünü kesebilirsin (hoparlörde yankı yapabilir)")}
+      ${tg("convo", "Sohbet modu", "Cevaptan sonra tekrar 'Hey Jarvis' demeden konuşmaya devam et")}
+      <div class="lbl">Normal modda ses</div><select data-set="voiceEngine"><option value="gemini" ${SET.voiceEngine === "gemini" ? "selected" : ""}>Gemini doğal ses (önerilen)</option><option value="android" ${SET.voiceEngine !== "gemini" ? "selected" : ""}>Telefonun sesi (internetsiz, robotik)</option></select>
+      <div class="lbl">Doğal ses karakteri</div><select data-set="ttsVoice">${opt("ttsVoice", V)}</select>
+      <button class="btn ghost sm" id="testNatural" style="margin-top:8px">Doğal sesi dene</button></div>
+      <div class="card"><h3>GROQ (ÜCRETSİZ HIZ VE YEDEK)</h3><div class="form">
+      <div class="lbl">Groq API anahtarı</div><input data-set="groqKey" type="password" value="${esc(SET.groqKey)}" placeholder="gsk_…">
+      <div class="hint">console.groq.com → API Keys → Create. Kart istemez. Ses tanıma çok hızlanır; Gemini kotası dolarsa JARVIS Groq ile devam eder.</div>
+      <button class="btn ghost sm" id="testGroq">Groq'u test et</button></div></div>`;
+    const first = document.querySelector("#b-set .card:nth-of-type(2)");
+    (first || $("#b-set").firstElementChild).insertAdjacentHTML("afterend", html);
+  };
+  const baseSet = onSetChange;
+  onSetChange = async function (el) {
+    const k = el.dataset.set;
+    if (k === "liveIdle") { SET.liveIdle = Math.max(8, Math.min(120, Number(el.value) || 25)); return saveSet(); }
+    if (k === "groqKey") { const had = !!SET.groqKey; SET.groqKey = el.value.trim(); if (SET.groqKey && !had) SET.stt = "groq"; await saveSet(); return renderSettings(); }
+    return baseSet(el);
+  };
+}
+document.addEventListener("click", async e => {
+  if (e.target.closest("#testNatural")) { try { if (!SET.geminiKey) return toast("Önce Gemini anahtarı"); const b = await geminiTtsBuffer(`Merhaba ${SET.name}, ben JARVIS. Sesim artık böyle.`); await playBuffer(b); } catch (er) { toast("Doğal ses: " + (er.status === 429 ? "günlük ücretsiz ses kotası doldu, telefonun sesi kullanılacak" : er.message), 5000); } }
+  if (e.target.closest("#testGroq")) { try { const r = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel, messages: [{ role: "user", content: "Sadece 'tamam' yaz." }], max_tokens: 5 }, { Authorization: "Bearer " + SET.groqKey }); toast("✓ Groq: " + ((r.choices[0].message.content) || "tamam")); } catch (er) { toast("✗ Groq: " + er.message, 5000); } }
+});
+
 /* ================= açılış ================= */
 async function boot() {
   await loadAll();
@@ -1952,7 +2318,7 @@ async function boot() {
     Jarvis.addListener("launch", ev => handleLaunch(ev.action));
     Jarvis.addListener("partial", ev => { $("#q").value = ev.text || ""; });
     Jarvis.addListener("wakeStatus", showWake);
-    AppP && AppP.addListener("resume", () => { warmUp(); lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) PERM = p; }); });
+    AppP && AppP.addListener("resume", () => { warmUp(); { const h = new Date().getHours(); if (h >= 5 && h < 12) prefetchBrief().catch(() => {}); } lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) PERM = p; }); });
     AppP && AppP.addListener("pause", () => { if (SET.lock) META.unlockedAt = Math.min(META.unlockedAt || 0, Date.now()); saveMeta(); });
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();
@@ -1966,7 +2332,8 @@ async function boot() {
   }
   loadVoices(); await pullSync();
   setTimeout(() => proactive(), 2500);
-  warmUp();
+  warmUp(); setTimeout(() => summarizeWeek(), 8000);
+  { const h = new Date().getHours(); if (h >= 5 && h < 12) setTimeout(() => prefetchBrief().catch(() => {}), 3000); }
   if (SET.scriptUrl && (SET.radars || []).length) nat(() => radarCheck());
   // klavye kısayolları (bilgisayar/tablet)
   document.addEventListener("keydown", e => {

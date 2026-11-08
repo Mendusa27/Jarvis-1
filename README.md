@@ -93,7 +93,22 @@ Telefon Ayarlar → **Metin okuma çıkışı** → Google Konuşma Hizmetleri �
 - **Akıllı ev:** Ayarlar → Akıllı ev'e cihaz adı ve webhook linki ekle (Home Assistant, IFTTT Webhooks ya da Smart Life + IFTTT).
 - **Doğal ses (Piper):** Ayarlar → Doğal Türkçe ses kartındaki 4 adım.
 
+## v1.5: Canlı konuşma, doğal ses, Groq
+- **Canlı konuşma (Gemini Live):** "Hey Jarvis" deyince ya da mikrofona basınca gerçek zamanlı sohbet açılır. Anında cevap verir, konuşurken sözünü kesebilirsin. 25 sn sessizlikte kapanır (Ayarlar'dan değişir). Kota dolarsa kendiliğinden normal moda geçer.
+- **Akışlı cevap:** Normal modda cevabın ilk cümlesi hazır olur olmaz konuşmaya başlar.
+- **Doğal ses:** Gemini'nin insan gibi sesi. Ücretsiz ses kotası dolarsa telefonun sesine geçer.
+- **Groq (ücretsiz):** console.groq.com'dan anahtar alıp Ayarlar → Groq'a gir. Ses tanıma Whisper ile çok hızlanır. Gemini kotası dolarsa JARVIS Groq ile çalışmaya devam eder.
+- **Hazır brifing:** Apps Script her saat takvim ve mail verisini hazırlar, "Günaydın" deyince beklemeden gelir. Code.gs'i güncelleyip yeni sürüm olarak dağıtman gerekir.
+- **Haftalık hafıza özeti:** JARVIS her hafta sohbetlerini özetleyip hatırlar.
+
+### Vivo telefonlar için (önemli)
+Vivo, arka plandaki uygulamaları agresif kapatır. JARVIS'in sürekli çalışması için:
+1. Ayarlar → Pil → **Arka planda yüksek güç tüketimi** → JARVIS'i aç.
+2. Ayarlar → Uygulamalar → **Otomatik başlatma** → JARVIS'i aç.
+3. Son uygulamalar ekranında JARVIS'i aşağı çekip **kilitle** (asma kilit simgesi).
+
 ## Bilinen sınırlar
+- Canlı modda hoparlörden konuşurken JARVIS'in sözünü kesmek için biraz yüksek sesle konuşman gerekir (kendi sesini duymasın diye). Kulaklıkla bu ayarı açabilirsin.
 - Kulaklık tuşu, başka bir müzik/podcast uygulaması çalarken o uygulamaya gider.
 - "Ekranımda ne var?" için Android 11+ gerekir. Daha eski sürümlerde sadece ekrandaki yazıları okur.
 - Radar, otomatik okumayı engelleyen sitelerde (ör. bazı emlak siteleri) sonuç bulamayabilir. Gmail ilan bildirimleri her zaman çalışır.

@@ -18,7 +18,7 @@ function doPost(e) {
   if (!req || req.token !== TOKEN) return out({ ok: false, error: "Yetkisiz: gizli anahtar uyuşmuyor" });
   try {
     switch (req.action) {
-      case "ping":         return out({ ok: true, email: Session.getActiveUser().getEmail() });
+      case "ping":         try { kurulumBrifing(); } catch (e) {} return out({ ok: true, email: Session.getActiveUser().getEmail() });
       case "load":         return out({ ok: true, data: loadState() });
       case "save":         saveState(req.data); return out({ ok: true });
       case "calendarList": return out({ ok: true, etkinlikler: calendarList(Number(req.days) || 2) });
@@ -32,6 +32,7 @@ function doPost(e) {
       case "pcPull":       return out({ ok: true, cmds: pcPull() });
       case "pcDone":       pcDone(req.id, req.result); return out({ ok: true });
       case "pcResult":     return out({ ok: true, result: pcResultGet(req.id) });
+      case "briefData":    return out(Object.assign({ ok: true }, briefData(false)));
       case "mailDraftFile": return out(Object.assign({ ok: true }, gmailDraft(req)));
       default:             return out({ ok: false, error: "Bilinmeyen işlem: " + req.action });
     }
@@ -224,6 +225,7 @@ function radarRun() {
 function kurulum() {
   const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "radarRun");
   if (!has) ScriptApp.newTrigger("radarRun").timeBased().everyHours(1).create();
+  kurulumBrifing();
 }
 
 /* ---------- Bilgisayar ajanı kuyruğu ---------- */
@@ -252,3 +254,18 @@ function pcDone(id, result) {
   finally { lock.releaseLock(); }
 }
 function pcResultGet(id) { const x = pcQueue_().find(x => x.id === id); return x ? x.result : null; }
+
+/* ---------- v1.5: önceden hazırlanmış brifing verisi ---------- */
+function briefData(force) {
+  const cache = CacheService.getScriptCache();
+  if (!force) { const c = cache.get("brief"); if (c) return JSON.parse(c); }
+  const d = { etkinlikler: calendarList(2), mailler: gmail("is:unread in:inbox newer_than:2d", 8), hazirlandi: fmt_(new Date()) };
+  try { cache.put("brief", JSON.stringify(d).slice(0, 95000), 45 * 60); } catch (e) {}
+  return d;
+}
+/** Saatlik tetikleyici: brifing verisini sıcak tutar (sabah "Günaydın" deyince beklemeden gelir). */
+function briefWarm() { const h = Number(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "H")); if (h >= 5 && h <= 23) briefData(true); }
+function kurulumBrifing() {
+  const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "briefWarm");
+  if (!has) ScriptApp.newTrigger("briefWarm").timeBased().everyHours(1).create();
+}
