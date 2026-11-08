@@ -49,7 +49,8 @@ const DEF_SET = {
   personality: "esprili", voiceIdx: -1, rate: 1.0, pitch: 0.9, speakReplies: true, followUp: true,
   wake: false, scriptUrl: "", scriptToken: "", briefTime: "08:30", briefOn: true, eveningTime: "", city: "İstanbul", lat: 41.01, lng: 28.98,
   name: "Burak", budget: 0, lock: false, headset: false, homeLat: null, homeLng: null, partnerName: "Kübra", autoSendWa: false,
-  kadroSheetId: "", ntfyTopic: "", radars: [], webhooks: [], proactive: true
+  kadroSheetId: "", ntfyTopic: "", radars: [], webhooks: [], proactive: true,
+  stt: "gemini", wakeStrict: true, wakeConf: 0.92
 };
 let S = EMPTY(), SET = { ...DEF_SET }, CHAT = [];
 async function kvGet(k) {
@@ -141,9 +142,18 @@ async function listen() {
   await stopSpeaking();
   listening = true; $("#mic").classList.add("on"); setMode("listen", "Dinliyorum…");
   if (Haptics) nat(() => Haptics.impact({ style: "LIGHT" }));
-  let text = null;
+  let text = null, done = false;
+  if (SET.stt === "gemini" && SET.geminiKey && navigator.onLine && navigator.mediaDevices) {
+    try {
+      if (Jarvis) await nat(() => Jarvis.pauseWake());
+      $("#q").placeholder = "● Dinliyorum… (bitince sus, kendim anlarım)";
+      text = await listenGemini(); done = true;
+    } catch (e) { console.warn("gemini stt", e); GEM_REC = null; }
+    $("#q").placeholder = "JARVIS'e söyle…";
+  }
   try {
-    if (Jarvis) {
+    if (done) { /* Gemini ile anlaşıldı */ }
+    else if (Jarvis) {
       await nat(() => Jarvis.pauseWake());
       const r = await Jarvis.listen({ lang: "tr-TR" });
       text = r && r.text;
@@ -166,7 +176,7 @@ async function listen() {
   listening = false; $("#mic").classList.remove("on"); setMode("", "Hazır"); $("#q").value = "";
   return text && text.trim() ? text.trim() : null;
 }
-async function stopListen() { if (Jarvis) await nat(() => Jarvis.stopListen()); else try { webRec && webRec.stop(); } catch {} }
+async function stopListen() { if (GEM_REC) { GEM_REC.stopNow = true; return; } if (Jarvis) await nat(() => Jarvis.stopListen()); else try { webRec && webRec.stop(); } catch {} }
 async function voiceTurn(greet = false) {
   if (greet) await speak("Efendim?", true);
   const t = await listen();
@@ -438,6 +448,7 @@ function systemPrompt() {
 Burak İstanbul'da yaşayan bir oyuncu; Recast Talent House casting ajansında çalışıyor, Kadıköy'de bir barda gece vardiyaları var, kendi uygulama ve oyunlarını geliştiriyor.
 HER ZAMAN Türkçe konuş. Cevapların sesli okunur: kısa ol (genelde 1-3 cümle), markdown, madde işareti, emoji ve link yazma. Brifing/özet istenirse en fazla 6-8 kısa cümle.
 Şu an: ${DAYS[d.getDay()]} ${localISO(d)} (Türkiye, UTC+3). "Yarın", "akşam", "2 saat sonra" gibi ifadeleri buna göre kesin zamana çevir; "sabah"=09:00, "öğlen"=12:30, "akşam"=19:00, "gece"=23:00.
+EN ÖNEMLİ KURAL: Bir işlem istendiğinde (alarm, hatırlatma, not, görev, arama, mesaj, uygulama açma...) MUTLAKA ilgili aracı çağır. Araç çağırmadan asla "kurdum/ekledim/yaptım" deme; araç sonucu gelmeden işlem yapılmış sayılmaz. "Alarm kur / beni uyandır" → alarm_kur (gerçek Saat uygulaması alarmı). "X dakika sonra/şu saatte hatırlat" → hatirlatici_ekle. Geri sayım → zamanlayici_kur. Kullanıcı metni ses tanımadan geldiği için küçük yazım hataları olabilir; anlamı tahmin et.
 Araçlarını gerçekten kullan: bir işi yaptığını söylemeden önce ilgili aracı çağır. Yaptığın işlemi gün ve saatle tek cümlede onayla. Arama/mesaj araçları ekranda onay ister; Burak vazgeçerse saygı göster. Bir araç hata dönerse dürüstçe söyle.
 Yapamadığın şeyler (ödeme yapmak, mesajı kendiliğinden göndermek, telefonun ayarlarını değiştirmek gibi) için dürüst ol ve en yakın alternatifi öner.
 Burak kalıcı bir bilgi paylaşırsa (ör. "annemin adı ...", "salıları provam var") hafiza_kaydet ile sakla.
@@ -488,7 +499,7 @@ async function askGemini(history, onAct, attach) {
   if (!SET.geminiKey) throw new Error("NOKEY");
   const contents = history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
   if (attach && attach.length) contents[contents.length - 1].parts.unshift(...attach.map(a => ({ inlineData: { mimeType: a.mime, data: a.data } })));
-  const body = () => ({ systemInstruction: { parts: [{ text: systemPrompt() }] }, contents, tools: [{ functionDeclarations: TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; }) }], generationConfig: { temperature: 0.6, maxOutputTokens: 1200 } });
+  const body = () => ({ systemInstruction: { parts: [{ text: systemPrompt() }] }, contents, tools: [{ functionDeclarations: TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; }) }], generationConfig: { temperature: 0.4, maxOutputTokens: 2048 } });
   const models = [SET.geminiModel, ...GEMINI_FALLBACK.filter(m => m !== SET.geminiModel)];
   let mi = 0;
   for (let step = 0; step < 12; step++) {
@@ -543,6 +554,17 @@ async function send(text, byVoice = false, attach = null, label = null) {
   go("home");
   if (!attach && pendingAttach.length) { attach = pendingAttach; pendingAttach = []; $("#attachInfo").textContent = ""; label = label || ("📷 " + text); }
   if (text === "__weekly") { text = "Haftalık raporumu ver: bu hafta harcamalarım (kategori bazında), alışkanlık serilerim, tamamlanan görevler, seçme/başvuru durumları ve haftalık hedeflerim. Gelecek hafta için 2 öneri."; label = "📊 Haftalık rapor"; }
+  // kesin komutlar (alarm, zamanlayıcı, net hatırlatıcılar): yapay zekâya gitmeden, garantili
+  if (!attach && !text.startsWith("__")) {
+    let q = null; try { q = await quickCommand(text); } catch (e) { console.warn(e); }
+    if (q) {
+      bubble("user", text); const sp = bubble("assistant", q.reply);
+      const a = document.createElement("div"); a.className = "acts"; a.textContent = q.act + " · doğrudan"; sp.parentElement.appendChild(a);
+      CHAT.push({ role: "user", content: text }, { role: "assistant", content: q.reply }); saveChat();
+      if (byVoice || SET.speakReplies) await speak(q.reply, byVoice);
+      resumeWake(); return;
+    }
+  }
   // rutin tetikleyicisi: beyne gitmeden doğrudan çalıştır
   if (!attach && !text.startsWith("__")) {
     const r = matchRoutine(text);
@@ -569,6 +591,12 @@ async function send(text, byVoice = false, attach = null, label = null) {
     const useClaude = SET.provider === "claude" && SET.claudeKey && !(attach && attach.some(a => !a.mime.startsWith("image/")));
     out = useClaude ? await askClaude(hist, onAct, smart, attach) : await askGemini(hist, onAct, attach);
     out = out || "Tamamdır.";
+    // Model bir işi "yaptım" deyip aracı hiç çağırmadıysa: bir kez daha, bu sefer aracı kullanmaya zorla
+    if (!acts.length && !attach && CMD_RX.test(prompt) && CLAIM_RX.test(out)) {
+      const fix = [...hist, { role: "assistant", content: out }, { role: "user", content: "SİSTEM NOTU: Az önceki cevabında hiçbir aracı çağırmadın; yani işlem gerçekte YAPILMADI. Şimdi uygun aracı çağırarak isteği gerçekten yerine getir ve araç sonucuna göre kısa onay ver. Yapamıyorsan bunu açıkça söyle." }];
+      const out2 = useClaude ? await askClaude(fix, onAct, smart) : await askGemini(fix, onAct);
+      out = acts.length ? (out2 || "Tamamdır.") : "Bunu yapamadım Burak, işlem gerçekleşmedi. Biraz farklı söyler misin? (ör. 'yarın 7:30'a alarm kur')";
+    }
   } catch (e) {
     const offline = !navigator.onLine || /failed to fetch|network|timeout|unable to resolve|internet/i.test(String(e.message));
     const local = (offline || e.message === "NOKEY") && !attach ? offlineCommand(prompt) : null;
@@ -780,7 +808,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">JARVIS v1.2 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">JARVIS v1.3 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -1120,7 +1148,10 @@ class WavRecorder {
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.src = this.ctx.createMediaStreamSource(this.stream);
     this.proc = this.ctx.createScriptProcessor(4096, 1, 1); this.chunks = []; this.len = 0;
-    this.proc.onaudioprocess = e => { const d = e.inputBuffer.getChannelData(0); this.chunks.push(new Float32Array(d)); this.len += d.length; };
+    this.proc.onaudioprocess = e => {
+      const d = e.inputBuffer.getChannelData(0); this.chunks.push(new Float32Array(d)); this.len += d.length;
+      if (this.onLevel) { let q = 0; for (let i = 0; i < d.length; i += 4) q += d[i] * d[i]; this.onLevel(Math.sqrt(q / (d.length / 4))); }
+    };
     this.src.connect(this.proc); this.proc.connect(this.ctx.destination); this.t0 = Date.now();
   }
   seconds() { return this.t0 ? (Date.now() - this.t0) / 1000 : 0; }
@@ -1608,6 +1639,204 @@ handleLaunch = async function (action) {
   return _baseLaunch(action);
 };
 
+/* =====================================================================
+   v1.3 — DÜZELTMELER: doğru ses tanıma, kesin komutlar, gerçek alarm
+   ===================================================================== */
+
+/* ================= Türkçe sayı ve saat çözümleme ================= */
+const NUMW = { "sıfır": 0, "bir": 1, "iki": 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, "yedi": 7, "sekiz": 8, "dokuz": 9, "on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "elli": 50, "altmış": 60, "yarım": 0.5 };
+function wordsToDigits(t) {
+  const out = []; let acc = null;
+  const flush = () => { if (acc !== null) { out.push(String(acc)); acc = null; } };
+  for (const x of t.split(" ")) {
+    const base = x.split(/['’]/)[0]; const suf = x.slice(base.length); const v = NUMW[base];
+    if (v !== undefined && base !== "yarım") {
+      if (acc !== null && acc >= 10 && acc % 10 === 0 && v < 10) acc += v; else { flush(); acc = v; }
+      if (suf) { out.push(acc + suf); acc = null; }
+    } else { flush(); out.push(x); }
+  }
+  flush();
+  return out.join(" ").replace(/(\d+) buçuk/g, "$1:30").replace(/yarım saat/g, "30 dakika");
+}
+const DAYIDX = { "pazar": 0, "pazartesi": 1, "salı": 2, "çarşamba": 3, "perşembe": 4, "cuma": 5, "cumartesi": 6 };
+/** Metinden saat ve gün çıkarır. Dönüş: {h, m, dayOffset|null, weekday|null, repeat} ya da null */
+function parseClock(t) {
+  let m = t.match(/(?:saat\s*)?(\d{1,2})[:.](\d{2})/) || t.match(/saat\s*(\d{1,2})(?!\s*(?:dakika|dk|saniye|saat))/) || t.match(/(?:sabah|akşam|aksam|gece|öğlen|öğleden sonra|ikindi)\s*(\d{1,2})/) || t.match(/(\d{1,2})\s*(?:'?(?:de|da|te|ta|e|a|ye|ya))\b/);
+  if (!m) return null;
+  let h = Number(m[1]), mi = Number(m[2] || 0);
+  if (h > 23 || mi > 59) return null;
+  if (/(akşam|aksam|öğleden sonra|ikindi)/.test(t) && h < 12) h += 12;
+  else if (/gece/.test(t) && h >= 7 && h < 12) h += 12;
+  else if (/öğlen/.test(t) && h < 7) h += 12;
+  const r = { h, m: mi, dayOffset: null, weekday: null, repeat: "none" };
+  if (/yarın/.test(t)) r.dayOffset = 1; else if (/bugün/.test(t)) r.dayOffset = 0;
+  for (const [k, v] of Object.entries(DAYIDX).sort((a, b) => b[0].length - a[0].length)) if (new RegExp("(?:^|\\s)" + k + "(?:ye|ya|e|a|günü|gunu)?(?=\\s|$)").test(t) && !/her\s/.test(t)) { r.weekday = v; break; }
+  if (/her gün|hergün|her sabah|her akşam|her gece/.test(t)) r.repeat = "daily";
+  else if (/hafta ?içi/.test(t)) r.repeat = "weekdays";
+  else if (/hafta ?sonu/.test(t)) r.repeat = "weekend";
+  else if (/her hafta|her (pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar)/.test(t)) { r.repeat = "weekly"; const w = t.match(/her (pazartesi|salı|çarşamba|perşembe|cumartesi|cuma|pazar)/); if (w) r.weekday = DAYIDX[w[1]]; }
+  return r;
+}
+function clockToDate(c) {
+  const d = new Date(); d.setSeconds(0, 0); d.setHours(c.h, c.m);
+  if (c.dayOffset !== null) d.setDate(d.getDate() + c.dayOffset);
+  else if (c.weekday !== null) { let add = (c.weekday - d.getDay() + 7) % 7; if (add === 0 && d < new Date()) add = 7; d.setDate(d.getDate() + add); }
+  else if (d < new Date()) d.setDate(d.getDate() + 1);
+  return d;
+}
+function relDelta(t) {
+  const m = t.match(/(\d+(?::30)?)\s*(saniye|sn|dakika|dk|saat)\s*(?:sonra|içinde|icinde|sonrasına|lık|lik|luk|lük)?/);
+  if (!m) return null; let n = m[1].includes(":") ? Number(m[1].split(":")[0]) + 0.5 : Number(m[1]);
+  const unit = m[2]; return Math.round(n * (unit.startsWith("sa") && unit !== "saniye" ? 3600 : unit === "saniye" || unit === "sn" ? 1 : 60));
+}
+
+/* ================= gerçek alarm ve zamanlayıcı (Saat uygulaması) ================= */
+async function setClockAlarm({ h, m, label = "JARVIS", days = null }) {
+  if (!Jarvis) { const d = new Date(); d.setHours(h, m, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); A.addReminder({ text: "⏰ " + label, due: localISO(d) }); return { ok: true, yedek: "hatırlatıcı" }; }
+  const r = await Jarvis.setAlarm({ hour: h, minute: m, message: label, days: days || [] });
+  if (!r || !r.ok) { const d = new Date(); d.setHours(h, m, 0, 0); if (d < new Date()) d.setDate(d.getDate() + 1); A.addReminder({ text: "⏰ " + label, due: localISO(d) }); return { ok: true, yedek: "hatırlatıcı", not: (r && r.error) || "Saat uygulamasına alarm kurulamadı, JARVIS alarmı kuruldu." }; }
+  return { ok: true, saat: `${pad(h)}:${pad(m)}`, gunler: days || [] };
+}
+async function setClockTimer(seconds, label = "JARVIS") {
+  if (!Jarvis) { A.addReminder({ text: "⏱ " + label, due: localISO(new Date(Date.now() + seconds * 1000)) }); return { ok: true, yedek: "hatırlatıcı" }; }
+  const r = await Jarvis.setTimer({ seconds, message: label });
+  if (!r || !r.ok) { A.addReminder({ text: "⏱ " + label, due: localISO(new Date(Date.now() + seconds * 1000)) }); return { ok: true, yedek: "hatırlatıcı" }; }
+  return { ok: true, saniye: seconds };
+}
+const DAYS_FOR = { daily: [1, 2, 3, 4, 5, 6, 0], weekdays: [1, 2, 3, 4, 5], weekend: [6, 0] };
+const durTR = s => s >= 3600 ? `${Math.floor(s / 3600)} saat${s % 3600 ? " " + Math.round((s % 3600) / 60) + " dakika" : ""}` : s >= 60 ? `${Math.round(s / 60)} dakika` : `${s} saniye`;
+
+/* ================= kesin komutlar: yapay zekâya gitmeden ================= */
+async function quickCommand(raw) {
+  const t0 = trLower(raw).replace(/[.,!?]/g, " ").replace(/\s+/g, " ").trim();
+  const t = wordsToDigits(t0);
+  // ZAMANLAYICI
+  if (/(zamanlayıcı|zamanlayici|geri ?sayım|kronometre|sayaç|timer)/.test(t)) {
+    const s = relDelta(t); if (!s) return null;
+    const r = await setClockTimer(s, "JARVIS");
+    return { reply: `Zamanlayıcı başladı: ${durTR(s)}.`, act: "⏱ zamanlayıcı", r };
+  }
+  // ALARM / UYANDIR
+  if (/(alarm|uyandır|uyandir|kaldır beni|uyanmam lazım)/.test(t) && !/(alarm(ı|i|ları|lari)? (sil|kapat|iptal))/.test(t)) {
+    const rel = /sonra/.test(t) ? relDelta(t) : null;
+    if (rel) {
+      const d = new Date(Date.now() + rel * 1000);
+      if (rel < 60 * 60 * 24) { const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "JARVIS" }); return { reply: `Alarm ${pad(d.getHours())}:${pad(d.getMinutes())} için kuruldu.`, act: "⏰ alarm", r }; }
+    }
+    const c = parseClock(t); if (!c) return null;
+    const label = (raw.match(/(?:için|icin)\s+(.{2,40})$/i) || [])[1] || "JARVIS";
+    const days = DAYS_FOR[c.repeat] || (c.repeat === "weekly" && c.weekday !== null ? [c.weekday] : null);
+    const when = clockToDate(c);
+    const within24 = when - Date.now() < 864e5 + 6e4;
+    if (days || within24) {
+      const r = await setClockAlarm({ h: c.h, m: c.m, label, days });
+      const dtxt = days ? (c.repeat === "daily" ? "her gün " : c.repeat === "weekdays" ? "hafta içi her gün " : c.repeat === "weekend" ? "hafta sonları " : `her ${DAYS[c.weekday]} `) : `${fmtWhen(localISO(when)).split(" ")[0]} `;
+      return { reply: `Alarm kuruldu: ${dtxt}${pad(c.h)}:${pad(c.m)}.${r.yedek ? " (Saat uygulaması yerine JARVIS alarmı.)" : ""}`, act: "⏰ alarm", r };
+    }
+    // 24 saatten uzak tarih: Saat uygulaması tarih desteklemez → JARVIS alarmı (bildirim) kur
+    A.addReminder({ text: "⏰ Alarm" + (label !== "JARVIS" ? ": " + label : ""), due: localISO(when) });
+    return { reply: `${fmtWhen(localISO(when))} için alarm kurdum.`, act: "⏰ alarm" };
+  }
+  // HATIRLATICI (net kalıplar)
+  if (/hatırlat|hatirlat|unutturma/.test(t)) {
+    const what = s => s.replace(/(bana|beni|lütfen|jarvis|hey)/g, " ").replace(/\b(mi|mı|da|de)\b/g, " ").replace(/\s+/g, " ").trim();
+    const m1 = t.match(/(\d+(?::30)?)\s*(dakika|dk|saat)\s*sonra\s+(.+?)\s*(?:diye\s*)?(?:hatırlat|hatirlat|unutturma)/);
+    const m2 = m1 ? null : t.match(/(.+?)\s+(\d+(?::30)?)\s*(dakika|dk|saat)\s*sonra\s*(?:hatırlat|hatirlat)/);
+    if (m1 || m2) {
+      const rel = relDelta(t); const body = m1 ? m1[3] : m2[1];
+      const txt = what(body.replace(/(mayı|meyi|mamı|memi|masını|mesini)$/, ""));
+      if (rel && txt.length > 1) { const d = new Date(Date.now() + rel * 1000); A.addReminder({ text: txt.charAt(0).toLocaleUpperCase("tr-TR") + txt.slice(1), due: localISO(d) }); return { reply: `Tamam, saat ${pad(d.getHours())}:${pad(d.getMinutes())} olunca "${txt}" diye hatırlatacağım.`, act: "⏰ hatırlatıcı" }; }
+    }
+  }
+  return null;
+}
+
+/* ================= Gemini ile ses anlama (Türkçe + İngilizce) ================= */
+let GEM_REC = null;
+async function listenGemini() {
+  const rec = new WavRecorder(); GEM_REC = rec;
+  let base = 0, nBase = 0, speechAt = 0, lastLoud = 0; const t0 = Date.now();
+  rec.onLevel = rms => {
+    const now = Date.now();
+    if (now - t0 < 350) { base += rms; nBase++; return; }
+    const floor = nBase ? base / nBase : 0.005; const thr = Math.max(0.018, floor * 3.2);
+    if (rms > thr) { if (!speechAt) speechAt = now; lastLoud = now; }
+    const bar = Math.min(1, rms / (thr * 3)); $("#reactor").style.setProperty("--lvl", bar.toFixed(2));
+  };
+  await rec.start();
+  await new Promise(res => {
+    const iv = setInterval(() => {
+      const now = Date.now();
+      if (rec.stopNow || (speechAt && now - lastLoud > 1400) || (!speechAt && now - t0 > 7000) || now - t0 > 20000) { clearInterval(iv); res(); }
+    }, 120);
+  });
+  const hadSpeech = !!speechAt; const b64 = await rec.stop(); GEM_REC = null;
+  if (!hadSpeech) return null;
+  setMode("think", "Anlıyorum…");
+  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir (ör. JARVIS, Netflix, self-tape): her kelimeyi söylendiği dilde ve doğru yazımla yaz. Saatleri rakamla yaz (ör. 07:30). Sadece dökümü yaz; açıklama, tırnak, yorum ekleme. Anlaşılır bir konuşma yoksa sadece ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }]);
+  const clean = String(txt || "").replace(/^["'“]|["'”]$/g, "").trim();
+  return !clean || clean.includes("###") ? null : clean;
+}
+
+/* ================= araç çağırmadan "yaptım" demeyi engelle ================= */
+const CMD_RX = /(alarm|hatırlat|hatirlat|kur(?=\s|$)|ekle|not al|kaydet|sil(?=\s|$)|ara(?=\s|$)|arar mısın|aç(?=\s|$)|gönder|yaz(?=\s|$)|başlat|ayarla|uyandır|zamanlayıcı)/i;
+const CLAIM_RX = /(kurdum|kuruldu|ekledim|eklendi|ayarladım|ayarlandı|kaydettim|kaydedildi|hatırlatacağım|açıyorum|açtım|arıyorum|gönderdim|başlattım|sildim|not aldım)/i;
+
+/* ================= yeni araçlar ================= */
+TOOLS.unshift(
+  T("alarm_kur", "Telefonun Saat uygulamasına GERÇEK alarm kurar (çalar saat). 'Alarm kur', 'beni uyandır' isteklerinde bunu kullan. Tarih desteklemez; 24 saatten uzak tek seferlik alarmlar için hatirlatici_ekle kullan.", { saat: str("HH:mm (24 saat)"), etiket: str("Alarm adı"), tekrar: str("Tekrar", ["none", "daily", "weekdays", "weekend"]) }, ["saat"],
+    async a => { const [h, m] = String(a.saat).split(":").map(Number); if (isNaN(h)) return { hata: "Saat anlaşılmadı" }; return setClockAlarm({ h, m: m || 0, label: a.etiket || "JARVIS", days: DAYS_FOR[a.tekrar] || null }); }),
+  T("zamanlayici_kur", "Saat uygulamasında geri sayım zamanlayıcısı başlatır.", { saniye: num("Toplam saniye"), etiket: str("Ad") }, ["saniye"], a => setClockTimer(Math.max(1, Math.round(a.saniye)), a.etiket || "JARVIS"))
+);
+Object.assign(ACT_TR, { alarm_kur: "⏰ alarm", zamanlayici_kur: "⏱ zamanlayıcı" });
+
+/* ================= sistem testi ================= */
+async function diagnostics() {
+  const rows = []; const ok = (b, t, extra = "") => rows.push(`<div class="perm"><span>${t}${extra ? `<br><small style="color:var(--dim)">${esc(extra)}</small>` : ""}</span><span class="${b ? "ok" : "no"}">${b ? "✓" : "✗"}</span></div>`);
+  infoBox("SİSTEM TESTİ", "Kontrol ediliyor…");
+  try { const r = await plainGemini("Sadece 'tamam' yaz."); ok(!!r, "Beyin (Gemini)", `model: ${SET.geminiModel}`); } catch (e) { ok(false, "Beyin (Gemini)", e.message === "NOKEY" ? "Anahtar girilmemiş" : e.message); }
+  if (NATIVE) {
+    const p = await nat(() => Jarvis.permissionsStatus(), {}) || {}; PERM = p;
+    ok(p.notifications, "Bildirim izni", p.notifications ? "" : "Ayarlar → İzinler → Bildirim");
+    ok(p.exactAlarm, "Tam zamanlı alarm", p.exactAlarm ? "" : "Olmadan hatırlatıcılar gecikebilir");
+    ok(p.microphone, "Mikrofon");
+    const al = await nat(() => Jarvis.canSetAlarm(), {}); ok(al && al.ok, "Saat uygulamasına alarm", al && al.app ? al.app : "Saat uygulaması bulunamadı → JARVIS alarmı kullanılır");
+    const pend = await nat(() => LN.getPending(), { notifications: [] }); ok(true, "Bekleyen JARVIS alarmı", String((pend.notifications || []).length));
+    const w = await nat(() => Jarvis.wakeStatus(), {}); ok(!SET.wake || (w && w.status === "listening"), "Hey Jarvis", w ? w.status : "-");
+    ok(p.battery, "Pil kısıtlaması kapalı", p.battery ? "" : "Arka planda kapanabilir");
+  }
+  const trv = voices.filter(v => /^tr/i.test(v.lang)).length; ok(trv > 0, "Türkçe ses", `${trv} ses`);
+  ok(SET.stt === "gemini" ? !!SET.geminiKey : true, "Ses tanıma", SET.stt === "gemini" ? "Gemini (Türkçe + İngilizce)" : "Google (cihaz)");
+  infoBox("SİSTEM TESTİ", rows.join("") + `<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="testNotif">1 dk sonra test bildirimi</button><button class="btn ghost sm" id="testAlarm">2 dk sonra test alarmı</button></div>`);
+  $("#testNotif").onclick = () => { A.addReminder({ text: "Test bildirimi ✓ Hatırlatıcılar çalışıyor.", due: localISO(new Date(Date.now() + 65e3)) }); toast("1 dakika sonra bildirim gelecek"); };
+  $("#testAlarm").onclick = async () => { const d = new Date(Date.now() + 2 * 6e4 + 3e4); const r = await setClockAlarm({ h: d.getHours(), m: d.getMinutes(), label: "JARVIS test" }); toast(r.yedek ? "Saat uygulaması yok → JARVIS alarmı kuruldu" : `Saat uygulamasına ${pad(d.getHours())}:${pad(d.getMinutes())} alarmı kuruldu`, 4000); };
+}
+
+/* ================= ayarlara: ses tanıma ve uyandırma hassasiyeti ================= */
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    const ses = [...document.querySelectorAll("#b-set .card")].find(c => /^SES$/.test(c.querySelector("h3").textContent.trim()));
+    if (ses) ses.querySelector(".form").insertAdjacentHTML("afterbegin", `<div class="lbl">Ses tanıma motoru</div><select data-set="stt"><option value="gemini" ${SET.stt === "gemini" ? "selected" : ""}>Gemini — Türkçe + İngilizce, en doğru</option><option value="google" ${SET.stt === "google" ? "selected" : ""}>Google (cihaz) — hızlı, internetsiz de çalışır</option></select>`);
+    const hj = [...document.querySelectorAll("#b-set .card")].find(c => /^HEY JARVIS$/.test(c.querySelector("h3").textContent.trim()));
+    if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Jarvis" ile uyan<small>Tek başına "Jarvis" yetmez; yanlış uyanmayı büyük ölçüde engeller</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
+      <div class="lbl">Hassasiyet</div><select data-set="wakeConf"><option value="0.96" ${SET.wakeConf >= 0.95 ? "selected" : ""}>Düşük — çok nadir yanlış uyanır</option><option value="0.92" ${SET.wakeConf >= 0.9 && SET.wakeConf < 0.95 ? "selected" : ""}>Orta (önerilen)</option><option value="0.85" ${SET.wakeConf < 0.9 ? "selected" : ""}>Yüksek — uzaktan da duyar, ara sıra yanılır</option></select>`);
+    $("#b-set").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row"><div class="hint" style="margin:0">Bir şey çalışmıyorsa önce sistem testini çalıştır.</div><button class="btn sm" id="diagBtn">🩺 Sistem testi</button></div></div>`);
+  };
+  const baseSet = onSetChange;
+  onSetChange = async function (el) {
+    const k = el.dataset.set;
+    if (k === "wakeStrict" || k === "wakeConf") {
+      SET[k] = k === "wakeConf" ? Number(el.value) : el.checked; await saveSet();
+      if (Jarvis) nat(() => Jarvis.setWakeOptions({ strict: !!SET.wakeStrict, conf: Number(SET.wakeConf) }));
+      return toast("Uyandırma ayarı güncellendi");
+    }
+    return baseSet(el);
+  };
+}
+document.addEventListener("click", e => { if (e.target.closest("#diagBtn")) diagnostics(); });
+
 /* ================= açılış ================= */
 async function boot() {
   await loadAll();
@@ -1632,6 +1861,7 @@ async function boot() {
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();
     AppP && AppP.addListener("backButton", () => { if ($("#modal").classList.contains("on")) $("#modal").classList.remove("on"); else if (!$("#v-home").classList.contains("on")) go("home"); else AppP.minimizeApp(); });
+    await nat(() => Jarvis.setWakeOptions({ strict: !!SET.wakeStrict, conf: Number(SET.wakeConf) || 0.92 }));
     if (SET.wake) nat(() => Jarvis.startWake());
     const la = await nat(() => Jarvis.getLaunchAction(), {}); if (la && la.action) handleLaunch(la.action);
   } else {

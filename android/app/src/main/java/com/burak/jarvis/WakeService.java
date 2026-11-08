@@ -293,6 +293,7 @@ public class WakeService extends Service implements RecognitionListener {
         try {
             closeRecognizer();
             recognizer = new Recognizer(model, 16000.0f, grammar());
+            recognizer.setWords(true);
             speech = new SpeechService(recognizer, 16000.0f);
             speech.startListening(this);
             paused = false;
@@ -353,18 +354,38 @@ public class WakeService extends Service implements RecognitionListener {
 
     private List<String> words = new ArrayList<>();
 
-    private boolean hasJarvis(String json, String key) {
+    /**
+     * Yanlış uyanmayı önlemek için: sadece kesinleşmiş sonuçlara bakılır (kısmi sonuçlar yok sayılır),
+     * "jarvis" kelimesinin güven skoru eşiği geçmeli ve katı modda önünde "hey/okay" olmalı.
+     * Kısıtlı dil bilgisinde her ses en yakın kelimeye zorlanır; bu yüzden güven skoru şart.
+     */
+    private boolean hasJarvis(String json) {
         try {
-            String t = " " + new JSONObject(json).optString(key, "") + " ";
-            if (t.contains("jarvis")) return true;
-            for (String w : words) if (t.contains(" " + w + " ")) return true;
+            JSONObject o = new JSONObject(json);
+            JSONArray res = o.optJSONArray("result");
+            if (res == null || res.length() == 0) return false;
+            float need = prefs().getFloat("wakeConf", 0.92f);
+            boolean strict = prefs().getBoolean("wakeStrict", true);
+            for (int i = 0; i < res.length(); i++) {
+                JSONObject w = res.getJSONObject(i);
+                String word = w.optString("word", "");
+                double conf = w.optDouble("conf", 0);
+                boolean target = word.equals("jarvis") || words.contains(word);
+                if (!target || conf < need) continue;
+                if (!strict) return true;
+                if (i > 0) {
+                    JSONObject prev = res.getJSONObject(i - 1);
+                    String pw = prev.optString("word", "");
+                    if ((pw.equals("hey") || pw.equals("okay")) && prev.optDouble("conf", 0) >= need - 0.15) return true;
+                }
+            }
             return false;
         } catch (Exception e) { return false; }
     }
 
-    @Override public void onPartialResult(String hypothesis) { if (hasJarvis(hypothesis, "partial")) main.post(this::onHotword); }
-    @Override public void onResult(String hypothesis) { if (hasJarvis(hypothesis, "text")) main.post(this::onHotword); }
-    @Override public void onFinalResult(String hypothesis) { if (hasJarvis(hypothesis, "text")) main.post(this::onHotword); }
+    @Override public void onPartialResult(String hypothesis) { /* kısmi sonuçla tetikleme yok: yanlış alarmların ana kaynağı */ }
+    @Override public void onResult(String hypothesis) { if (hasJarvis(hypothesis)) main.post(this::onHotword); }
+    @Override public void onFinalResult(String hypothesis) { if (hasJarvis(hypothesis)) main.post(this::onHotword); }
 
     /* ---------- ayarlar ---------- */
     private SharedPreferences prefs() { return getSharedPreferences("jarvis", Context.MODE_PRIVATE); }
@@ -385,9 +406,13 @@ public class WakeService extends Service implements RecognitionListener {
 
     private String grammar() {
         words = customWords(this);
+        boolean strict = prefs().getBoolean("wakeStrict", true);
         JSONArray g = new JSONArray();
-        g.put("hey jarvis"); g.put("jarvis"); g.put("okay jarvis");
-        for (String w : words) { g.put(w); g.put("hey " + w); }
+        g.put("hey jarvis"); g.put("okay jarvis");
+        if (!strict) g.put("jarvis");
+        for (String w : words) { g.put("hey " + w); if (!strict) g.put(w); }
+        // Sık geçen kısa kelimeler: rastgele konuşmanın "jarvis"e zorlanmasını engeller
+        for (String f : new String[] { "hey", "okay", "yes", "no", "hello", "service", "jars", "jerry", "harvest", "nervous", "travis", "davis", "chavez", "garbage", "very", "is", "us", "this", "it" }) g.put(f);
         g.put("[unk]");
         return g.toString();
     }

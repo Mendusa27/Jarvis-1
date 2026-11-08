@@ -193,8 +193,17 @@ public class JarvisPlugin extends Plugin {
                 i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
                 i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang);
                 i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L);
+                i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
+                i.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false);
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L);
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L);
+                i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L);
+                i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+                if (Build.VERSION.SDK_INT >= 34) {
+                    // Türkçe konuşurken araya giren İngilizce kelimeler için dil geçişi
+                    i.putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_SWITCH, RecognizerIntent.LANGUAGE_SWITCH_BALANCED);
+                    i.putStringArrayListExtra(RecognizerIntent.EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES, new ArrayList<>(java.util.Arrays.asList("tr-TR", "en-US")));
+                }
                 recognizer.startListening(i);
             } catch (Exception e) {
                 if (listenCall != null) { listenCall.reject("Ses tanıma başlatılamadı: " + e.getMessage()); listenCall = null; }
@@ -854,6 +863,16 @@ public class JarvisPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setWakeOptions(PluginCall call) {
+        SharedPreferences.Editor e = getContext().getSharedPreferences("jarvis", Context.MODE_PRIVATE).edit();
+        if (call.hasOption("strict")) e.putBoolean("wakeStrict", Boolean.TRUE.equals(call.getBoolean("strict", true)));
+        if (call.hasOption("conf")) e.putFloat("wakeConf", call.getFloat("conf", 0.92f));
+        e.apply();
+        if (WakeService.running) { wakeCmd(WakeService.ACTION_PAUSE); main.postDelayed(() -> wakeCmd(WakeService.ACTION_RESUME), 500); }
+        call.resolve();
+    }
+
+    @PluginMethod
     public void wakeSample(PluginCall call) {
         if (WakeService.sharedModel == null) { call.reject("Önce Hey Jarvis'i aç ve modelin yüklenmesini bekle."); return; }
         wakeCmd(WakeService.ACTION_PAUSE);
@@ -965,5 +984,65 @@ public class JarvisPlugin extends Plugin {
             o.put("ok", s.global(action));
             call.resolve(o);
         });
+    }
+
+    /* ---------------- v1.3: gerçek alarm ve zamanlayıcı (Saat uygulaması) ---------------- */
+    @PluginMethod
+    public void setAlarm(PluginCall call) {
+        JSObject o = new JSObject();
+        try {
+            Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
+            i.putExtra(android.provider.AlarmClock.EXTRA_HOUR, (int) call.getInt("hour", 7));
+            i.putExtra(android.provider.AlarmClock.EXTRA_MINUTES, (int) call.getInt("minute", 0));
+            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "JARVIS"));
+            i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
+            i.putExtra(android.provider.AlarmClock.EXTRA_VIBRATE, true);
+            JSArray days = call.getArray("days", new JSArray());
+            if (days.length() > 0) {
+                ArrayList<Integer> d = new ArrayList<>();
+                // JS: 0=Pazar..6=Cumartesi  →  Calendar: 1=Pazar..7=Cumartesi
+                for (int k = 0; k < days.length(); k++) d.add(days.getInt(k) + 1);
+                i.putExtra(android.provider.AlarmClock.EXTRA_DAYS, d);
+            }
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (i.resolveActivity(getContext().getPackageManager()) == null) {
+                o.put("ok", false); o.put("error", "Saat uygulaması alarm isteğini kabul etmiyor"); call.resolve(o); return;
+            }
+            getContext().startActivity(i);
+            o.put("ok", true);
+        } catch (Exception e) {
+            o.put("ok", false); o.put("error", e.getMessage());
+        }
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void setTimer(PluginCall call) {
+        JSObject o = new JSObject();
+        try {
+            Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_TIMER);
+            i.putExtra(android.provider.AlarmClock.EXTRA_LENGTH, Math.max(1, (int) call.getInt("seconds", 60)));
+            i.putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, call.getString("message", "JARVIS"));
+            i.putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, true);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (i.resolveActivity(getContext().getPackageManager()) == null) {
+                o.put("ok", false); o.put("error", "Saat uygulaması zamanlayıcıyı kabul etmiyor"); call.resolve(o); return;
+            }
+            getContext().startActivity(i);
+            o.put("ok", true);
+        } catch (Exception e) {
+            o.put("ok", false); o.put("error", e.getMessage());
+        }
+        call.resolve(o);
+    }
+
+    @PluginMethod
+    public void canSetAlarm(PluginCall call) {
+        JSObject o = new JSObject();
+        Intent i = new Intent(android.provider.AlarmClock.ACTION_SET_ALARM);
+        ResolveInfo ri = getContext().getPackageManager().resolveActivity(i, 0);
+        o.put("ok", ri != null);
+        if (ri != null) o.put("app", String.valueOf(ri.loadLabel(getContext().getPackageManager())));
+        call.resolve(o);
     }
 }
