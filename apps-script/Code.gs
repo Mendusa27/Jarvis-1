@@ -33,6 +33,9 @@ function doPost(e) {
       case "pcDone":       pcDone(req.id, req.result); return out({ ok: true });
       case "pcResult":     return out({ ok: true, result: pcResultGet(req.id) });
       case "briefData":    return out(Object.assign({ ok: true }, briefData(false)));
+      case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
+      case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
+      case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
       case "mailDraftFile": return out(Object.assign({ ok: true }, gmailDraft(req)));
       default:             return out({ ok: false, error: "Bilinmeyen işlem: " + req.action });
     }
@@ -259,7 +262,7 @@ function pcResultGet(id) { const x = pcQueue_().find(x => x.id === id); return x
 function briefData(force) {
   const cache = CacheService.getScriptCache();
   if (!force) { const c = cache.get("brief"); if (c) return JSON.parse(c); }
-  const d = { etkinlikler: calendarList(2), mailler: gmail("is:unread in:inbox newer_than:2d", 8), hazirlandi: fmt_(new Date()) };
+  const d = { etkinlikler: calendarList(2), mailler: gmail("is:unread in:inbox newer_than:2d", 8), hazirlandi: fmt_(new Date()), geceRaporu: jget_("nightReport", null) };
   try { cache.put("brief", JSON.stringify(d).slice(0, 95000), 45 * 60); } catch (e) {}
   return d;
 }
@@ -268,4 +271,50 @@ function briefWarm() { const h = Number(Utilities.formatDate(new Date(), Session
 function kurulumBrifing() {
   const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "briefWarm");
   if (!has) ScriptApp.newTrigger("briefWarm").timeBased().everyHours(1).create();
+}
+
+
+/* ---------- v2.0: Drive'a dosya kaydı ve şifreli yedek ---------- */
+function folder_(name) { const it = DriveApp.getFoldersByName(name); return it.hasNext() ? it.next() : DriveApp.createFolder(name); }
+function saveFile(req) {
+  const f = folder_(req.folder || "JARVIS");
+  const blob = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || "application/octet-stream", req.name || "dosya");
+  const file = f.createFile(blob);
+  if (req.keep) { // eski yedekleri temizle
+    const files = []; const it = f.getFiles(); while (it.hasNext()) files.push(it.next());
+    files.sort((a, b) => b.getDateCreated() - a.getDateCreated()).slice(Number(req.keep)).forEach(x => x.setTrashed(true));
+  }
+  return { id: file.getId(), url: file.getUrl(), name: file.getName() };
+}
+function getBackup(req) {
+  const f = folder_(req.folder || "JARVIS Yedek"); const files = []; const it = f.getFiles(); while (it.hasNext()) files.push(it.next());
+  if (!files.length) return { data: null };
+  files.sort((a, b) => b.getDateCreated() - a.getDateCreated());
+  return { name: files[0].getName(), data: Utilities.base64Encode(files[0].getBlob().getBytes()) };
+}
+
+/* ---------- v2.0: gece mesaisi (sen uyurken JARVIS hazırlık yapar) ---------- */
+/** Uygulamada "Gece mesaisi" açılınca Gemini anahtarı buraya kaydedilir ve her gece 05:00'te çalışır. */
+function nightJob() {
+  const key = props_().getProperty("GEMINI_KEY"); if (!key) return;
+  let ctx = "";
+  try { ctx += "TAKVİM (2 gün):\n" + calendarList(2).map(e => `${e.baslangic} ${e.baslik}`).join("\n") + "\n"; } catch (e) {}
+  try { ctx += "OKUNMAMIŞ MAİLLER:\n" + gmail("is:unread in:inbox newer_than:1d", 12).map(m => `${m.kimden}: ${m.konu} — ${m.ozet}`).join("\n") + "\n"; } catch (e) {}
+  try { radarRun(); } catch (e) {}
+  try { ctx += "YENİ CASTING/İLANLAR:\n" + radarGet().filter(x => !x.seen).slice(0, 10).map(x => x.title || x.baslik || JSON.stringify(x).slice(0, 120)).join("\n") + "\n"; } catch (e) {}
+  const prompt = "Sen JARVIS'sin. Burak uyurken gece mesaisi yaptın. Aşağıdaki verilerden sabah ona okunacak, Türkçe, en fazla 8 cümlelik bir 'gece raporu' yaz: önemli mailler (cevap gerekenler), bugünkü işler, dikkat çeken casting ilanları ve öneriler. Gereksiz detay verme.\n\n" + ctx;
+  const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"];
+  for (const m of models) {
+    try {
+      const r = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`, { method: "post", contentType: "application/json", muteHttpExceptions: true, payload: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 900 } }) });
+      if (r.getResponseCode() !== 200) continue;
+      const j = JSON.parse(r.getContentText());
+      const t = ((j.candidates && j.candidates[0].content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
+      if (t) { jset_("nightReport", { at: fmt_(new Date()), text: t }); CacheService.getScriptCache().remove("brief"); return; }
+    } catch (e) {}
+  }
+}
+function kurulumGece() {
+  const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "nightJob");
+  if (!has) ScriptApp.newTrigger("nightJob").timeBased().atHour(5).everyDays(1).create();
 }

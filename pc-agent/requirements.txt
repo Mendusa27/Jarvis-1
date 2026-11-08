@@ -1,0 +1,9 @@
+numpy
+sounddevice
+pyautogui
+pyperclip
+keyboard
+pillow
+pygetwindow
+pyttsx3
+vosk

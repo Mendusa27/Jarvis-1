@@ -166,3 +166,29 @@ npm install
 npx cap sync android
 cd android && ./gradlew assembleDebug
 ```
+
+
+## v2.0 — Stüdyo, beyin ve bilgisayarda JARVIS
+
+**Yeni Stüdyo sekmesi (✦):** sunum (.pptx) ve belge (.docx) hazırlama, fotoğraf düzenleme (kırpma, ışık, filtre, yazı, arka plan bulanıklaştırma/kaldırma, toplu düzenleme, en iyi fotoğrafları seçme), görsel üretme (Cloudflare, ücretsiz), Reels/showreel ve fotoğraftan video, otomatik altyazı, self-tape kırpma ve analizi, kompozit kart, portfolyo sitesi, marka kiti. Dosyalar telefonda *İndirilenler/JARVIS*, *Resimler/JARVIS*, *Filmler/JARVIS* klasörlerine kaydedilir ve paylaşılabilir. Sesle de olur: "drama atölyesi hakkında 8 slaytlık sunum hazırla".
+
+- Görsel üretmek için: dash.cloudflare.com → ücretsiz hesap → API Tokens → "Workers AI" şablonu. Token ve Account ID'yi Ayarlar → Stüdyo'ya yaz.
+
+**Beyin:** Plan → Bilgi sekmesine PDF/metin/fotoğraf belge ekle; JARVIS sorularında bunlardan cevap verir. Konuya göre uzman mod (oyunculuk koçu, yazılım, ajans, planlayıcı), hata günlüğü, gizlilik modu, Groq'a otomatik kota geçişi, bilgisayarda Ollama ile yerel beyin, şifreli Drive yedeği.
+
+**Koçlar (Kariyer → Koç):** İngilizce konuşma pratiği, diksiyon hocası, drama eğitmenliği sınav hazırlığı, canlı sahne partneri, ses/beden ısınma, hedef planı. Replik bölümünde ezber modu ve karakter analizi. Canlı modda 📷 ile JARVIS'e kameradan gösterebilirsin.
+
+**Hayat → Kişiler:** düzenli görüşmek istediğin kişileri ekle; zamanı gelince hatırlatır.
+
+**Gece mesaisi:** Ayarlar → Gece mesaisini aç. Her sabah 05:00'te Google tarafında mailler, takvim ve casting radarı taranır, brifinge "gece raporu" eklenir. (Code.gs'yi güncelleyip yeniden dağıt.)
+
+### Google Apps Script güncellemesi
+`apps-script/Code.gs` dosyasının tamamını script.google.com'daki projene yapıştır → Dağıt → Dağıtımları yönet → Düzenle → Yeni sürüm → Dağıt. (URL değişmez.)
+
+### Bilgisayarda JARVIS (Windows)
+1. python.org'dan Python 3.10+ kur ("Add python to PATH" işaretli).
+2. Bu depodaki `pc-agent` klasörünü bilgisayara indir (GitHub → Code → Download ZIP).
+3. `JARVIS-masaustu-kur.bat`'a çift tıkla. Masaüstüne JARVIS kısayolu gelir.
+4. Kısayolla başlat; ilk açılışta Gemini anahtarını (ve istersen Groq anahtarını, Apps Script URL ve TOKEN'ı) sorar.
+5. "Hey Jarvis" de ya da **Ctrl+Alt+J**'ye bas, söyle: "Chrome'u aç ve casting ilanları ara", "ekranda ne var", "bu hatayı açıkla", "Word'e şunu yaz", "sesi kıs", "CV dosyamı bul ve maile ekle".
+Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir şey çalıştırmaz; zekâ bulutta (ücretsiz Gemini).

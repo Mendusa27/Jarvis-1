@@ -792,6 +792,85 @@ public class JarvisPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void fileSave(PluginCall call) {
+        String name = call.getString("name", "dosya.bin");
+        String mime = call.getString("mime", "application/octet-stream");
+        if (mime.contains(";")) mime = mime.substring(0, mime.indexOf(';'));
+        String col = call.getString("collection", "downloads");
+        java.io.File f = tmpFile(name);
+        try {
+            String rel; String envDir;
+            if ("pictures".equals(col)) { rel = "Pictures/JARVIS"; envDir = android.os.Environment.DIRECTORY_PICTURES; }
+            else if ("movies".equals(col)) { rel = "Movies/JARVIS"; envDir = android.os.Environment.DIRECTORY_MOVIES; }
+            else { rel = "Download/JARVIS"; envDir = android.os.Environment.DIRECTORY_DOWNLOADS; }
+            Uri uri;
+            if (Build.VERSION.SDK_INT >= 29) {
+                Uri base;
+                if ("pictures".equals(col)) base = android.provider.MediaStore.Images.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                else if ("movies".equals(col)) base = android.provider.MediaStore.Video.Media.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                else base = android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY);
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, rel);
+                v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1);
+                android.content.ContentResolver cr = getContext().getContentResolver();
+                uri = cr.insert(base, v);
+                if (uri == null) throw new Exception("Dosya kaydı oluşturulamadı");
+                try (java.io.OutputStream out = cr.openOutputStream(uri); java.io.InputStream in = new java.io.FileInputStream(f)) {
+                    if (out == null) throw new Exception("Dosya açılamadı");
+                    byte[] buf = new byte[256 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                v.clear();
+                v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0);
+                cr.update(uri, v, null, null);
+            } else {
+                java.io.File dir = new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(envDir), "JARVIS");
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                java.io.File dst = new java.io.File(dir, name);
+                try (java.io.InputStream in = new java.io.FileInputStream(f); java.io.OutputStream out = new java.io.FileOutputStream(dst)) {
+                    byte[] buf = new byte[256 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
+                android.media.MediaScannerConnection.scanFile(getContext(), new String[] { dst.getAbsolutePath() }, new String[] { mime }, null);
+                uri = Uri.fromFile(dst);
+            }
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+            JSObject o = new JSObject();
+            o.put("ok", true);
+            o.put("uri", uri.toString());
+            o.put("path", rel + "/" + name);
+            call.resolve(o);
+        } catch (Exception e) {
+            call.reject("Kaydedilemedi: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void share(PluginCall call) {
+        try {
+            Uri uri = Uri.parse(call.getString("uri", ""));
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType(call.getString("mime", "*/*"));
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            String text = call.getString("text", null);
+            if (text != null) i.putExtra(Intent.EXTRA_TEXT, text);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent ch = Intent.createChooser(i, "Paylaş");
+            ch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(ch);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Paylaşılamadı: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
     public void fileSaveToGallery(PluginCall call) {
         String name = call.getString("name", "kayit.webm");
         String mime = call.getString("mime", "video/webm");

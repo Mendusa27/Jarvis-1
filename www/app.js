@@ -673,7 +673,7 @@ async function send(text, byVoice = false, attach = null, label = null) {
   if (text === "__brief") {
     let pre = null; try { pre = await prefetchBrief(); } catch {}
     prompt = "Günaydın! Günlük brifingimi ver: hava durumu, bugünkü takvim ve hatırlatıcılar, seçme/çekim ve vardiyalar, açık görevler, varsa önemli okunmamış mailler. Sonunda kısa bir motivasyon cümlesi." +
-      (pre ? "\nHAZIR VERİLER (bunları kullan, takvim/mail/hava araçlarını tekrar çağırma):\n" + JSON.stringify({ hava: pre.hava, takvim: pre.takvim, mailler: (pre.mailler || []).slice(0, 6) }).slice(0, 6000) : "");
+      (pre ? "\nHAZIR VERİLER (bunları kullan, takvim/mail/hava araçlarını tekrar çağırma):\n" + JSON.stringify({ hava: pre.hava, takvim: pre.takvim, mailler: (pre.mailler || []).slice(0, 6), gece_raporu: pre.gece || undefined }).slice(0, 7000) : "");
   }
   if (text === "__evening") prompt = "Gün sonu özeti: bugün ne yaptım (tamamlanan görevler, alışkanlıklar, harcamalar), neler kaldı, yarın beni ne bekliyor? Yarın için 1-2 öneri ver.";
   CHAT.push({ role: "user", content: prompt }); saveChat();
@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">JARVIS v1.5 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">JARVIS v2.0 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -1220,7 +1220,7 @@ async function plainGemini(prompt, parts = [], tools = null, opt = {}) {
   const models = [first, ...(opt.fallback || []), ...GEMINI_FALLBACK].filter((m, i, a) => m && a.indexOf(m) === i);
   for (let i = 0; i < models.length; i++) {
     try {
-      const gc = { temperature: opt.temperature ?? 0.7, maxOutputTokens: opt.max || 1400 }; const th = thinkCfg(models[i], "low"); if (th) gc.thinkingConfig = th;
+      const gc = { temperature: opt.temperature ?? 0.7, maxOutputTokens: opt.max || 1400 }; if (opt.json) gc.responseMimeType = "application/json"; const th = thinkCfg(models[i], "low"); if (th) gc.thinkingConfig = th;
       const body = { contents: [{ role: "user", parts: [...parts, { text: prompt }] }], generationConfig: gc };
       if (tools) body.tools = tools;
       let j;
@@ -1485,7 +1485,7 @@ TOOLS.push(
   T("ekrana_yaz", "Açık uygulamadaki odaklanmış yazı alanına metin yazar.", { metin: str("Metin") }, ["metin"], async a => (await a11yOk()) ? Jarvis.a11yType({ text: a.metin }) : { hata: "Ekran erişimi kapalı" }),
   T("ekran_hareket", "Geri, ana ekran, son uygulamalar, bildirimler veya kaydırma yapar.", { hareket: str("Hareket", ["geri", "ana_ekran", "son_uygulamalar", "bildirimler", "asagi_kaydir", "yukari_kaydir"]) }, ["hareket"], async a => (await a11yOk()) ? Jarvis.a11yGlobal({ action: a.hareket }) : { hata: "Ekran erişimi kapalı" }),
   T("akilli_ev", "Akıllı ev cihazını/webhook'u tetikler (ışık, priz...).", { ad: str("Cihaz/eylem adı, Ayarlar'daki gibi") }, ["ad"], a => fireWebhook(a.ad)),
-  T("bilgisayar", "Bilgisayardaki JARVIS ajanına komut verir. open_app: uygulama aç; open_url: link aç; find_file: dosya ara; mail_file: dosyayı Gmail taslağına ekle (arg=dosya adı, arg2=alıcı); lock: kilitle; notify: bilgisayarda mesaj göster.", { action: str("Komut", ["open_app", "open_url", "find_file", "mail_file", "lock", "notify"]), arg: str("Uygulama/link/dosya adı/mesaj"), arg2: str("Ek bilgi (ör. alıcı e-posta)") }, ["action"],
+  T("bilgisayar", "Bilgisayardaki JARVIS ajanına komut verir. open_app: uygulama aç; open_url: link aç; find_file: dosya ara; mail_file: dosyayı Gmail taslağına ekle (arg=dosya adı, arg2=alıcı); lock: kilitle; notify: bilgisayarda mesaj göster; ask: bilgisayardaki JARVIS'e serbest görev ver (arg=görev, ör. "Word'ü aç ve toplantı notu başlığı yaz") — bilgisayarda JARVIS masaüstü sürümü çalışıyorsa.", { action: str("Komut", ["open_app", "open_url", "find_file", "mail_file", "lock", "notify", "ask"]), arg: str("Uygulama/link/dosya adı/mesaj"), arg2: str("Ek bilgi (ör. alıcı e-posta)") }, ["action"],
     async a => { if (["lock", "mail_file"].includes(a.action) && !(await confirmBox(`Bilgisayarda: ${a.action} ${a.arg || ""} ${a.arg2 || ""}`, "Gönder"))) return { iptal: true }; return pcCommand(a.action, a.arg, a.arg2); }),
   T("yol_suresi", "Bir yere arabayla tahmini süre (İstanbul trafiği payı dahil) ve ne zaman çıkılması gerektiği.", { yer: str("Hedef"), varis: str("Varış saati YYYY-MM-DDTHH:mm (ops.)") }, ["yer"],
     async a => { const t = await travelMinutes(a.yer); const out = { tahmini_dk: t.min, yer: t.yer }; if (a.varis) { const d = parseDate(a.varis); if (d) out.cikis = localISO(new Date(d - (t.min + 15) * 6e4)); } return out; }),
@@ -2246,7 +2246,7 @@ let BRIEF_CACHE = null;
 async function prefetchBrief(force = false) {
   if (!force && BRIEF_CACHE && Date.now() - BRIEF_CACHE.at < 30 * 6e4) return BRIEF_CACHE;
   const [g, w] = await Promise.all([SET.scriptUrl ? script("briefData").catch(() => null) : null, weather().catch(() => null)]);
-  BRIEF_CACHE = { at: Date.now(), takvim: g && g.etkinlikler, mailler: g && g.mailler, hava: w };
+  BRIEF_CACHE = { at: Date.now(), takvim: g && g.etkinlikler, mailler: g && g.mailler, hava: w, gece: g && g.geceRaporu && g.geceRaporu.text };
   return BRIEF_CACHE;
 }
 
@@ -2298,6 +2298,715 @@ document.addEventListener("click", async e => {
   if (e.target.closest("#testNatural")) { try { if (!SET.geminiKey) return toast("Önce Gemini anahtarı"); const b = await geminiTtsBuffer(`Merhaba ${SET.name}, ben JARVIS. Sesim artık böyle.`); await playBuffer(b); } catch (er) { toast("Doğal ses: " + (er.status === 429 ? "günlük ücretsiz ses kotası doldu, telefonun sesi kullanılacak" : er.message), 5000); } }
   if (e.target.closest("#testGroq")) { try { const r = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel, messages: [{ role: "user", content: "Sadece 'tamam' yaz." }], max_tokens: 5 }, { Authorization: "Bearer " + SET.groqKey }); toast("✓ Groq: " + ((r.choices[0].message.content) || "tamam")); } catch (er) { toast("✗ Groq: " + er.message, 5000); } }
 });
+
+/* =====================================================================
+   v2.0 — STÜDYO: sunum, belge, fotoğraf, görsel üretme, video, kart
+   ===================================================================== */
+const libLoaded = {};
+function loadLib(src) { return libLoaded[src] || (libLoaded[src] = new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Kütüphane yüklenemedi: " + src)); document.head.appendChild(s); })); }
+const blobToB64 = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(String(f.result).split(",")[1]); f.readAsDataURL(b); });
+const pickFiles = (accept, multiple = false) => new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = accept; i.multiple = multiple; i.onchange = () => res([...(i.files || [])]); i.click(); });
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+const fileImg = async f => { const u = URL.createObjectURL(f); const i = await loadImg(u); i._url = u; return i; };
+const brand = () => (SET.brands || []).find(b => b.id === SET.brandId) || { name: SET.name, primary: "#0b2236", accent: "#4fd8ff", text: "#ffffff", font: "Arial", logo: "" };
+const fname = (base, ext) => `${String(base || "jarvis").replace(/[^\wçğıöşüÇĞİÖŞÜ -]/g, "").trim().replace(/\s+/g, "-").slice(0, 40) || "jarvis"}-${ymd(new Date())}.${ext}`;
+
+/* ---------- dosya kaydetme ve paylaşma ---------- */
+async function saveFile(blob, name, collection = "downloads") {
+  const mime = blob.type || "application/octet-stream";
+  if (!Jarvis) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); return { ok: true, yer: "İndirilenler" }; }
+  const CH = 768 * 1024, buf = new Uint8Array(await blob.arrayBuffer());
+  await Jarvis.fileBegin({ name });
+  for (let i = 0; i < buf.length; i += CH) await Jarvis.fileAppend({ name, data: bytesToB64(buf.subarray(i, i + CH)) });
+  const r = await Jarvis.fileSave({ name, mime, collection });
+  S.files = [{ name, mime, uri: r.uri, path: r.path, at: localISO(new Date()) }, ...(S.files || [])].slice(0, 60); save();
+  return { ok: true, yer: r.path, uri: r.uri };
+}
+async function shareSaved(f) { if (Jarvis && f.uri) return Jarvis.share({ uri: f.uri, mime: f.mime }); toast("Paylaşım sadece telefonda"); }
+async function toDrive(blob, name) { const data = await blobToB64(blob); return script("saveFile", { name, mime: blob.type, data, folder: "JARVIS" }); }
+
+/* ---------- JSON üretimi ---------- */
+async function geminiJSON(prompt, parts = []) {
+  const t = await plainGemini(prompt + "\n\nSADECE geçerli JSON döndür, açıklama yazma.", parts, null, { temperature: 0.6, max: 6000, json: true });
+  const m = String(t).match(/[\[{][\s\S]*[\]}]/); if (!m) throw new Error("Yapay zekâ geçerli bir taslak üretemedi");
+  return JSON.parse(m[0]);
+}
+
+/* ---------- görsel üretme (Cloudflare Workers AI, ücretsiz) ---------- */
+async function cfImage(prompt, w = 1024, h = 1024) {
+  if (!SET.cfAccount || !SET.cfToken) throw new Error("Cloudflare bağlı değil (Ayarlar → Stüdyo).");
+  let en = prompt;
+  if (/[çğıöşüÇĞİÖŞÜ]|\b(ve|bir|için|ile)\b/.test(prompt) && SET.geminiKey) { try { en = (await plainGemini("Translate this image description to a rich English image-generation prompt. Only output the prompt: " + prompt, [], null, { max: 200, temperature: 0.3, model: "gemini-3.5-flash-lite" })) || prompt; } catch {} }
+  const j = await httpJson(`https://api.cloudflare.com/client/v4/accounts/${SET.cfAccount}/ai/run/@cf/black-forest-labs/flux-1-schnell`, { prompt: en, steps: 6, width: w, height: h }, { Authorization: "Bearer " + SET.cfToken });
+  const b64 = j.result && (j.result.image || j.result); if (!b64 || typeof b64 !== "string") throw new Error((j.errors && j.errors[0] && j.errors[0].message) || "Görsel üretilemedi");
+  return "data:image/jpeg;base64," + b64;
+}
+
+/* ---------- SUNUM (.pptx) ---------- */
+async function makePresentation({ konu, slayt = 8, ton = "profesyonel", gorsel = true }) {
+  const b = brand();
+  const plan = await geminiJSON(`"${konu}" konusunda ${slayt} slaytlık Türkçe bir sunum hazırla. Ton: ${ton}. Hazırlayan: ${SET.name}${b.name ? " (" + b.name + ")" : ""}.
+JSON şeması: {"title":"","subtitle":"","slides":[{"title":"","bullets":["kısa madde"],"notes":"konuşmacı notu","image":"(isteğe bağlı) görsel tarifi"}]}. Maddeler kısa ve etkili olsun (en fazla 5). En fazla 3 slayta görsel tarifi koy.`);
+  await loadLib("lib/pptxgen.bundle.js");
+  const p = new window.PptxGenJS(); p.layout = "LAYOUT_WIDE"; p.author = SET.name; p.title = plan.title;
+  const C = c => String(c || "#000").replace("#", "");
+  p.defineSlideMaster({ title: "J", background: { color: "FFFFFF" }, objects: [{ rect: { x: 0, y: 0, w: "100%", h: 0.18, fill: { color: C(b.accent) } } }, ...(b.logo ? [{ image: { data: b.logo, x: 12.2, y: 6.85, w: 0.9, h: 0.5, sizing: { type: "contain", w: 0.9, h: 0.5 } } }] : [])], slideNumber: { x: 0.4, y: 7.0, fontSize: 10, color: "888888" } });
+  const t = p.addSlide(); t.background = { color: C(b.primary) };
+  t.addText(plan.title || konu, { x: 0.7, y: 2.3, w: 12, h: 1.4, fontSize: 40, bold: true, color: C(b.text || "#FFFFFF"), fontFace: b.font });
+  t.addText(plan.subtitle || "", { x: 0.7, y: 3.7, w: 12, h: 0.8, fontSize: 20, color: C(b.accent), fontFace: b.font });
+  t.addText(`${SET.name} · ${fmtWhen(ymd(new Date()), false)}`, { x: 0.7, y: 6.4, w: 8, h: 0.5, fontSize: 12, color: "CCCCCC" });
+  if (b.logo) t.addImage({ data: b.logo, x: 11.3, y: 6.1, w: 1.6, h: 0.9, sizing: { type: "contain", w: 1.6, h: 0.9 } });
+  let imgs = 0;
+  for (const s of plan.slides || []) {
+    const sl = p.addSlide({ masterName: "J" });
+    let img = null;
+    if (gorsel && s.image && imgs < 3 && SET.cfToken) { try { img = await cfImage(s.image, 1024, 768); imgs++; } catch {} }
+    sl.addText(s.title || "", { x: 0.6, y: 0.4, w: 12, h: 0.9, fontSize: 28, bold: true, color: C(b.primary), fontFace: b.font });
+    sl.addText((s.bullets || []).map(x => ({ text: x, options: { bullet: { code: "25A0" }, breakLine: true } })), { x: 0.7, y: 1.5, w: img ? 6.6 : 12, h: 5, fontSize: 20, color: "333333", valign: "top", paraSpaceAfter: 10, fontFace: b.font });
+    if (img) sl.addImage({ data: img, x: 7.6, y: 1.5, w: 5.2, h: 3.9, sizing: { type: "cover", w: 5.2, h: 3.9 } });
+    if (s.notes) sl.addNotes(s.notes);
+  }
+  const blob = await p.write({ outputType: "blob" });
+  const name = fname(plan.title || konu, "pptx");
+  const r = await saveFile(new Blob([blob], { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }), name);
+  S.docs = [{ id: uid(), type: "sunum", title: plan.title || konu, name, plan, at: localISO(new Date()) }, ...(S.docs || [])].slice(0, 40); save();
+  return { ok: true, dosya: name, yer: r.yer, slayt: (plan.slides || []).length + 1 };
+}
+
+/* ---------- BELGE (.docx) ---------- */
+async function makeDocument({ tur = "serbest", konu, detay = "" }) {
+  const mem = S.memory.map(m => m.text).join("; ");
+  const plan = await geminiJSON(`Türkçe bir ${tur} belgesi hazırla. Konu: ${konu}. Ek bilgi: ${detay}. ${tur === "cv" ? "Bu Burak'ın oyuncu CV'si: bildiğin bilgiler: " + mem + ". Bilmediğin yerleri [doldurun] diye bırak, uydurma." : ""}
+JSON: {"title":"","sections":[{"heading":"","paragraphs":[""],"bullets":[""]}]}`);
+  await loadLib("lib/docx.js");
+  const D = window.docx; const ch = [];
+  ch.push(new D.Paragraph({ heading: D.HeadingLevel.TITLE, children: [new D.TextRun({ text: plan.title || konu, bold: true })] }));
+  for (const s of plan.sections || []) {
+    if (s.heading) ch.push(new D.Paragraph({ heading: D.HeadingLevel.HEADING_1, children: [new D.TextRun(s.heading)] }));
+    for (const p of s.paragraphs || []) if (p) ch.push(new D.Paragraph({ children: [new D.TextRun(p)], spacing: { after: 120 } }));
+    for (const x of s.bullets || []) if (x) ch.push(new D.Paragraph({ text: x, bullet: { level: 0 } }));
+  }
+  const doc = new D.Document({ creator: SET.name, title: plan.title, sections: [{ children: ch }] });
+  const blob = await D.Packer.toBlob(doc);
+  const name = fname(plan.title || konu, "docx");
+  const r = await saveFile(new Blob([blob], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), name);
+  S.docs = [{ id: uid(), type: tur, title: plan.title || konu, name, at: localISO(new Date()) }, ...(S.docs || [])].slice(0, 40); save();
+  return { ok: true, dosya: name, yer: r.yer };
+}
+
+/* ---------- FOTOĞRAF EDİTÖRÜ ---------- */
+const ED = { img: null, files: [], aspect: "orig", bri: 100, con: 100, sat: 100, warm: 0, filter: "none", text: "", bg: "none", logo: false, mask: null };
+const ASPECTS = { orig: null, "1:1": 1, "4:5": 0.8, "9:16": 9 / 16, "16:9": 16 / 9, "8x10": 0.8 };
+let SEG = null;
+async function segmenter() {
+  if (SEG) return SEG;
+  const v = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+  const fs = await v.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  SEG = await v.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite" }, outputConfidenceMasks: true, runningMode: "IMAGE" });
+  return SEG;
+}
+async function personMask(img) {
+  const seg = await segmenter(); const r = seg.segment(img); const m = r.confidenceMasks[0];
+  const w = m.width, h = m.height, data = m.getAsFloat32Array(); const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const id = c.getContext("2d").createImageData(w, h); for (let i = 0; i < data.length; i++) { id.data[i * 4 + 3] = Math.round(Math.min(1, data[i] * 1.15) * 255); }
+  c.getContext("2d").putImageData(id, 0, 0); m.close && m.close(); return c;
+}
+function filterCSS(o) {
+  let f = `brightness(${o.bri}%) contrast(${o.con}%) saturate(${o.sat}%)`;
+  if (o.filter === "bw") f += " grayscale(1)"; if (o.filter === "warm") f += " sepia(.25) saturate(1.1)"; if (o.filter === "cool") f += " hue-rotate(-12deg) saturate(.9)";
+  if (o.filter === "cine") f += " contrast(1.15) saturate(.8) sepia(.12)"; if (o.warm) f += ` sepia(${Math.min(.5, Math.abs(o.warm) / 100)})` + (o.warm < 0 ? " hue-rotate(-20deg)" : "");
+  return f;
+}
+async function renderPhoto(img, o, maxSide = 2400) {
+  let sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height, sx = 0, sy = 0;
+  const a = ASPECTS[o.aspect]; if (a) { if (sw / sh > a) { const nw = sh * a; sx = (sw - nw) / 2; sw = nw; } else { const nh = sw / a; sy = (sh - nh) * 0.35; sh = nh; } }
+  const k = Math.min(1, maxSide / Math.max(sw, sh)); const W = Math.round(sw * k), H = Math.round(sh * k);
+  const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  const drawImg = (ctx, filt) => { ctx.filter = filt || "none"; ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H); ctx.filter = "none"; };
+  if (o.bg !== "none") {
+    const mask = o.mask || (o.mask = await personMask(img));
+    const person = document.createElement("canvas"); person.width = W; person.height = H; const pg = person.getContext("2d");
+    drawImg(pg, filterCSS(o)); pg.globalCompositeOperation = "destination-in";
+    pg.drawImage(mask, sx * mask.width / (img.naturalWidth || img.width), sy * mask.height / (img.naturalHeight || img.height), sw * mask.width / (img.naturalWidth || img.width), sh * mask.height / (img.naturalHeight || img.height), 0, 0, W, H);
+    if (o.bg === "blur") drawImg(g, filterCSS(o) + " blur(14px)");
+    else if (o.bg === "white") { g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); }
+    else if (o.bg === "black") { g.fillStyle = "#111"; g.fillRect(0, 0, W, H); }
+    else if (o.bg === "grey") { const gr = g.createRadialGradient(W / 2, H * .4, 10, W / 2, H / 2, Math.max(W, H) * .7); gr.addColorStop(0, "#9a9a9a"); gr.addColorStop(1, "#4a4a4a"); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+    g.drawImage(person, 0, 0);
+  } else drawImg(g, filterCSS(o));
+  if (o.text) { const fs = Math.round(H * 0.055); g.font = `800 ${fs}px Rajdhani, Arial`; g.textAlign = "center"; g.lineWidth = fs * 0.12; g.strokeStyle = "rgba(0,0,0,.7)"; g.fillStyle = "#fff"; g.strokeText(o.text, W / 2, H - fs * 0.9); g.fillText(o.text, W / 2, H - fs * 0.9); }
+  if (o.logo && brand().logo) { const L = await loadImg(brand().logo); const lw = W * 0.16, lh = lw * L.height / L.width; g.globalAlpha = 0.85; g.drawImage(L, W - lw - W * 0.03, H - lh - W * 0.03, lw, lh); g.globalAlpha = 1; }
+  return c;
+}
+const canvasBlob = (c, type = "image/jpeg", q = 0.92) => new Promise(r => c.toBlob(r, type, q));
+async function previewPhoto() {
+  const el = $("#edPrev"); if (!el || !ED.img) return;
+  try { const c = await renderPhoto(ED.img, ED, 900); el.src = c.toDataURL("image/jpeg", 0.8); } catch (e) { toast("Önizleme: " + e.message); }
+}
+async function savePhoto(img = ED.img, o = ED, name) {
+  const c = await renderPhoto(img, o); const png = o.bg !== "none" && o.bg !== "blur" && o.bg !== "grey" && o.bg !== "white" && o.bg !== "black";
+  const b = await canvasBlob(c, png ? "image/png" : "image/jpeg"); return saveFile(b, name || fname("foto", png ? "png" : "jpg"), "pictures");
+}
+async function batchEdit(files, pattern = "foto") {
+  let n = 0; for (const f of files) { const img = await fileImg(f); const o = { ...ED, mask: null }; await savePhoto(img, o, fname(`${pattern}-${pad(++n)}`, "jpg")); URL.revokeObjectURL(img._url); }
+  return n;
+}
+async function smartPick(files) {
+  const thumbs = [];
+  for (const f of files) { const img = await fileImg(f); const c = document.createElement("canvas"); const k = 384 / Math.max(img.width, img.height); c.width = img.width * k; c.height = img.height * k; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); thumbs.push({ f, url: img._url, b64: c.toDataURL("image/jpeg", 0.75).split(",")[1] }); }
+  const scores = [];
+  for (let i = 0; i < thumbs.length; i += 6) {
+    const batch = thumbs.slice(i, i + 6);
+    const r = await geminiJSON(`Bu ${batch.length} fotoğraf bir oyuncu headshot çekiminden. Her birini 0-100 arası puanla: netlik, gözler açık ve canlı mı, ifade, ışık, kadraj. JSON: [{"i":0,"score":0,"reason":"kısa Türkçe"}] (i = bu gruptaki sıra, 0'dan).`, batch.map(t => ({ inlineData: { mimeType: "image/jpeg", data: t.b64 } })));
+    for (const x of r) if (batch[x.i]) scores.push({ ...batch[x.i], score: x.score, reason: x.reason });
+  }
+  return scores.sort((a, b) => b.score - a.score);
+}
+
+/* ---------- KOMPOZİT KART ---------- */
+async function compositeCard(files, info) {
+  const b = brand(); const W = 2400, H = 1600; const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+  const imgs = []; for (const f of files.slice(0, 5)) imgs.push(await fileImg(f));
+  const cover = (img, x, y, w, h) => { const r = Math.max(w / img.width, h / img.height); const sw = w / r, sh = h / r; g.drawImage(img, (img.width - sw) / 2, (img.height - sh) * 0.3, sw, sh, x, y, w, h); };
+  const pad2 = 30, bar = 220;
+  if (imgs[0]) cover(imgs[0], pad2, pad2, 1000, H - bar - pad2 * 2);
+  const gx = 1000 + pad2 * 2, gw = (W - gx - pad2 - pad2) / 2, gh = (H - bar - pad2 * 3) / 2;
+  imgs.slice(1, 5).forEach((im, i) => cover(im, gx + (i % 2) * (gw + pad2), pad2 + Math.floor(i / 2) * (gh + pad2), gw, gh));
+  g.fillStyle = b.primary || "#0b2236"; g.fillRect(0, H - bar, W, bar);
+  g.fillStyle = "#fff"; g.font = "800 92px Rajdhani, Arial"; g.textBaseline = "middle"; g.fillText((info.name || SET.name).toLocaleUpperCase("tr-TR"), 60, H - bar / 2 - 30);
+  g.font = "500 44px Rajdhani, Arial"; g.fillStyle = b.accent || "#4fd8ff"; g.fillText(info.stats || "", 60, H - bar / 2 + 52);
+  g.textAlign = "right"; g.fillStyle = "#fff"; g.font = "600 40px Rajdhani, Arial"; g.fillText(info.contact || b.name || "", W - (b.logo ? 360 : 60), H - bar / 2);
+  if (b.logo) { const L = await loadImg(b.logo); const lh = 140, lw = lh * L.width / L.height; g.drawImage(L, W - lw - 60, H - bar / 2 - lh / 2, lw, lh); }
+  imgs.forEach(i => URL.revokeObjectURL(i._url));
+  return saveFile(await canvasBlob(c, "image/jpeg", 0.93), fname("kompozit-" + (info.name || SET.name), "jpg"), "pictures");
+}
+
+/* ---------- VİDEO: kurgu, altyazı, slate, fotoğraftan video ---------- */
+async function audioWavFromFile(file, start = 0, dur = null) {
+  const ac = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 16000, 16000);
+  const buf = await ac.decodeAudioData(await file.arrayBuffer());
+  const s = Math.floor(start * buf.sampleRate), e = Math.min(buf.length, dur ? s + Math.floor(dur * buf.sampleRate) : buf.length);
+  const ch = buf.getChannelData(0).subarray(s, e); const ratio = buf.sampleRate / 16000, n = Math.floor(ch.length / ratio), pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) pcm[i] = Math.max(-1, Math.min(1, ch[Math.floor(i * ratio)])) * 0x7fff;
+  const out = new ArrayBuffer(44 + n * 2), v = new DataView(out), w = (p, t) => { for (let i = 0; i < t.length; i++) v.setUint8(p + i, t.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true); new Int16Array(out, 44).set(pcm);
+  return { wav: new Uint8Array(out), rms: ch };
+}
+async function subtitlesFor(file, start, dur, lang = "tr") {
+  const { wav } = await audioWavFromFile(file, start, dur); let segs = [];
+  if (SET.groqKey) {
+    const fd = new FormData(); fd.append("file", new Blob([wav], { type: "audio/wav" }), "a.wav"); fd.append("model", "whisper-large-v3-turbo"); fd.append("language", "tr"); fd.append("response_format", "verbose_json");
+    const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + SET.groqKey }, body: fd }); const j = await r.json();
+    segs = (j.segments || []).map(s => ({ start: s.start, end: s.end, text: s.text.trim() })).filter(s => s.text && !WHISPER_JUNK.test(s.text));
+  } else {
+    segs = await geminiJSON("Bu ses kaydını Türkçe altyazıya dök. Her 1-2 saniyelik parça için zaman damgası ver. JSON: [{\"start\":0.0,\"end\":1.5,\"text\":\"\"}]", [{ inlineData: { mimeType: "audio/wav", data: bytesToB64(wav) } }]);
+  }
+  if (lang === "en" && segs.length) { try { const t = await geminiJSON("Bu Türkçe altyazıları doğal İngilizceye çevir, aynı sırayla. JSON: [\"...\"]\n" + JSON.stringify(segs.map(s => s.text))); segs.forEach((s, i) => { if (t[i]) s.text = t[i]; }); } catch {} }
+  return segs;
+}
+async function autoTrim(file) {
+  const { rms } = await audioWavFromFile(file); const win = 1600; let first = -1, last = -1; let mx = 0;
+  const lv = []; for (let i = 0; i < rms.length; i += win) { let q = 0; for (let k = i; k < Math.min(rms.length, i + win); k++) q += rms[k] * rms[k]; const v = Math.sqrt(q / win); lv.push(v); mx = Math.max(mx, v); }
+  const thr = mx * 0.18; lv.forEach((v, i) => { if (v > thr) { if (first < 0) first = i; last = i; } });
+  return first < 0 ? null : { start: Math.max(0, first * 0.1 - 0.6), end: last * 0.1 + 0.8 };
+}
+/** clips: [{file|img, start, end, kind:"video"|"image"|"card", text}] */
+async function renderVideo({ clips, format = "9:16", music = null, subs = "none", cleanAudio = true, narration = null, onProgress }) {
+  const [W, H] = format === "16:9" ? [1280, 720] : format === "1:1" ? [1080, 1080] : [720, 1280];
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  const ac = new (window.AudioContext || window.webkitAudioContext)(); const dest = ac.createMediaStreamDestination();
+  let chain = dest; if (cleanAudio) { const hp = ac.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 90; const comp = ac.createDynamicsCompressor(); comp.threshold.value = -24; comp.ratio.value = 3; hp.connect(comp); comp.connect(dest); chain = hp; }
+  let mEl = null; if (music) { mEl = new Audio(URL.createObjectURL(music)); mEl.loop = true; const ms = ac.createMediaElementSource(mEl); const mg = ac.createGain(); mg.gain.value = narration || clips.some(c => c.kind === "video") ? 0.18 : 0.6; ms.connect(mg); mg.connect(dest); }
+  const mime = ["video/mp4;codecs=avc1,mp4a", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 5e6 } : undefined); const parts = []; rec.ondataavailable = e => e.data.size && parts.push(e.data);
+  const b = brand(); let curSub = "";
+  const drawCover = (src, sw, sh, zoom = 1, px = 0.5, py = 0.4) => { const r = Math.max(W / sw, H / sh) * zoom; const dw = sw * r, dh = sh * r; g.drawImage(src, (W - dw) * px, (H - dh) * py, dw, dh); };
+  const drawSub = () => { if (!curSub) return; const fs = Math.round(W * 0.052); g.font = `700 ${fs}px Rajdhani, Arial`; g.textAlign = "center"; g.lineJoin = "round"; const words = curSub.split(" "); const lines = []; let l = ""; for (const w of words) { if (g.measureText(l + " " + w).width > W * 0.86 && l) { lines.push(l); l = w; } else l = (l ? l + " " : "") + w; } lines.push(l); lines.forEach((t, i) => { const y = H * 0.82 + i * fs * 1.15; g.lineWidth = fs * 0.18; g.strokeStyle = "rgba(0,0,0,.85)"; g.strokeText(t, W / 2, y); g.fillStyle = "#fff"; g.fillText(t, W / 2, y); }); };
+  const drawCard = (title, sub) => { g.fillStyle = b.primary || "#0b2236"; g.fillRect(0, 0, W, H); g.fillStyle = b.accent || "#4fd8ff"; g.fillRect(W * .1, H * .5 + 6, W * .8, 4); g.textAlign = "center"; g.fillStyle = "#fff"; g.font = `800 ${Math.round(W * .075)}px Rajdhani, Arial`; g.fillText(title || "", W / 2, H * .47); g.font = `500 ${Math.round(W * .042)}px Rajdhani, Arial`; g.fillStyle = "#ddd"; (sub || "").split("\n").forEach((s, i) => g.fillText(s, W / 2, H * .57 + i * W * .055)); };
+  const total = clips.reduce((s, c) => s + ((c.end ?? 3) - (c.start || 0)), 0); let done = 0;
+  rec.start(500); if (mEl) mEl.play().catch(() => {});
+  if (narration) { const src = ac.createBufferSource(); src.buffer = narration; src.connect(dest); src.start(); }
+  for (const c of clips) {
+    const dur = (c.end ?? 3) - (c.start || 0);
+    if (c.kind === "video") {
+      const v = document.createElement("video"); v.src = URL.createObjectURL(c.file); v.playsInline = true; v.preload = "auto"; v.crossOrigin = "anonymous";
+      await new Promise(r => { v.onloadedmetadata = r; v.load(); });
+      const vs = ac.createMediaElementSource(v); vs.connect(chain);
+      if ((c.start || 0) > 0.01) { v.currentTime = c.start; await new Promise(r => { v.onseeked = r; }); }
+      await v.play();
+      await new Promise(res => {
+        const tick = () => {
+          const t = v.currentTime; if (t >= (c.end ?? v.duration) - 0.03 || v.ended) { v.pause(); return res(); }
+          drawCover(v, v.videoWidth, v.videoHeight); curSub = ""; if (c.subs) { const s = c.subs.find(s => t - (c.start || 0) >= s.start && t - (c.start || 0) <= s.end + 0.2); curSub = s ? s.text : ""; } drawSub();
+          onProgress && onProgress(Math.min(1, (done + t - (c.start || 0)) / total)); requestAnimationFrame(tick);
+        }; requestAnimationFrame(tick);
+      });
+      vs.disconnect(); URL.revokeObjectURL(v.src);
+    } else {
+      const t0 = performance.now();
+      await new Promise(res => { const tick = () => { const p = (performance.now() - t0) / 1000 / dur; if (p >= 1) return res();
+        if (c.kind === "card") drawCard(c.text, c.sub); else { g.fillStyle = "#000"; g.fillRect(0, 0, W, H); drawCover(c.img, c.img.width, c.img.height, 1.04 + p * 0.1, 0.5 - (c.pan || 0) * (p - .5) * .2, 0.4); if (c.text) { curSub = c.text; drawSub(); } }
+        onProgress && onProgress(Math.min(1, (done + p * dur) / total)); requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+    }
+    done += dur;
+  }
+  await sleep(300); await new Promise(r => { rec.onstop = r; rec.stop(); }); if (mEl) mEl.pause(); ac.close();
+  const blob = new Blob(parts, { type: rec.mimeType || "video/webm" });
+  const ext = (rec.mimeType || "").includes("mp4") ? "mp4" : "webm";
+  return { blob, ext };
+}
+async function photoVideo(files, metin, format = "9:16") {
+  const imgs = []; for (const f of files) imgs.push(await fileImg(f));
+  let narration = null, per = 3;
+  if (metin && SET.geminiKey) { try { narration = await geminiTtsBuffer(metin); per = Math.max(2.2, narration.duration / imgs.length); } catch {} }
+  const clips = imgs.map((img, i) => ({ kind: "image", img, start: 0, end: per, pan: i % 2 ? 1 : -1 }));
+  const r = await renderVideo({ clips, format, narration, onProgress: p => { const e = $("#vidProg"); if (e) e.textContent = `İşleniyor %${Math.round(p * 100)}`; } });
+  imgs.forEach(i => URL.revokeObjectURL(i._url));
+  return saveFile(r.blob, fname("foto-video", r.ext), "movies");
+}
+async function analyzeTape(file) {
+  if (file.size > 19e6) throw new Error("Video 19 MB'den küçük olmalı (kısa bir parça seç).");
+  const b64 = await blobToB64(file);
+  return plainGemini(`Sen deneyimli bir casting direktörü ve oyunculuk koçusun. Bu self-tape'i izle ve Türkçe, yapıcı geri bildirim ver: 1) ilk izlenim, 2) göz teması ve odak, 3) yüz ifadesi ve duygunun inandırıcılığı, 4) tempo ve duraklamalar, 5) kadraj, ışık ve ses kalitesi, 6) bir sonraki çekim için 3 somut öneri. En fazla 220 kelime.`, [{ inlineData: { mimeType: file.type || "video/mp4", data: b64 } }], null, { max: 1200 });
+}
+
+/* ---------- PORTFOLYO SİTESİ ---------- */
+async function portfolioSite() {
+  const facts = S.memory.map(m => m.text).join("\n");
+  const html = await plainGemini(`Burak için tek dosyalık, şık, mobil uyumlu bir oyuncu portfolyo web sayfası (HTML+CSS, JavaScript'siz) yaz. Türkçe. Bölümler: hakkımda, eğitim, işler (dizi/film/tiyatro), yetenekler, iletişim (Instagram @tuncbilekburak). Bilinenler:\n${facts}\nBilmediğin bilgileri uydurma, "[eklenecek]" yaz. Sadece HTML kodunu döndür.`, [], null, { max: 6000 });
+  const code = (String(html).match(/<!DOCTYPE[\s\S]*<\/html>/i) || [html])[0];
+  return saveFile(new Blob([code], { type: "text/html" }), fname("portfolyo", "html"));
+}
+
+/* ---------- araçlar ---------- */
+TOOLS.push(
+  T("sunum_hazirla", "PowerPoint sunumu (.pptx) hazırlar ve telefona kaydeder (görsellerle).", { konu: str("Konu ve amaç"), slayt: num("Slayt sayısı, varsayılan 8"), ton: str("Ton (profesyonel, samimi, ikna edici...)") }, ["konu"], a => makePresentation(a)),
+  T("belge_hazirla", "Word belgesi (.docx) hazırlar: CV, teklif, mektup, sözleşme taslağı, rapor...", { tur: str("Tür", ["cv", "teklif", "mektup", "rapor", "sozlesme", "serbest"]), konu: str("Konu"), detay: str("Ek bilgiler") }, ["konu"], a => makeDocument(a)),
+  T("gorsel_uret", "Yapay zekâyla görsel üretir (afiş, post, sunum görseli) ve galeriye kaydeder.", { aciklama: str("Görsel tarifi"), oran: str("Oran", ["1:1", "9:16", "16:9"]) }, ["aciklama"],
+    async a => { const [w, h] = a.oran === "9:16" ? [768, 1344] : a.oran === "16:9" ? [1344, 768] : [1024, 1024]; const d = await cfImage(a.aciklama, w, h); const r = await saveFile(await (await fetch(d)).blob(), fname("gorsel", "jpg"), "pictures"); STUDIO_LAST = d; return { ok: true, yer: r.yer }; }),
+  T("fotograf_duzenle", "Stüdyo'da açık fotoğrafı düzenleyip kaydeder.", { oran: str("Oran", ["orig", "1:1", "4:5", "9:16", "16:9", "8x10"]), filtre: str("Filtre", ["none", "bw", "warm", "cool", "cine"]), parlaklik: num("50-150"), kontrast: num("50-150"), doygunluk: num("0-200"), yazi: str("Üstüne yazı"), arka_plan: str("Arka plan", ["none", "blur", "white", "black", "grey", "remove"]) }, [],
+    async a => { if (!ED.img) return { hata: "Önce Stüdyo → Fotoğraf'tan bir fotoğraf seç." }; Object.assign(ED, { aspect: a.oran || ED.aspect, filter: a.filtre || ED.filter, bri: a.parlaklik || ED.bri, con: a.kontrast || ED.con, sat: a.doygunluk ?? ED.sat, text: a.yazi ?? ED.text, bg: a.arka_plan || ED.bg }); await previewPhoto(); const r = await savePhoto(); return { ok: true, yer: r.yer }; }),
+  T("portfolyo_sitesi", "Burak için oyuncu portfolyo web sayfası (HTML) hazırlar.", {}, [], () => portfolioSite()),
+  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
+);
+Object.assign(ACT_TR, { sunum_hazirla: "📊 sunum", belge_hazirla: "📄 belge", gorsel_uret: "🎨 görsel", fotograf_duzenle: "🖼 fotoğraf", portfolyo_sitesi: "🌐 portfolyo" });
+let STUDIO_LAST = null;
+
+/* ---------- STÜDYO ARAYÜZÜ ---------- */
+CUR.studio = "doc"; GROUP_EL.studio = "#b-studio";
+const studioRange = (k, label, min, max) => `<div><div class="lbl">${label} <span id="v_${k}">${ED[k]}</span></div><input type="range" min="${min}" max="${max}" value="${ED[k]}" data-ed="${k}"></div>`;
+FORMS.doc = FORMS.photo = FORMS.image = FORMS.video = FORMS.card = FORMS.files = null;
+{
+  const baseList2 = listHTML;
+  listHTML = function (sec) {
+    const busyNote = `<div class="hint" id="stBusy"></div>`;
+    switch (sec) {
+      case "doc": return `<div class="card"><h3>SUNUM</h3><div class="form"><input id="pzKonu" placeholder="Konu (ör. Recast Talent House tanıtımı)"><div class="row"><input id="pzN" type="number" value="8" min="3" max="20"><select id="pzTon"><option>profesyonel</option><option>samimi</option><option>ikna edici</option><option>yaratıcı</option></select></div><button class="btn" id="pzGo">📊 Sunum hazırla (.pptx)</button><div class="hint">Görseller için Cloudflare bağlıysa slaytlara otomatik görsel eklenir.</div></div></div>
+        <div class="card"><h3>BELGE</h3><div class="form"><div class="row"><select id="dcTur"><option value="cv">CV</option><option value="teklif">Teklif</option><option value="mektup">Mektup</option><option value="rapor">Rapor</option><option value="sozlesme">Sözleşme taslağı</option><option value="serbest">Serbest</option></select><input id="dcKonu" placeholder="Konu"></div><textarea id="dcDetay" placeholder="Detaylar (isteğe bağlı)" style="min-height:60px"></textarea><button class="btn" id="dcGo">📄 Belge hazırla (.docx)</button></div></div>
+        <div class="card"><h3>SUNUM PROVASI</h3><button class="btn ghost" id="pzRehearse">🎙 Provamı dinle ve değerlendir</button><div class="hint">Sunumu sesli anlat; tempo, dolgu kelimeler ve netlik için geri bildirim veririm.</div></div>
+        <div class="card"><h3>PORTFOLYO</h3><button class="btn ghost" id="pfGo">🌐 Portfolyo web sayfamı hazırla</button></div>${busyNote}`;
+      case "photo": return `<div class="card"><div class="row"><button class="btn" id="edPick">📷 Fotoğraf seç</button><button class="btn ghost" id="edBatch">Toplu düzenle</button><button class="btn ghost" id="edSmart">⭐ En iyileri seç</button></div>
+        ${ED.img ? `<img id="edPrev" style="width:100%;border-radius:10px;margin-top:10px;background:#111">
+        <div class="form" style="margin-top:8px"><div class="row"><select data-ed="aspect">${Object.keys(ASPECTS).map(k => `<option ${ED.aspect === k ? "selected" : ""} value="${k}">${k === "orig" ? "Orijinal oran" : k === "8x10" ? "Headshot 8x10" : k}</option>`).join("")}</select><select data-ed="filter"><option value="none">Filtre yok</option><option value="bw">Siyah-beyaz</option><option value="warm">Sıcak</option><option value="cool">Soğuk</option><option value="cine">Sinematik</option></select></div>
+        <div class="row">${studioRange("bri", "Parlaklık", 50, 150)}${studioRange("con", "Kontrast", 50, 150)}</div><div class="row">${studioRange("sat", "Doygunluk", 0, 200)}${studioRange("warm", "Sıcaklık", -50, 50)}</div>
+        <div class="row"><select data-ed="bg"><option value="none">Arka plan: aynen</option><option value="blur">Arka planı bulanıklaştır</option><option value="grey">Stüdyo grisi</option><option value="white">Beyaz</option><option value="black">Siyah</option><option value="remove">Kaldır (şeffaf PNG)</option></select><label class="hint" style="flex:0 0 auto"><input type="checkbox" data-ed="logo" ${ED.logo ? "checked" : ""} style="width:auto"> logo</label></div>
+        <input data-ed="text" placeholder="Üstüne yazı (isteğe bağlı)" value="${esc(ED.text)}"><button class="btn" id="edSave">💾 Kaydet</button><div class="hint">Sesle de olur: "fotoğrafı siyah beyaz yap, arka planı bulanıklaştır, kaydet".</div></div>` : `<div class="hint">Bir fotoğraf seç; kırp, ışığını ayarla, filtre ve yazı ekle, arka planı değiştir.</div>`}</div>
+        <div id="smartRes"></div>${busyNote}`;
+      case "image": return `<div class="card"><h3>GÖRSEL ÜRET</h3><div class="form"><textarea id="giTxt" placeholder="Ne çizeyim? (ör. 'karanlık bir tiyatro sahnesinde tek spot ışığı, sinematik')" style="min-height:70px"></textarea><div class="row"><select id="giRatio"><option>1:1</option><option>9:16</option><option>16:9</option></select><button class="btn" id="giGo">🎨 Üret</button></div>${!SET.cfToken ? `<div class="hint">Cloudflare bağlı değil: Ayarlar → Stüdyo.</div>` : ""}</div>${STUDIO_LAST ? `<img src="${STUDIO_LAST}" style="width:100%;border-radius:10px;margin-top:10px">` : ""}</div>${busyNote}`;
+      case "video": return `<div class="card"><h3>REELS / SHOWREEL</h3><div class="form"><button class="btn" id="vrPick">🎬 Klipleri seç</button><div id="vrList">${(VR.clips || []).map((c, i) => `<div class="step"><span>${i + 1}. ${esc(c.file.name.slice(0, 24))} · <input type="number" step="0.5" value="${c.start}" data-vr="${i}:start" style="width:64px;padding:4px"> – <input type="number" step="0.5" value="${c.end}" data-vr="${i}:end" style="width:64px;padding:4px"> sn</span><button class="x" data-vrdel="${i}">✕</button></div>`).join("")}</div>
+        <div class="row"><select id="vrFmt"><option value="9:16">Dikey 9:16 (Reels)</option><option value="16:9">Yatay 16:9</option><option value="1:1">Kare 1:1</option></select><select id="vrSubs"><option value="none">Altyazı yok</option><option value="tr">Türkçe altyazı</option><option value="en">İngilizce altyazı</option></select></div>
+        <input id="vrTitle" placeholder="Açılış kartı (ör. SHOWREEL 2026)"><input id="vrEnd" placeholder="Kapanış kartı (ör. Burak Tunçbilek · Recast)" value="${esc(SET.name)}">
+        <div class="row"><button class="btn ghost" id="vrMusic">🎵 Müzik ${VR.music ? "✓" : "ekle"}</button><label class="hint" style="flex:0 0 auto"><input type="checkbox" id="vrClean" checked style="width:auto"> sesi iyileştir</label></div>
+        <button class="btn" id="vrGo" ${VR.clips && VR.clips.length ? "" : "disabled"}>🎞 Videoyu oluştur</button></div></div>
+        <div class="card"><h3>SELF-TAPE DÜZENLE</h3><div class="form"><input id="stRole" placeholder="Rol / proje (slate için)"><input id="stInfo" placeholder="Boy, yaş aralığı, ajans" value="${esc(brand().name || "")}"><button class="btn ghost" id="stGo">✂️ Self-tape seç → boşlukları kırp + slate ekle</button><button class="btn ghost" id="stAnalyze">🎭 Self-tape'imi analiz et</button></div></div>
+        <div class="card"><h3>FOTOĞRAFTAN VİDEO</h3><div class="form"><textarea id="pvTxt" placeholder="Seslendirme metni (isteğe bağlı)" style="min-height:60px"></textarea><button class="btn ghost" id="pvGo">🖼→🎬 Fotoğrafları seç ve video yap</button></div></div>
+        <div class="hint" id="vidProg"></div><div class="hint">Telefonda işleme gerçek süre kadar sürer; 1-2 dakikalık videolar idealdir.</div>`;
+      case "card": return `<div class="card"><h3>KOMPOZİT KART (ZED CARD)</h3><div class="form"><input id="ccName" value="${esc(SET.name)}" placeholder="Ad Soyad"><input id="ccStats" placeholder="Boy 1.80 · Göz kahve · Saç siyah · Beden M"><input id="ccContact" placeholder="İletişim / ajans" value="${esc(brand().name || "")}"><button class="btn" id="ccGo">🗂 Fotoğrafları seç (1 büyük + 4 küçük) ve kart yap</button></div></div>
+        <div class="card"><h3>MARKA KİTİ</h3>${(SET.brands || []).map(b => `<div class="step"><span><b style="color:${esc(b.accent)}">■</b> ${esc(b.name)}${b.id === SET.brandId ? " · aktif" : ""}</span><button class="btn ghost sm" data-brand="${b.id}">Seç</button><button class="x" data-brdel="${b.id}">✕</button></div>`).join("") || `<div class="hint">Marka yok.</div>`}
+        <div class="form" style="margin-top:6px"><input id="brName" placeholder="Marka adı (ör. Recast Talent House)"><div class="row"><div><div class="lbl">Ana renk</div><input id="brP" type="color" value="#0b2236" style="padding:2px;height:40px"></div><div><div class="lbl">Vurgu</div><input id="brA" type="color" value="#4fd8ff" style="padding:2px;height:40px"></div></div><div class="row"><button class="btn ghost sm" id="brLogo">Logo seç</button><button class="btn sm" id="brAdd">+ Marka ekle</button></div></div></div>`;
+      case "files": return `<div class="card"><h3>ÜRETİLEN DOSYALAR</h3>${(S.files || []).map((f, i) => `<div class="item"><div class="ic">${/pptx/.test(f.name) ? "📊" : /docx/.test(f.name) ? "📄" : /mp4|webm/.test(f.name) ? "🎬" : /html/.test(f.name) ? "🌐" : "🖼"}</div><div class="t"><div class="h">${esc(f.name)}</div><div class="meta">${esc(f.path || "")} · ${fmtWhen(f.at)}</div></div><button class="btn ghost sm" data-share="${i}">Paylaş</button></div>`).join("") || `<div class="empty">Henüz dosya yok.</div>`}</div>`;
+    }
+    return baseList2(sec);
+  };
+}
+const VR = { clips: [], music: null };
+document.addEventListener("input", e => { const k = e.target.dataset && e.target.dataset.ed; if (!k) return; ED[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "range" ? Number(e.target.value) : e.target.value); const v = $("#v_" + k); if (v) v.textContent = ED[k]; clearTimeout(ED._t); ED._t = setTimeout(previewPhoto, 250); });
+document.addEventListener("change", e => {
+  const k = e.target.dataset && e.target.dataset.ed; if (k && e.target.tagName === "SELECT") { ED[k] = e.target.value; previewPhoto(); }
+  const vr = e.target.dataset && e.target.dataset.vr; if (vr) { const [i, f] = vr.split(":"); VR.clips[+i][f] = Number(e.target.value); }
+});
+async function busyRun(label, fn) { const el = $("#stBusy") || $("#vidProg"); if (el) el.textContent = "⏳ " + label + "…"; try { const r = await fn(); if (el) el.textContent = ""; return r; } catch (e) { if (el) el.textContent = ""; toast("✗ " + (e.message === "NOKEY" ? "Gemini anahtarı yok" : e.message), 5000); } }
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#pzGo,#dcGo,#pzRehearse,#pfGo,#edPick,#edSave,#edBatch,#edSmart,[data-smsave],#giGo,#vrPick,[data-vrdel],#vrMusic,#vrGo,#stGo,#stAnalyze,#pvGo,#ccGo,#brLogo,#brAdd,[data-brand],[data-brdel],[data-share]");
+  if (!t) return;
+  if (t.id === "pzGo") { const konu = $("#pzKonu").value.trim(); if (!konu) return toast("Konu yaz"); const r = await busyRun("Sunum hazırlanıyor", () => makePresentation({ konu, slayt: +$("#pzN").value || 8, ton: $("#pzTon").value })); if (r) toast(`✓ ${r.dosya} → ${r.yer}`, 5000); }
+  else if (t.id === "dcGo") { const konu = $("#dcKonu").value.trim(); if (!konu) return toast("Konu yaz"); const r = await busyRun("Belge hazırlanıyor", () => makeDocument({ tur: $("#dcTur").value, konu, detay: $("#dcDetay").value })); if (r) toast(`✓ ${r.dosya} → ${r.yer}`, 5000); }
+  else if (t.id === "pzRehearse") { const b = await recordDialog("SUNUM PROVASI", "Sunumunu anlat (en fazla 9 dk).", 540); if (!b) return; const r = await busyRun("Dinliyorum", () => plainGemini("Sen bir sunum koçusun. Bu provayı dinle. Türkçe değerlendir: konuşma hızı, dolgu kelimeler (ııı, şey, yani) yaklaşık kaç kez, netlik, yapı, enerji, ve 3 somut öneri. En fazla 200 kelime.", [{ inlineData: { mimeType: "audio/wav", data: b } }], null, { max: 1200 })); if (r) { go("home"); bubble("assistant", "🎤 " + r); speak(r); } }
+  else if (t.id === "pfGo") { const r = await busyRun("Portfolyo hazırlanıyor", () => portfolioSite()); if (r) toast("✓ portfolyo kaydedildi → " + r.yer, 5000); }
+  else if (t.id === "edPick") { const [f] = await pickFiles("image/*"); if (!f) return; ED.img = await fileImg(f); ED.mask = null; renderSec("studio"); previewPhoto(); }
+  else if (t.id === "edSave") { const r = await busyRun("Kaydediliyor", () => savePhoto()); if (r) toast("✓ Kaydedildi → " + r.yer); }
+  else if (t.id === "edBatch") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const n = await busyRun(`${fs.length} fotoğraf işleniyor`, () => batchEdit(fs, "foto")); if (n) toast(`✓ ${n} fotoğraf kaydedildi (Pictures/JARVIS)`, 4000); }
+  else if (t.id === "edSmart") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const r = await busyRun(`${fs.length} fotoğraf değerlendiriliyor`, () => smartPick(fs)); if (r) { ED._smart = r; $("#smartRes").innerHTML = `<div class="card"><h3>EN İYİLER</h3>${r.map((x, i) => `<div class="item"><img src="${x.url}" style="width:64px;height:64px;object-fit:cover;border-radius:8px"><div class="t"><div class="h">${x.score}/100</div><div class="meta">${esc(x.reason)}</div></div>${i < 10 ? `<button class="btn ghost sm" data-smsave="${i}">Kaydet</button>` : ""}</div>`).join("")}</div>`; } }
+  else if (t.dataset.smsave) { const x = ED._smart[+t.dataset.smsave]; await saveFile(x.f, x.f.name, "pictures"); toast("✓ Kaydedildi"); }
+  else if (t.id === "giGo") { const txt = $("#giTxt").value.trim(); if (!txt) return toast("Tarif yaz"); const r = await busyRun("Görsel üretiliyor", () => runTool("gorsel_uret", { aciklama: txt, oran: $("#giRatio").value })); if (r && r.ok) { toast("✓ Galeriye kaydedildi"); renderSec("studio"); } else if (r) toast("✗ " + r.hata, 5000); }
+  else if (t.id === "vrPick") { const fs = await pickFiles("video/*", true); for (const f of fs) { const v = document.createElement("video"); v.src = URL.createObjectURL(f); await new Promise(r => { v.onloadedmetadata = r; }); VR.clips.push({ file: f, start: 0, end: Math.min(Math.round(v.duration * 2) / 2, 30) }); URL.revokeObjectURL(v.src); } renderSec("studio"); }
+  else if (t.dataset.vrdel) { VR.clips.splice(+t.dataset.vrdel, 1); renderSec("studio"); }
+  else if (t.id === "vrMusic") { const [f] = await pickFiles("audio/*"); VR.music = f || null; renderSec("studio"); }
+  else if (t.id === "vrGo") {
+    const subs = $("#vrSubs").value, fmt = $("#vrFmt").value, title = $("#vrTitle").value.trim(), endT = $("#vrEnd").value.trim(), clean = $("#vrClean").checked;
+    const r = await busyRun("Video hazırlanıyor", async () => {
+      const clips = []; if (title) clips.push({ kind: "card", text: title, sub: SET.name, start: 0, end: 2.2 });
+      for (const c of VR.clips) { const cc = { kind: "video", file: c.file, start: c.start, end: c.end }; if (subs !== "none") { $("#vidProg").textContent = "Altyazı çıkarılıyor…"; try { cc.subs = await subtitlesFor(c.file, c.start, c.end - c.start, subs); } catch (er) { toast("Altyazı: " + er.message); } } clips.push(cc); }
+      if (endT) clips.push({ kind: "card", text: endT.split("·")[0].trim(), sub: endT.split("·").slice(1).join("·").trim() || brand().name || "", start: 0, end: 2.5 });
+      const out = await renderVideo({ clips, format: fmt, music: VR.music, cleanAudio: clean, onProgress: p => { $("#vidProg").textContent = `İşleniyor %${Math.round(p * 100)}`; } });
+      return saveFile(out.blob, fname(title || "showreel", out.ext), "movies");
+    });
+    if (r) { toast("🎬 Kaydedildi → " + r.yer, 5000); $("#vidProg").textContent = ""; }
+  }
+  else if (t.id === "stGo") {
+    const [f] = await pickFiles("video/*"); if (!f) return;
+    const r = await busyRun("Self-tape düzenleniyor", async () => {
+      const tr = await autoTrim(f).catch(() => null); const v = document.createElement("video"); v.src = URL.createObjectURL(f); await new Promise(r => { v.onloadedmetadata = r; }); const D = v.duration; URL.revokeObjectURL(v.src);
+      const start = tr ? tr.start : 0, end = tr ? Math.min(D, tr.end) : D;
+      const clips = [{ kind: "card", text: SET.name, sub: [$("#stRole").value, $("#stInfo").value].filter(Boolean).join("\n"), start: 0, end: 3 }, { kind: "video", file: f, start, end }];
+      const out = await renderVideo({ clips, format: "16:9", cleanAudio: true, onProgress: p => { $("#vidProg").textContent = `İşleniyor %${Math.round(p * 100)}`; } });
+      return saveFile(out.blob, fname("selftape-" + ($("#stRole").value || "rol"), out.ext), "movies");
+    });
+    if (r) toast("✓ Self-tape hazır → " + r.yer, 5000);
+  }
+  else if (t.id === "stAnalyze") { const [f] = await pickFiles("video/*"); if (!f) return; const r = await busyRun("Self-tape izleniyor", () => analyzeTape(f)); if (r) { go("home"); bubble("assistant", "🎭 " + r); speak(r); } }
+  else if (t.id === "pvGo") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const r = await busyRun("Video hazırlanıyor", () => photoVideo(fs, $("#pvTxt").value.trim(), "9:16")); if (r) toast("🎬 Kaydedildi → " + r.yer, 5000); }
+  else if (t.id === "ccGo") { const fs = await pickFiles("image/*", true); if (!fs.length) return; const r = await busyRun("Kart hazırlanıyor", () => compositeCard(fs, { name: $("#ccName").value, stats: $("#ccStats").value, contact: $("#ccContact").value })); if (r) toast("✓ Kompozit kart → " + r.yer, 5000); }
+  else if (t.id === "brLogo") { const [f] = await pickFiles("image/*"); if (!f) return; const img = await fileImg(f); const c = document.createElement("canvas"); const k = 400 / Math.max(img.width, img.height); c.width = img.width * k; c.height = img.height * k; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); ED._logo = c.toDataURL("image/png"); toast("Logo seçildi"); }
+  else if (t.id === "brAdd") { const name = $("#brName").value.trim(); if (!name) return toast("Marka adı yaz"); const b = { id: uid(), name, primary: $("#brP").value, accent: $("#brA").value, text: "#ffffff", font: "Arial", logo: ED._logo || "" }; SET.brands = [...(SET.brands || []), b]; SET.brandId = b.id; ED._logo = null; await saveSet(); renderSec("studio"); }
+  else if (t.dataset.brand) { SET.brandId = t.dataset.brand; await saveSet(); renderSec("studio"); }
+  else if (t.dataset.brdel) { SET.brands = SET.brands.filter(b => b.id !== t.dataset.brdel); await saveSet(); renderSec("studio"); }
+  else if (t.dataset.share) shareSaved(S.files[+t.dataset.share]);
+});
+
+{ const baseGo = go; go = function (v) { baseGo(v); if (v === "studio") renderSec("studio"); }; }
+
+/* =====================================================================
+   v2.0 — BEYİN VE HAYAT: bilgi bankası, modlar, koçlar, yedek, gizlilik, kota, yerel beyin
+   ===================================================================== */
+
+/* ---------- 1) KİŞİSEL BİLGİ BANKASI (anlamsal arama) ---------- */
+const KB = { db: null };
+function kbDb() {
+  if (KB.db) return Promise.resolve(KB.db);
+  return new Promise((res, rej) => { const r = indexedDB.open("jarvis_kb", 1); r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains("chunks")) d.createObjectStore("chunks", { keyPath: "id" }); }; r.onsuccess = () => { KB.db = r.result; res(KB.db); }; r.onerror = () => rej(r.error); });
+}
+const kbTx = (mode, fn) => kbDb().then(d => new Promise((res, rej) => { const t = d.transaction("chunks", mode); const st = t.objectStore("chunks"); const out = fn(st); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); }));
+const EMB_MODELS = ["gemini-embedding-001", "text-embedding-004"];
+async function embed(texts, task = "RETRIEVAL_DOCUMENT") {
+  for (const m of [SET.embModel, ...EMB_MODELS].filter((x, i, a) => x && a.indexOf(x) === i)) {
+    try {
+      const j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${m}:batchEmbedContents?key=${encodeURIComponent(SET.geminiKey)}`, { requests: texts.map(t => ({ model: "models/" + m, content: { parts: [{ text: t }] }, taskType: task, outputDimensionality: 384 })) });
+      if (SET.embModel !== m) { SET.embModel = m; saveSet(); }
+      return j.embeddings.map(e => Float32Array.from(e.values));
+    } catch (e) { if (e.status !== 404 && e.status !== 400) throw e; }
+  }
+  throw new Error("Gömme modeli bulunamadı");
+}
+function chunkText(t, size = 900, overlap = 120) { const out = []; t = t.replace(/\s+\n/g, "\n").trim(); for (let i = 0; i < t.length; i += size - overlap) out.push(t.slice(i, i + size)); return out.filter(x => x.trim().length > 40); }
+async function kbAdd(title, text, source = "belge") {
+  const chunks = chunkText(text); if (!chunks.length) throw new Error("Metin çok kısa");
+  const docId = uid(); let n = 0;
+  for (let i = 0; i < chunks.length; i += 50) {
+    const part = chunks.slice(i, i + 50); const vecs = await embed(part.map(c => title + "\n" + c));
+    await kbTx("readwrite", st => part.forEach((c, k) => st.put({ id: docId + "_" + (i + k), docId, title, text: c, vec: Array.from(vecs[k]) })));
+    n += part.length;
+  }
+  S.kbDocs = [{ id: docId, title, source, chunks: n, at: localISO(new Date()) }, ...(S.kbDocs || [])]; save();
+  return { ok: true, baslik: title, parca: n };
+}
+async function kbSearch(q, k = 5) {
+  const [qv] = await embed([q], "RETRIEVAL_QUERY");
+  const all = await kbTx("readonly", st => st.getAll());
+  const nq = Math.hypot(...qv);
+  const scored = (all || []).map(c => { let d = 0, n = 0; for (let i = 0; i < c.vec.length; i++) { d += c.vec[i] * qv[i]; n += c.vec[i] * c.vec[i]; } return { c, s: d / (Math.sqrt(n) * nq || 1) }; }).sort((a, b) => b.s - a.s).slice(0, k);
+  return scored.filter(x => x.s > 0.35).map(x => ({ kaynak: x.c.title, metin: x.c.text, benzerlik: Math.round(x.s * 100) / 100 }));
+}
+async function kbDelete(docId) { const all = await kbTx("readonly", st => st.getAll()); await kbTx("readwrite", st => all.filter(c => c.docId === docId).forEach(c => st.delete(c.id))); S.kbDocs = (S.kbDocs || []).filter(d => d.id !== docId); save(); }
+async function fileText(f) {
+  if (/pdf$/i.test(f.name) || f.type === "application/pdf") {
+    const pdfjs = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+    const pdf = await pdfjs.getDocument({ data: await f.arrayBuffer() }).promise; let t = "";
+    for (let i = 1; i <= Math.min(pdf.numPages, 150); i++) { const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); t += tc.items.map(x => x.str).join(" ") + "\n"; }
+    return t;
+  }
+  if (/\.(png|jpe?g|webp)$/i.test(f.name)) { const b = await shrinkImage(f, 1600); return plainGemini("Bu belgedeki/görseldeki tüm yazıyı aynen çıkar.", [{ inlineData: { mimeType: "image/jpeg", data: b } }], null, { max: 4000 }); }
+  return f.text();
+}
+
+/* ---------- 2) UZMAN MODLAR ---------- */
+const MODES = {
+  koc: { rx: /seçme|rol|sahne|replik|oyunculuk|karakter|self-?tape|prova|diksiyon/, txt: "UZMAN MOD — Oyunculuk koçu: somut, uygulanabilir, cesaretlendirici ama dürüst ol; teknik terimleri sade anlat." },
+  yazilim: { rx: /kod|oyun|uygulama|apk|github|hata|bug|galerici|saha yıldızı|cephe|javascript|python/, txt: "UZMAN MOD — Yazılım danışmanı: net teknik adımlar ver, kısa kod örnekleri kullan." },
+  ajans: { rx: /recast|ajans|oyuncu listesi|kadro|müşteri|başvuru|casting direktörü/, txt: "UZMAN MOD — Ajans yöneticisi: profesyonel, düzenli, iş odaklı ol; mail taslaklarında kurumsal dil kullan." },
+  plan: { rx: /plan|program|hafta|gün(ümü)?|takvim|yetiştir|öncelik/, txt: "UZMAN MOD — Planlayıcı: zaman bloklarıyla, öncelik sırasıyla, gerçekçi plan yap; vardiya ve yol sürelerini hesaba kat." }
+};
+let CUR_MODE = "";
+function modeFor(prompt) { const t = trLower(prompt); for (const [k, m] of Object.entries(MODES)) if (m.rx.test(t)) return m.txt; return ""; }
+{
+  const baseSys = systemPrompt;
+  systemPrompt = function () {
+    let s = baseSys();
+    if (CUR_MODE) s += "\n" + CUR_MODE;
+    if ((S.kbDocs || []).length) s += `\nBİLGİ BANKASI: ${S.kbDocs.length} belge var (${S.kbDocs.slice(0, 8).map(d => d.title).join(", ")}). Burak'ın belgeleri, senaryoları, CV'si hakkında sorularda önce bilgi_ara aracını kullan.`;
+    const ppl = (S.people || []).filter(p => p.every); if (ppl.length) s += `\nÖNEMLİ KİŞİLER: ${ppl.map(p => `${p.name} (her ${p.every} günde bir; son: ${p.last || "?"})`).join(", ")}`;
+    if ((S.issues || []).length) s += `\nSON HATALARIM (tekrarlama): ${S.issues.slice(-5).map(i => i.detail).join(" | ")}`;
+    return s;
+  };
+}
+
+/* ---------- 3) HATA GÜNLÜĞÜ (kendini düzelten JARVIS) ---------- */
+function logIssue(type, detail) { S.issues = [...(S.issues || []), { at: localISO(new Date()), type, detail: String(detail).slice(0, 160) }].slice(-100); save(); }
+{
+  const baseRun = runTool;
+  runTool = async function (name, args) { const r = await baseRun(name, args); if (r && r.hata && !/sadece telefonda|kapalı|bağlı değil/i.test(r.hata)) logIssue("araç", `${name}: ${r.hata}`); return r; };
+}
+const CORRECTION_RX = /^(hayır|yanlış|öyle değil|anlamadın|bunu demedim|yanlış anladın)/i;
+
+/* ---------- 4) GİZLİLİK MODU + YEREL BEYİN + KOTA ---------- */
+const SENSITIVE_RX = /(şifre|parola|pin kodu|kart numara|iban|tc kimlik|kimlik numara|banka hesab|hastalı|teşhis|ilaç|tahlil|maaş|borcum)/i;
+const QUOTA = { day: "", n: {} };
+function qCount(svc) { const d = ymd(new Date()); if (QUOTA.day !== d) { QUOTA.day = d; QUOTA.n = {}; } QUOTA.n[svc] = (QUOTA.n[svc] || 0) + 1; }
+let GEMINI_OFF_UNTIL = 0;
+async function askLocal(history, onAct) {
+  if (!SET.localUrl) throw new Error("NOLOCAL");
+  const base = SET.localUrl.replace(/\/$/, "");
+  const tools = pickTools(history).map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: schemaFor(t, false) } }));
+  const messages = [{ role: "system", content: systemPrompt() }, ...history.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }))];
+  for (let step = 0; step < 6; step++) {
+    const j = await httpJson(base + "/v1/chat/completions", { model: SET.localModel || "qwen2.5:3b", messages, tools, temperature: 0.3 });
+    const msg = j.choices && j.choices[0] && j.choices[0].message; if (!msg) break;
+    if (!msg.tool_calls || !msg.tool_calls.length) return (msg.content || "").trim();
+    messages.push({ role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls });
+    for (const tc of msg.tool_calls) { let a = {}; try { a = typeof tc.function.arguments === "string" ? JSON.parse(tc.function.arguments) : tc.function.arguments; } catch {} onAct(tc.function.name); messages.push({ role: "tool", tool_call_id: tc.id || tc.function.name, content: JSON.stringify(await runTool(tc.function.name, a)) }); }
+  }
+  return "İşlemleri yaptım.";
+}
+// askGemini'yi sarmala: gizlilik, kota yönlendirme, sayım
+{
+  const baseAsk = askGemini;
+  askGemini = async function (history, onAct, attach) {
+    const last = (history[history.length - 1] || {}).content || "";
+    CUR_MODE = modeFor(last);
+    if (CORRECTION_RX.test(last.trim())) logIssue("düzeltme", `Burak düzeltti: "${last.slice(0, 80)}" (önceki: ${(history[history.length - 2] || {}).content?.slice(0, 60) || "-"})`);
+    if (SET.privacy && SENSITIVE_RX.test(last) && !attach) {
+      if (SET.localUrl) { onAct("🔒 yerel"); return askLocal(history, onAct); }
+      const off = offlineCommand(last); if (off) return "🔒 " + off;
+      return "🔒 Gizlilik modu açık: bu konu hassas olduğu için buluta göndermedim. Bilgisayarında yerel beyin kurulursa (Ayarlar → Yerel beyin) bunu da konuşabiliriz.";
+    }
+    if (Date.now() < GEMINI_OFF_UNTIL && SET.groqKey && !attach) { onAct("groq"); qCount("groq"); return askGroq(history, onAct); }
+    try { qCount("gemini"); return await baseAsk(history, onAct, attach); }
+    catch (e) {
+      if (e.status === 429) GEMINI_OFF_UNTIL = Date.now() + 15 * 6e4;
+      if ((e.status === 429 || e.status >= 500) && !attach && SET.localUrl && !SET.groqKey) { onAct("yerel"); return askLocal(history, onAct); }
+      throw e;
+    }
+  };
+}
+
+/* ---------- 5) ŞİFRELİ YEDEK (Drive) ---------- */
+async function deriveKey(pass, salt) { const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]); return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" }, k, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]); }
+async function encryptState(pass) { const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)); const key = await deriveKey(pass, salt); const data = new TextEncoder().encode(JSON.stringify({ S, SET: { ...SET, geminiKey: "", claudeKey: "", groqKey: "", cfToken: "", scriptToken: "" }, CHAT })); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data)); const out = new Uint8Array(28 + ct.length); out.set(salt); out.set(iv, 16); out.set(ct, 28); return bytesToB64(out); }
+async function decryptState(b64, pass) { const u = b64ToBytes(b64); const key = await deriveKey(pass, u.slice(0, 16)); const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u.slice(16, 28) }, key, u.slice(28)); return JSON.parse(new TextDecoder().decode(pt)); }
+async function backupNow() { if (!SET.backupPass) throw new Error("Önce yedek şifresi belirle (Ayarlar → Yedek)."); const b = await encryptState(SET.backupPass); await script("saveFile", { name: `jarvis-yedek-${ymd(new Date())}.enc`, mime: "application/octet-stream", data: b, folder: "JARVIS Yedek", keep: 14 }); META.lastBackup = Date.now(); saveMeta(); return { ok: true }; }
+setTimeout(() => autoBackup(), 20000);
+async function autoBackup() { if (SET.scriptUrl && SET.backupPass && Date.now() - (META.lastBackup || 0) > 864e5) { try { await backupNow(); } catch (e) { console.warn("yedek", e); } } }
+async function restoreLatest(pass) { const r = await script("getBackup", { folder: "JARVIS Yedek" }); if (!r.data) throw new Error("Yedek bulunamadı"); const obj = await decryptState(r.data, pass); S = Object.assign(EMPTY(), obj.S); CHAT = obj.CHAT || CHAT; const keep = { geminiKey: SET.geminiKey, groqKey: SET.groqKey, claudeKey: SET.claudeKey, cfToken: SET.cfToken, scriptToken: SET.scriptToken, scriptUrl: SET.scriptUrl }; SET = Object.assign({ ...DEF_SET }, obj.SET, keep); await saveSet(); saveChat(); save(); return { ok: true, tarih: r.name }; }
+
+/* ---------- 6) ÖNEMLİ KİŞİLER ---------- */
+A.addPerson = ({ name, every = 7 }) => { const p = { id: uid(), name, every: Number(every) || 7, last: "" }; S.people = [...(S.people || []), p]; save(); return p; };
+A.touchPerson = ({ name }) => { const p = (S.people || []).find(p => trLower(p.name).includes(trLower(name))); if (!p) throw new Error("Kişi listede yok"); p.last = ymd(new Date()); save(); return { name: p.name, last: p.last }; };
+function overduePeople() { const now = Date.now(); return (S.people || []).filter(p => p.every && (!p.last || now - parseDate(p.last) > p.every * 864e5)); }
+
+/* ---------- 7) KOÇLAR VE PROVA (canlı) ---------- */
+const COACH = {
+  ingilizce: "Sen Burak'ın İngilizce konuşma koçusun. Onunla İngilizce sohbet et, seviyesine uygun konuş, hatalarını nazikçe ve kısaca Türkçe düzelt, telaffuz için ipucu ver. Ara sıra casting ve oyunculukla ilgili İngilizce kalıplar öğret.",
+  diksiyon: "Sen bir diksiyon ve sahne konuşması hocasısın. Burak'a tekerlemeler, artikülasyon ve nefes egzersizleri yaptır; söyleyişini dinleyip netlik, vurgu ve tonlama için geri bildirim ver.",
+  sinav: "Sen drama eğitmenliği sınavına hazırlayan bir eğitmensin. Burak'a drama yöntemleri, oyun ve doğaçlama teknikleri, ders planlama konularında sorular sor, cevabını değerlendir, eksikleri öğret.",
+  partner: "Sen Burak'ın sahne partnerisin. Aşağıdaki sahnede diğer karakter(ler)i canlandır, onun repliklerini bekle, doğal tepki ver. Sahne bitince kısa bir oyunculuk geri bildirimi ver.\nSAHNE:\n"
+};
+async function startCoach(kind, extra = "") {
+  SET.live = true; COACH_EXTRA = (COACH[kind] || "") + extra;
+  const ok = await startLive(); if (!ok) toast("Canlı mod açılamadı; internet ve Gemini anahtarını kontrol et.");
+  return { ok };
+}
+let COACH_EXTRA = "";
+{
+  const baseSys2 = systemPrompt;
+  systemPrompt = function () { return baseSys2() + (LIVE && COACH_EXTRA ? "\n\nŞU ANKİ ROLÜN:\n" + COACH_EXTRA : ""); };
+  const baseStop = LiveSession.prototype.stop;
+  LiveSession.prototype.stop = function (n) { COACH_EXTRA = ""; return baseStop.call(this, n); };
+}
+// Replik ezber modu: kendi repliklerini adım adım gizler, söylediğini karşılaştırır
+function similarity(a, b) { a = normTxt(a); b = normTxt(b); if (!a || !b) return 0; const aw = a.split(" "), bw = new Set(b.split(" ")); return aw.filter(w => bw.has(w)).length / Math.max(aw.length, b.split(" ").length); }
+async function memorize() {
+  const mine = LINES.list.map((l, i) => ({ ...l, i })).filter(l => l.who === LINES.me); if (!mine.length) return toast("Önce sahneyi ayrıştır ve rolünü seç.");
+  const score = {}; let round = 0;
+  for (const level of [1, 2, 3]) {
+    round++; toast(`Tur ${round}/3 — ${level === 1 ? "ipuçlu" : level === 2 ? "ilk kelimeler" : "ezberden"}`, 2500);
+    const order = [...mine].sort((a, b) => (score[a.i] || 0) - (score[b.i] || 0));
+    for (const l of order) {
+      const prev = LINES.list[l.i - 1]; if (prev && prev.who !== LINES.me) await speak(prev.text, true);
+      if (level === 1) await speak("Senin repliğin: " + l.text.split(" ").slice(0, 4).join(" ") + "…", true);
+      if (level === 2) await speak("İpucu: " + l.text.split(" ").slice(0, 2).join(" "), true);
+      const heard = await listen(); const s = similarity(l.text, heard || ""); score[l.i] = s;
+      if (s < 0.7) await speak(`Doğrusu: ${l.text}`, true); else await speak(s > 0.92 ? "Mükemmel." : "İyi.", true);
+    }
+  }
+  const avg = Math.round(mine.reduce((t, l) => t + (score[l.i] || 0), 0) / mine.length * 100);
+  META.lastLines = Date.now(); saveMeta();
+  const msg = `Ezber çalışması bitti: ortalama %${avg}. ${avg >= 85 ? "Hazırsın!" : "Zayıf replikleri bir tur daha çalışalım."}`; bubble("assistant", "🧠 " + msg); speak(msg, true);
+}
+async function characterAnalysis() {
+  if (!LINES.script) return toast("Önce sahneyi yapıştır.");
+  const t = await plainGemini(`Bir oyunculuk koçu olarak bu sahnede "${LINES.me}" karakterini Burak için analiz et. Türkçe: 1) kısa karakter biyografisi (metinden çıkarılan + makul varsayımlar, varsayımları belirt), 2) sahnedeki hedefi ve engeli, 3) alt metin (her önemli replik için kısa not), 4) diğer karakterle ilişkisi, 5) fiziksel ve ses önerileri, 6) self-tape için 3 öneri.\n\nSAHNE:\n${LINES.script.slice(0, 6000)}`, [], null, { max: 2500 });
+  A.addNote({ text: `🎭 ${LINES.me} karakter analizi\n` + t, project: "Rol" }); return t;
+}
+// Isınma rutinleri (sesli rehber)
+const WARMUPS = {
+  ses: [["Dik dur, omuzlarını bırak. Burnundan dört saniye nefes al, sekiz saniyede ver.", 30], ["Dudaklarını titreterek brrr sesiyle aşağıdan yukarı kay.", 30], ["Ağzın kapalı mmm diye mırıldan, yüzündeki titreşimi hisset.", 25], ["Abartılı şekilde a, e, i, o, u de; çeneni rahat bırak.", 25], ["Tekerleme: Şu köşe yaz köşesi, şu köşe kış köşesi, ortada su şişesi. Üç kez, her seferinde biraz daha hızlı.", 35], ["Bir repliğini fısıltıyla, sonra normal, sonra sahne sesiyle söyle.", 40]],
+  beden: [["Boynunu yavaşça sağa sola çevir, sonra yarım daireler çiz.", 30], ["Omuzlarını öne ve arkaya beşer kez çevir.", 25], ["Kollarını iki yana aç, büyük daireler çiz.", 25], ["Belinden öne eğil, kollarını sarkıt, omur omur yavaşça doğrul.", 35], ["Yerinde hafifçe zıpla, tüm bedenini silkele.", 25], ["Gözlerini kapat, üç derin nefes al, karaktere geç.", 30]]
+};
+let WARM_RUN = false;
+async function warmup(kind = "ses") {
+  const list = WARMUPS[kind]; if (!list) return { hata: "Rutin yok" }; WARM_RUN = true; go("home"); bubble("sys", kind === "ses" ? "🎤 Ses ısınması" : "🧘 Beden ısınması");
+  for (const [txt, sec] of list) { if (!WARM_RUN) break; bubble("assistant", txt); await speak(txt, true); await sleep(sec * 1000); }
+  if (WARM_RUN) await speak("Isınma bitti, hazırsın.", true); WARM_RUN = false; return { ok: true };
+}
+
+/* ---------- 8) CASTING RADARI 2.0 ---------- */
+async function scoreRadar(items) {
+  const todo = items.filter(x => x.score === undefined && !/ev|kira/i.test(x.radar || "")).slice(0, 12); if (!todo.length || !SET.geminiKey) return items;
+  try {
+    const prof = SET.actorProfile || S.memory.map(m => m.text).join("; ");
+    const r = await geminiJSON(`Oyuncu profili: ${prof}\nAşağıdaki casting ilanlarının her birini bu oyuncuya uygunluğuna göre 0-100 puanla (yaş, tip, cinsiyet, şehir, yetenek). JSON: [{"i":0,"score":0,"why":"kısa"}]\n` + todo.map((x, i) => `${i}. ${x.title}`).join("\n"));
+    r.forEach(x => { if (todo[x.i]) { todo[x.i].score = x.score; todo[x.i].why = x.why; } });
+  } catch {}
+  return items;
+}
+{
+  const baseRadar = radarCheck;
+  radarCheck = async function () { const r = await baseRadar(); RADAR_CACHE = await scoreRadar(RADAR_CACHE); RADAR_CACHE.sort((a, b) => (b.score ?? -1) - (a.score ?? -1)); renderSec("work"); return { ...r, yeni: RADAR_CACHE.filter(x => !x.seen).slice(0, 15) }; };
+}
+
+/* ---------- 9) GÖRÜNTÜLÜ CANLI MOD ---------- */
+LiveSession.prototype.toggleCamera = async function () {
+  if (this.cam) { clearInterval(this.camT); this.cam.getTracks().forEach(t => t.stop()); this.cam = null; const p = $("#camPrev"); if (p) p.remove(); return false; }
+  this.cam = await navigator.mediaDevices.getUserMedia({ video: { facingMode: SET.camFacing || "environment", width: { ideal: 960 } } });
+  const v = document.createElement("video"); v.id = "camPrev"; v.autoplay = true; v.playsInline = true; v.muted = true; v.srcObject = this.cam;
+  v.style.cssText = "position:fixed;right:12px;bottom:calc(140px + var(--sb));width:120px;border-radius:12px;border:2px solid var(--cyan);z-index:40"; document.body.appendChild(v);
+  const c = document.createElement("canvas"); c.width = 640; c.height = 480;
+  this.camT = setInterval(() => { if (!this.ws || this.ws.readyState !== 1 || !v.videoWidth) return; c.height = Math.round(640 * v.videoHeight / v.videoWidth); c.getContext("2d").drawImage(v, 0, 0, c.width, c.height); this.ws.send(JSON.stringify({ realtimeInput: { video: { data: c.toDataURL("image/jpeg", 0.6).split(",")[1], mimeType: "image/jpeg" } } })); }, 1000);
+  return true;
+};
+{ const baseStop2 = LiveSession.prototype.stop; LiveSession.prototype.stop = function (n) { if (this.cam) this.toggleCamera(); const b = $("#camBtn"); if (b) b.style.display = "none"; return baseStop2.call(this, n); }; }
+
+/* ---------- 10) HEDEF PLANI (otonom görev) ---------- */
+async function missionPlan({ hedef, gun = 30 }) {
+  const plan = await geminiJSON(`Burak'ın hedefi: "${hedef}". ${gun} günlük, gerçekçi bir adım planı çıkar (vardiyaları ve oyunculuk işlerini düşün). Bugün: ${ymd(new Date())}. JSON: {"steps":[{"text":"","date":"YYYY-MM-DD","time":"HH:mm"}]} en fazla 15 adım.`);
+  let n = 0; for (const s of plan.steps || []) { if (!s.text) continue; A.addTask({ text: s.text, date: s.date, project: "Hedef: " + hedef.slice(0, 30) }); if (s.date) A.addReminder({ text: "🎯 " + s.text, due: `${s.date}T${s.time || "10:00"}` }); n++; }
+  A.addGoal({ text: hedef.slice(0, 40), target: n || 1 });
+  return { ok: true, adim: n };
+}
+
+/* ---------- 11) yeni araçlar ---------- */
+TOOLS.push(
+  T("bilgi_ara", "Burak'ın kişisel bilgi bankasında (belgeler, senaryolar, CV, notlar) arar.", { soru: str("Ne aranıyor") }, ["soru"], async a => { const r = await kbSearch(a.soru); return r.length ? { sonuclar: r } : { sonuc: "Bilgi bankasında ilgili bir şey bulunamadı." }; }),
+  T("bilgiye_ekle", "Verilen metni bilgi bankasına kaydeder.", { baslik: str("Başlık"), metin: str("Metin") }, ["baslik", "metin"], a => kbAdd(a.baslik, a.metin, "sohbet")),
+  T("kisi_ekle", "Düzenli iletişimde kalmak istediği bir kişiyi ekler (her N günde hatırlatma).", { name: str("Kişi"), every: num("Kaç günde bir") }, ["name"], a => ({ ok: true, ...A.addPerson(a) })),
+  T("kisi_gorustum", "Biriyle görüştüğünü/aradığını kaydeder.", { name: str("Kişi") }, ["name"], a => A.touchPerson(a)),
+  T("koc_baslat", "Canlı koçluk/prova başlatır: ingilizce (konuşma pratiği), diksiyon, sinav (drama eğitmenliği), partner (sahne partneri, Replik'teki sahneyle).", { tur: str("Tür", ["ingilizce", "diksiyon", "sinav", "partner"]) }, ["tur"], a => startCoach(a.tur, a.tur === "partner" ? (LINES.script || "") + `\nBurak'ın rolü: ${LINES.me}` : "")),
+  T("isinma", "Sesli ısınma rutini başlatır.", { tur: str("Tür", ["ses", "beden"]) }, [], a => { warmup(a.tur || "ses"); return { ok: true }; }),
+  T("karakter_analizi", "Replik bölümündeki sahne için karakter analizi yapar ve not olarak kaydeder.", {}, [], async () => ({ analiz: await characterAnalysis() })),
+  T("hedef_plani", "Büyük bir hedefi (ör. 'bu ay 10 castinge başvur') günlere yayılmış görev ve hatırlatıcılara böler.", { hedef: str("Hedef"), gun: num("Kaç gün") }, ["hedef"], a => missionPlan(a)),
+  T("yedekle", "Tüm JARVIS verilerini şifreli olarak Google Drive'a yedekler.", {}, [], () => backupNow())
+);
+Object.assign(ACT_TR, { bilgi_ara: "📚 bilgi", bilgiye_ekle: "📚 kaydet", kisi_ekle: "👥 kişi", kisi_gorustum: "👥 görüşme", koc_baslat: "🎓 koç", isinma: "🔥 ısınma", karakter_analizi: "🎭 analiz", hedef_plani: "🎯 plan", yedekle: "🔐 yedek" });
+
+/* ---------- 12) yeni bölümler: Bilgi (Plan), Kişiler (Hayat), Koç (Kariyer) ---------- */
+{
+  const baseList3 = listHTML;
+  listHTML = function (sec) {
+    if (sec === "kb") return `<div class="card"><h3>BİLGİ BANKASI</h3><div class="row"><button class="btn" id="kbFile">📄 Belge ekle (PDF, metin, fotoğraf)</button><button class="btn ghost" id="kbNotes">Notları ekle</button></div><div class="hint">Senaryolar, CV, Recast belgeleri… JARVIS sorularında bunlardan cevap verir. Örnek: "Lefter'deki rolümün adı neydi?"</div><div class="hint" id="kbBusy"></div></div>` +
+      ((S.kbDocs || []).map(d => `<div class="item"><div class="ic">📚</div><div class="t"><div class="h">${esc(d.title)}</div><div class="meta">${d.chunks} parça · ${fmtWhen(d.at)}</div></div><button class="x" data-kbdel="${d.id}">✕</button></div>`).join("") || `<div class="empty">Belge yok.</div>`);
+    if (sec === "people") { const od = new Set(overduePeople().map(p => p.id)); return `<div class="card"><form class="form" data-add="people"><div class="row"><input name="name" placeholder="Kişi (ör. Annem)" required><input name="every" type="number" value="7" style="max-width:80px"><button class="btn">+</button></div><div class="hint">Kaç günde bir aramak/görüşmek istiyorsun? Zamanı gelince hatırlatırım.</div></form></div>` +
+      ((S.people || []).map(p => `<div class="item ${od.has(p.id) ? "late" : ""}"><div class="ic">👥</div><div class="t"><div class="h">${esc(p.name)}</div><div class="meta">her ${p.every} gün · son: ${p.last ? fmtWhen(p.last, false) : "—"}</div></div><button class="btn ghost sm" data-ptouch="${p.id}">Görüştüm</button><button class="x" data-del="people:${p.id}">✕</button></div>`).join("") || `<div class="empty">Kişi yok.</div>`); }
+    if (sec === "coach") return `<div class="card"><h3>CANLI KOÇLAR</h3><div class="form"><button class="btn" data-coach="ingilizce">🇬🇧 İngilizce konuşma pratiği</button><button class="btn ghost" data-coach="diksiyon">🗣 Diksiyon hocası</button><button class="btn ghost" data-coach="sinav">📘 Drama eğitmenliği sınav hazırlığı</button><button class="btn ghost" data-coach="partner">🎭 Sahne partneri (Replik'teki sahne)</button></div></div>
+      <div class="card"><h3>ISINMA</h3><div class="row"><button class="btn ghost" data-warm="ses">🎤 Ses ısınması</button><button class="btn ghost" data-warm="beden">🧘 Beden ısınması</button></div></div>
+      <div class="card"><h3>HEDEF PLANI</h3><div class="form"><input id="msGoal" placeholder="ör. Bu ay 10 castinge başvur"><div class="row"><input id="msDays" type="number" value="30"><button class="btn" id="msGo">🎯 Planla</button></div></div></div>`;
+    return baseList3(sec);
+  };
+  ADD.people = f => A.addPerson(f);
+  const baseLines2 = linesHTML;
+  linesHTML = function () { return baseLines2() + (LINES.list.length ? `<div class="card"><h3>HAZIRLIK</h3><div class="row"><button class="btn ghost" id="lnMem">🧠 Ezber modu</button><button class="btn ghost" id="lnChar">🎭 Karakter analizi</button></div><button class="btn ghost" data-coach="partner" style="margin-top:6px;width:100%">🎙 Canlı sahne partneri</button></div>` : ""); };
+}
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#nightOn,#nightOff,#kbFile,#kbNotes,[data-kbdel],[data-ptouch],[data-coach],[data-warm],#msGo,#lnMem,#lnChar,#camBtn,#bkNow,#bkRestore");
+  if (!t) return;
+  try {
+    if (t.id === "nightOn") { if (!SET.geminiKey) return toast("Önce Gemini anahtarını gir"); await script("setGeminiKey", { key: SET.geminiKey }); toast("✓ Gece mesaisi açık (her gün 05:00)", 4000); }
+    else if (t.id === "nightOff") { await script("setGeminiKey", { key: "" }); toast("Gece mesaisi kapatıldı"); }
+    else if (t.id === "kbFile") { const fs = await pickFiles(".pdf,.txt,.md,.csv,.json,image/*", true); for (const f of fs) { $("#kbBusy").textContent = "⏳ " + f.name + " işleniyor…"; const txt = await fileText(f); const r = await kbAdd(f.name.replace(/\.\w+$/, ""), txt, "dosya"); toast(`✓ ${r.baslik}: ${r.parca} parça`); } $("#kbBusy").textContent = ""; renderSec("plan"); }
+    else if (t.id === "kbNotes") { const txt = S.notes.map(n => n.text).join("\n\n") + "\n\n" + S.memory.map(m => m.text).join("\n"); const r = await kbAdd("Notlar ve hafıza " + ymd(new Date()), txt, "notlar"); toast(`✓ ${r.parca} parça eklendi`); renderSec("plan"); }
+    else if (t.dataset.kbdel) { await kbDelete(t.dataset.kbdel); renderSec("plan"); }
+    else if (t.dataset.ptouch) { const p = S.people.find(p => p.id === t.dataset.ptouch); p.last = ymd(new Date()); save(); }
+    else if (t.dataset.coach) { const k = t.dataset.coach; if (k === "partner" && !LINES.script) return toast("Önce Kariyer → Replik'e sahneyi yapıştır."); await startCoach(k, k === "partner" ? LINES.script + `\nBurak'ın rolü: ${LINES.me}` : ""); }
+    else if (t.dataset.warm) warmup(t.dataset.warm);
+    else if (t.id === "msGo") { const h = $("#msGoal").value.trim(); if (!h) return toast("Hedef yaz"); toast("Planlanıyor…"); const r = await missionPlan({ hedef: h, gun: +$("#msDays").value || 30 }); toast(`✓ ${r.adim} adım takvime ve görevlere eklendi`, 4000); }
+    else if (t.id === "lnMem") memorize();
+    else if (t.id === "lnChar") { toast("Analiz ediliyor…"); const r = await characterAnalysis(); go("home"); bubble("assistant", "🎭 " + r); }
+    else if (t.id === "camBtn") { if (LIVE) { const on = await LIVE.toggleCamera(); t.textContent = on ? "📷 Kamerayı kapat" : "📷 Kamera"; } }
+    else if (t.id === "bkNow") { toast("Yedekleniyor…"); await backupNow(); toast("✓ Şifreli yedek Drive'a kaydedildi"); }
+    else if (t.id === "bkRestore") { const p = prompt2 ? await prompt2("Yedek şifresi") : null; if (!p) return; const r = await restoreLatest(p); toast("✓ Geri yüklendi: " + r.tarih, 4000); renderAll(); drawChat(); }
+  } catch (er) { toast("✗ " + (er.message === "NOKEY" ? "Gemini anahtarı yok" : er.message), 5000); }
+});
+function prompt2(label) { return new Promise(res => { $("#modalBox").innerHTML = `<h2>${esc(label)}</h2><input id="p2" type="password" style="margin-bottom:12px"><div class="row"><button class="btn ghost" id="mNo">Vazgeç</button><button class="btn" id="mYes">Tamam</button></div>`; $("#modal").classList.add("on"); $("#mNo").onclick = () => { $("#modal").classList.remove("on"); res(null); }; $("#mYes").onclick = () => { const v = $("#p2").value; $("#modal").classList.remove("on"); res(v); }; }); }
+// canlı modda kamera düğmesi
+{ const baseStart = LiveSession.prototype.start; LiveSession.prototype.start = async function () { await baseStart.call(this); let b = $("#camBtn"); if (!b) { b = document.createElement("button"); b.id = "camBtn"; b.className = "chip"; b.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + var(--sb));z-index:41"; document.body.appendChild(b); } b.textContent = "📷 Kamera"; b.style.display = ""; }; }
+
+/* ---------- 13) proaktif ek: kişiler ---------- */
+{
+  const baseProactive = proactive;
+  proactive = async function (force) {
+    await baseProactive(force);
+    const od = overduePeople(); const key = "ppl" + ymd(new Date());
+    if (od.length && META.pplDay !== key) { META.pplDay = key; saveMeta(); bubble("assistant", "💡 Bir süredir görüşmediğin kişiler: " + od.map(p => p.name).join(", ") + ". Arayalım mı?"); }
+  };
+}
+
+/* ---------- 14) ayarlar: stüdyo, gizlilik, yedek, yerel beyin, profil ---------- */
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    const tg = (k, label, sub) => `<label class="toggle"><span>${label}${sub ? `<small>${sub}</small>` : ""}</span><input type="checkbox" class="sw" data-set="${k}" ${SET[k] ? "checked" : ""}></label>`;
+    $("#b-set").insertAdjacentHTML("beforeend", `
+    <div class="card"><h3>STÜDYO (GÖRSEL ÜRETME)</h3><div class="form"><div class="lbl">Cloudflare hesap kimliği (Account ID)</div><input data-set="cfAccount" value="${esc(SET.cfAccount)}"><div class="lbl">Cloudflare API token (Workers AI)</div><input data-set="cfToken" type="password" value="${esc(SET.cfToken)}"><div class="hint">dash.cloudflare.com → ücretsiz hesap → sağ üst profil → API Tokens → "Workers AI" şablonu → Create. Account ID ana sayfanın sağ altında. Günlük ücretsiz kota ile çalışır.</div></div></div>
+    <div class="card"><h3>OYUNCU PROFİLİ (RADAR PUANLAMA)</h3><textarea data-set="actorProfile" placeholder="ör. 28 yaş, erkek, 1.80, İstanbul, dram ve dönem dizisi deneyimi, İngilizce orta" style="min-height:60px">${esc(SET.actorProfile || "")}</textarea></div>
+    <div class="card"><h3>GİZLİLİK VE YEREL BEYİN</h3>${tg("privacy", "Gizlilik modu", "Şifre, banka, sağlık, maaş gibi konular buluta gönderilmez")}
+      <div class="form"><div class="lbl">Yerel beyin adresi (bilgisayarında Ollama)</div><input data-set="localUrl" value="${esc(SET.localUrl || "")}" placeholder="http://192.168.1.20:11434"><div class="lbl">Yerel model</div><input data-set="localModel" value="${esc(SET.localModel || "qwen2.5:3b")}"><div class="hint">Bilgisayarda ollama.com'dan Ollama'yı kur, "ollama pull qwen2.5:3b" yaz, OLLAMA_HOST=0.0.0.0 ile çalıştır. Aynı Wi-Fi'de telefon bu beyni kullanır.</div></div></div>
+    <div class="card"><h3>GECE MESAİSİ</h3><div class="hint" style="margin-top:0">Sen uyurken (05:00) Google tarafında JARVIS mailleri, takvimi ve casting radarını tarar, sabah brifingine "gece raporu" ekler. Bunun için Gemini anahtarın kendi Google Apps Script'ine (sadece senin hesabında) kaydedilir.</div><div class="row"><button class="btn ghost sm" id="nightOn">Gece mesaisini aç</button><button class="btn ghost sm" id="nightOff">Kapat</button></div></div>
+    <div class="card"><h3>ŞİFRELİ YEDEK</h3><div class="form"><div class="lbl">Yedek şifresi (unutma; kurtarılamaz)</div><input data-set="backupPass" type="password" value="${esc(SET.backupPass || "")}"><div class="row"><button class="btn ghost sm" id="bkNow">Şimdi yedekle</button><button class="btn ghost sm" id="bkRestore">Son yedeği geri yükle</button></div><div class="hint">Google bağlıysa her gün otomatik, şifreli olarak Drive'daki "JARVIS Yedek" klasörüne yedeklenir (son 14 gün).</div></div></div>
+    <div class="card"><h3>KULLANIM (BUGÜN)</h3><div class="hint" style="margin-top:0">${Object.entries(QUOTA.n).map(([k, v]) => `${k}: ${v}`).join(" · ") || "henüz yok"}${Date.now() < GEMINI_OFF_UNTIL ? " · Gemini kotası dolu → Groq kullanılıyor" : ""}</div>
+      <div class="hint">Son hatalar: ${(S.issues || []).slice(-3).map(i => esc(i.detail)).join(" · ") || "yok"}</div></div>`);
+  };
+}
+
+/* ---------- 15) sohbet senkronu (cihazlar arası) ---------- */
+{
+  const basePush = pushSync;
+  pushSync = async function () { S.chat = CHAT.slice(-30); return basePush(); };
+  const basePull = pullSync;
+  pullSync = async function () { const before = S.updatedAt; await basePull(); if (S.updatedAt !== before && Array.isArray(S.chat) && S.chat.length) { CHAT = S.chat.slice(); saveChat(); drawChat(); } };
+}
 
 /* ================= açılış ================= */
 async function boot() {

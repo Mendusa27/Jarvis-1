@@ -49,3 +49,18 @@ Donanım: GTX 1650 (4 GB). Ağır modeller (video üretimi, model eğitimi) ücr
 4. **Kariyer:** Casting radarı 2.0 (uygunluk puanı + başvuru maili + self-tape planı), drama eğitmenliği asistanı, Recast ajans otomasyonu (taslak + onay)
 5. **Günlük hayat:** Akıllı gün planı (vardiya/seçme/ulaşım çakışmaları), ev arama asistanı (gece ulaşım puanı), kişisel finans koçu
 6. **Güvenlik ve altyapı:** Şifreli günlük Drive yedeği, gizlilik modu (hassas konular cihazda), ücretsiz kota yöneticisi
+
+## Faz 5 — öneriler (v2.0'a büyük kısmı eklendi)
+- Otonom görevler: hedef planı (büyük hedefi günlere bölen görev+hatırlatıcı) ✅, gece mesaisi (05:00'te mail/takvim/radar taraması → sabah gece raporu) ✅
+- Kendini geliştiren JARVIS: hata günlüğü ve düzeltmelerden öğrenme ✅ · kendi kodunu yazan JARVIS ⏳ (ileride)
+- Yerel yapay zekâ: Ollama ile bilgisayardaki yerel beyin, gizlilik modunda hassas konular ✅
+- Tek merkez ekosistem: telefon + bilgisayar ortak veri ve sohbet ✅ · tablet/TV/saat ⏳
+- Öğrenme koçu: İngilizce konuşma, diksiyon, drama eğitmenliği sınavı (canlı) ✅ · replik ezber modu ✅
+- Yaratıcı ortak: karakter analizi ✅, canlı sahne partneri ✅
+- Beden/ritim: ses ve beden ısınma rutinleri ✅ · vardiya-uyku planı (gün planı içinde) ✅
+- İlişkiler: önemli kişiler ve hatırlatmalar ✅ · Kübra ile ortak plan (onaylı paylaşım) ⏳
+
+## v2.0'da bilerek ertelenenler
+Kendi yüz/ses modelini eğitme (LoRA, ses klonlama), sıfırdan yapay zekâ videosu ve müzik üretimi, dudak senkronu,
+sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recast tam otomasyonu, canlı sunum asistanı,
+çok ajanlı içerik üretimi, sahne algılamalı akıllı showreel, doğal (yapay zekâ) rötuş, ağır işlerin Kaggle/Colab'a otomatik gönderimi.
