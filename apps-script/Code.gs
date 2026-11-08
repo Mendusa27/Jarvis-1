@@ -35,6 +35,10 @@ function doPost(e) {
       case "briefData":    return out(Object.assign({ ok: true }, briefData(false)));
       case "roster":       return out(Object.assign({ ok: true }, roster(req)));
       case "briefMails":   return out({ ok: true, mailler: briefMails(req) });
+      case "audInfo":      return out(Object.assign({ ok: true }, audInfo(req)));
+      case "audRead":      return out(Object.assign({ ok: true }, audRead(req)));
+      case "audUpdate":    return out(Object.assign({ ok: true }, audUpdate(req)));
+      case "audAdd":       return out(Object.assign({ ok: true }, audAdd(req)));
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
@@ -346,4 +350,56 @@ function briefMails(req) {
     return { id: t.getId(), kimden: m.getFrom(), yanitla: m.getReplyTo() || m.getFrom(), konu: m.getSubject(), tarih: fmt_(m.getDate()), okunmadi: t.isUnread(),
              metin: m.getPlainBody().replace(/\n{3,}/g, "\n\n").slice(0, 6000), ekler: m.getAttachments().map(a => a.getName()).slice(0, 8) };
   });
+}
+
+
+/* ---------- v2.2: Recast Audition veri tablosuna erişim ---------- */
+// Audition uygulamasının "RECAST AUDITION — Veriler" E-Tablosu. Kimlik telefondan gelir; yoksa adla bulunur.
+function audSS_(req) {
+  if (req.sheetId) return SpreadsheetApp.openById(req.sheetId);
+  const it = DriveApp.getFilesByName("RECAST AUDITION — Veriler");
+  if (!it.hasNext()) throw new Error("RECAST AUDITION — Veriler tablosu bulunamadı. Titus Ayarlar → Recast Audition'a tablo kimliğini yaz.");
+  return SpreadsheetApp.open(it.next());
+}
+const AUD_LOCKED_ = ["AYARLAR", "OTURUMLAR", "KODLAR", "EKIP"]; // gizli/hassas sayfalar
+function audVal_(v) { return v instanceof Date ? fmt_(v) : v; }
+function audInfo(req) {
+  const ss = audSS_(req);
+  return { tablo: ss.getName(), id: ss.getId(), sayfalar: ss.getSheets().filter(sh => AUD_LOCKED_.indexOf(sh.getName()) < 0).map(sh => {
+    const lr = sh.getLastRow(), lc = sh.getLastColumn();
+    const head = lc ? sh.getRange(1, 1, 1, lc).getValues()[0].map(String) : [];
+    const ornek = lr > 1 ? sh.getRange(Math.max(2, lr - 1), 1, Math.min(2, lr - 1), lc).getValues().map(r => { const o = {}; head.forEach((h, k) => { if (r[k] !== "") o[h] = String(audVal_(r[k])).slice(0, 80); }); return o; }) : [];
+    return { ad: sh.getName(), basliklar: head, satir: Math.max(0, lr - 1), ornek: ornek };
+  }) };
+}
+function audRead(req) {
+  const sh = audSS_(req).getSheetByName(req.sayfa); if (!sh) throw new Error("Sayfa yok: " + req.sayfa);
+  if (AUD_LOCKED_.indexOf(sh.getName()) > -1) throw new Error("Bu sayfa korumalı");
+  const v = sh.getDataRange().getValues(); if (v.length < 2) return { satirlar: [] };
+  const head = v[0].map(String), q = String(req.ara || "").toLocaleLowerCase("tr-TR");
+  const out = [];
+  for (let i = v.length - 1; i >= 1 && out.length < Math.min(Number(req.limit) || 25, 60); i--) {
+    const r = v[i]; if (q && !r.some(c => String(c).toLocaleLowerCase("tr-TR").indexOf(q) > -1)) continue;
+    const o = {}; head.forEach((h, k) => { if (r[k] !== "") o[h] = String(audVal_(r[k])).slice(0, 300); }); out.push(o);
+  }
+  return { sayfa: sh.getName(), basliklar: head, satirlar: out };
+}
+function audUpdate(req) {
+  const sh = audSS_(req).getSheetByName(req.sayfa); if (!sh) throw new Error("Sayfa yok: " + req.sayfa);
+  if (AUD_LOCKED_.indexOf(sh.getName()) > -1) throw new Error("Bu sayfa korumalı");
+  const v = sh.getDataRange().getValues(); const head = v[0].map(String); const idc = head.indexOf("id");
+  if (idc < 0) throw new Error("Sayfada id sütunu yok");
+  const row = v.findIndex((r, i) => i > 0 && String(r[idc]) === String(req.id)); if (row < 0) throw new Error("Kayıt bulunamadı: " + req.id);
+  const ch = req.degisiklikler || {}, eski = {};
+  Object.keys(ch).forEach(k => { const c = head.indexOf(k); if (c < 0 || k === "id") throw new Error("Geçersiz sütun: " + k); eski[k] = audVal_(v[row][c]); sh.getRange(row + 1, c + 1).setValue(ch[k]); });
+  return { guncellendi: true, eski: eski };
+}
+function audAdd(req) {
+  const sh = audSS_(req).getSheetByName(req.sayfa); if (!sh) throw new Error("Sayfa yok: " + req.sayfa);
+  if (AUD_LOCKED_.indexOf(sh.getName()) > -1) throw new Error("Bu sayfa korumalı");
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const k = req.kayit || {}; if (head.indexOf("id") > -1 && !k.id) k.id = Utilities.getUuid().replace(/-/g, "").slice(0, 12);
+  if (head.indexOf("olusturma") > -1 && !k.olusturma) k.olusturma = Date.now();
+  sh.appendRow(head.map(h => k[h] !== undefined ? k[h] : ""));
+  return { eklendi: true, id: k.id || "" };
 }

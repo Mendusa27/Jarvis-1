@@ -3,8 +3,8 @@
   "short_name": "Titus",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#03070d",
-  "theme_color": "#03070d",
+  "background_color": "#0a0304",
+  "theme_color": "#0a0304",
   "lang": "tr",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },

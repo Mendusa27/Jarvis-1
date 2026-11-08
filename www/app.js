@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.1 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.2 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -2308,7 +2308,7 @@ const blobToB64 = b => new Promise(r => { const f = new FileReader(); f.onload =
 const pickFiles = (accept, multiple = false) => new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = accept; i.multiple = multiple; i.onchange = () => res([...(i.files || [])]); i.click(); });
 const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 const fileImg = async f => { const u = URL.createObjectURL(f); const i = await loadImg(u); i._url = u; return i; };
-const brand = () => (SET.brands || []).find(b => b.id === SET.brandId) || { name: SET.name, primary: "#0b2236", accent: "#4fd8ff", text: "#ffffff", font: "Arial", logo: "" };
+const brand = () => (SET.brands || []).find(b => b.id === SET.brandId) || { name: SET.name, primary: "#2c0a0d", accent: "#ff3b3b", text: "#ffffff", font: "Arial", logo: "" };
 const fname = (base, ext) => `${String(base || "jarvis").replace(/[^\wçğıöşüÇĞİÖŞÜ -]/g, "").trim().replace(/\s+/g, "-").slice(0, 40) || "jarvis"}-${ymd(new Date())}.${ext}`;
 
 /* ---------- dosya kaydetme ve paylaşma ---------- */
@@ -2473,9 +2473,9 @@ async function compositeCard(files, info) {
   if (imgs[0]) cover(imgs[0], pad2, pad2, 1000, H - bar - pad2 * 2);
   const gx = 1000 + pad2 * 2, gw = (W - gx - pad2 - pad2) / 2, gh = (H - bar - pad2 * 3) / 2;
   imgs.slice(1, 5).forEach((im, i) => cover(im, gx + (i % 2) * (gw + pad2), pad2 + Math.floor(i / 2) * (gh + pad2), gw, gh));
-  g.fillStyle = b.primary || "#0b2236"; g.fillRect(0, H - bar, W, bar);
+  g.fillStyle = b.primary || "#2c0a0d"; g.fillRect(0, H - bar, W, bar);
   g.fillStyle = "#fff"; g.font = "800 92px Rajdhani, Arial"; g.textBaseline = "middle"; g.fillText((info.name || SET.name).toLocaleUpperCase("tr-TR"), 60, H - bar / 2 - 30);
-  g.font = "500 44px Rajdhani, Arial"; g.fillStyle = b.accent || "#4fd8ff"; g.fillText(info.stats || "", 60, H - bar / 2 + 52);
+  g.font = "500 44px Rajdhani, Arial"; g.fillStyle = b.accent || "#ff3b3b"; g.fillText(info.stats || "", 60, H - bar / 2 + 52);
   g.textAlign = "right"; g.fillStyle = "#fff"; g.font = "600 40px Rajdhani, Arial"; g.fillText(info.contact || b.name || "", W - (b.logo ? 360 : 60), H - bar / 2);
   if (b.logo) { const L = await loadImg(b.logo); const lh = 140, lw = lh * L.width / L.height; g.drawImage(L, W - lw - 60, H - bar / 2 - lh / 2, lw, lh); }
   imgs.forEach(i => URL.revokeObjectURL(i._url));
@@ -2524,7 +2524,7 @@ async function renderVideo({ clips, format = "9:16", music = null, subs = "none"
   const b = brand(); let curSub = "";
   const drawCover = (src, sw, sh, zoom = 1, px = 0.5, py = 0.4) => { const r = Math.max(W / sw, H / sh) * zoom; const dw = sw * r, dh = sh * r; g.drawImage(src, (W - dw) * px, (H - dh) * py, dw, dh); };
   const drawSub = () => { if (!curSub) return; const fs = Math.round(W * 0.052); g.font = `700 ${fs}px Rajdhani, Arial`; g.textAlign = "center"; g.lineJoin = "round"; const words = curSub.split(" "); const lines = []; let l = ""; for (const w of words) { if (g.measureText(l + " " + w).width > W * 0.86 && l) { lines.push(l); l = w; } else l = (l ? l + " " : "") + w; } lines.push(l); lines.forEach((t, i) => { const y = H * 0.82 + i * fs * 1.15; g.lineWidth = fs * 0.18; g.strokeStyle = "rgba(0,0,0,.85)"; g.strokeText(t, W / 2, y); g.fillStyle = "#fff"; g.fillText(t, W / 2, y); }); };
-  const drawCard = (title, sub) => { g.fillStyle = b.primary || "#0b2236"; g.fillRect(0, 0, W, H); g.fillStyle = b.accent || "#4fd8ff"; g.fillRect(W * .1, H * .5 + 6, W * .8, 4); g.textAlign = "center"; g.fillStyle = "#fff"; g.font = `800 ${Math.round(W * .075)}px Rajdhani, Arial`; g.fillText(title || "", W / 2, H * .47); g.font = `500 ${Math.round(W * .042)}px Rajdhani, Arial`; g.fillStyle = "#ddd"; (sub || "").split("\n").forEach((s, i) => g.fillText(s, W / 2, H * .57 + i * W * .055)); };
+  const drawCard = (title, sub) => { g.fillStyle = b.primary || "#2c0a0d"; g.fillRect(0, 0, W, H); g.fillStyle = b.accent || "#ff3b3b"; g.fillRect(W * .1, H * .5 + 6, W * .8, 4); g.textAlign = "center"; g.fillStyle = "#fff"; g.font = `800 ${Math.round(W * .075)}px Rajdhani, Arial`; g.fillText(title || "", W / 2, H * .47); g.font = `500 ${Math.round(W * .042)}px Rajdhani, Arial`; g.fillStyle = "#ddd"; (sub || "").split("\n").forEach((s, i) => g.fillText(s, W / 2, H * .57 + i * W * .055)); };
   const total = clips.reduce((s, c) => s + ((c.end ?? 3) - (c.start || 0)), 0); let done = 0;
   rec.start(500); if (mEl) mEl.play().catch(() => {});
   if (narration) { const src = ac.createBufferSource(); src.buffer = narration; src.connect(dest); src.start(); }
@@ -2625,7 +2625,7 @@ FORMS.doc = FORMS.photo = FORMS.image = FORMS.video = FORMS.card = FORMS.files =
         <div class="hint" id="vidProg"></div><div class="hint">Telefonda işleme gerçek süre kadar sürer; 1-2 dakikalık videolar idealdir.</div>`;
       case "card": return `<div class="card"><h3>KOMPOZİT KART (ZED CARD)</h3><div class="form"><input id="ccName" value="${esc(SET.name)}" placeholder="Ad Soyad"><input id="ccStats" placeholder="Boy 1.80 · Göz kahve · Saç siyah · Beden M"><input id="ccContact" placeholder="İletişim / ajans" value="${esc(brand().name || "")}"><button class="btn" id="ccGo">🗂 Fotoğrafları seç (1 büyük + 4 küçük) ve kart yap</button></div></div>
         <div class="card"><h3>MARKA KİTİ</h3>${(SET.brands || []).map(b => `<div class="step"><span><b style="color:${esc(b.accent)}">■</b> ${esc(b.name)}${b.id === SET.brandId ? " · aktif" : ""}</span><button class="btn ghost sm" data-brand="${b.id}">Seç</button><button class="x" data-brdel="${b.id}">✕</button></div>`).join("") || `<div class="hint">Marka yok.</div>`}
-        <div class="form" style="margin-top:6px"><input id="brName" placeholder="Marka adı (ör. Recast Talent House)"><div class="row"><div><div class="lbl">Ana renk</div><input id="brP" type="color" value="#0b2236" style="padding:2px;height:40px"></div><div><div class="lbl">Vurgu</div><input id="brA" type="color" value="#4fd8ff" style="padding:2px;height:40px"></div></div><div class="row"><button class="btn ghost sm" id="brLogo">Logo seç</button><button class="btn sm" id="brAdd">+ Marka ekle</button></div></div></div>`;
+        <div class="form" style="margin-top:6px"><input id="brName" placeholder="Marka adı (ör. Recast Talent House)"><div class="row"><div><div class="lbl">Ana renk</div><input id="brP" type="color" value="#2c0a0d" style="padding:2px;height:40px"></div><div><div class="lbl">Vurgu</div><input id="brA" type="color" value="#ff3b3b" style="padding:2px;height:40px"></div></div><div class="row"><button class="btn ghost sm" id="brLogo">Logo seç</button><button class="btn sm" id="brAdd">+ Marka ekle</button></div></div></div>`;
       case "files": return `<div class="card"><h3>ÜRETİLEN DOSYALAR</h3>${(S.files || []).map((f, i) => `<div class="item"><div class="ic">${/pptx/.test(f.name) ? "📊" : /docx/.test(f.name) ? "📄" : /mp4|webm/.test(f.name) ? "🎬" : /html/.test(f.name) ? "🌐" : "🖼"}</div><div class="t"><div class="h">${esc(f.name)}</div><div class="meta">${esc(f.path || "")} · ${fmtWhen(f.at)}</div></div><button class="btn ghost sm" data-share="${i}">Paylaş</button></div>`).join("") || `<div class="empty">Henüz dosya yok.</div>`}</div>`;
     }
     return baseList2(sec);
@@ -3161,6 +3161,71 @@ TOOL_GROUPS.push([/brief|recast|teklif|oyuncu öner|casting mail|müşteri/, ["r
       <div class="form"><div class="lbl">Rol başına en fazla öneri</div><input data-set="rbPerRole" type="number" value="${SET.rbPerRole || 6}"></div></div>`);
   };
 }
+
+/* =====================================================================
+   v2.2 — RECAST AUDITION ERİŞİMİ: Titus işleri, başvuruları, tape durumlarını okur ve
+   Burak'ın isteğine göre düzenler (her değişiklik önce onaya gelir).
+   ===================================================================== */
+let AUD_SCHEMA = null, AUD_AT = 0;
+async function audSchema(force) {
+  if (!force && AUD_SCHEMA && Date.now() - AUD_AT < 30 * 6e4) return AUD_SCHEMA;
+  AUD_SCHEMA = await script("audInfo", { sheetId: SET.auditionSheetId || "" }); AUD_AT = Date.now();
+  if (AUD_SCHEMA.id && SET.auditionSheetId !== AUD_SCHEMA.id) { SET.auditionSheetId = AUD_SCHEMA.id; saveSet(); }
+  return AUD_SCHEMA;
+}
+const audShort = sc => (sc.sayfalar || []).map(p => `${p.ad} (${p.satir} kayıt): ${p.basliklar.join(", ")}${p.ornek[0] ? "\n  örnek: " + JSON.stringify(p.ornek[0]).slice(0, 300) : ""}`).join("\n");
+const audFmt = v => /^1\d{12}$/.test(String(v)) ? fmtWhen(localISO(new Date(Number(v)))) : String(v).slice(0, 60);
+function diffText(eski, yeni) { return Object.keys(yeni).map(k => `• ${k}: ${eski && eski[k] !== undefined ? `"${audFmt(eski[k])}" → ` : ""}"${audFmt(yeni[k])}"`).join("\n"); }
+
+async function audFind(sayfa, ara) { return script("audRead", { sheetId: SET.auditionSheetId || "", sayfa, ara: ara || "", limit: 25 }); }
+
+TOOLS.push(
+  T("audition_yapi", "Recast Audition uygulamasının veri tablosundaki sayfaları (ör. ISLER, BASVURULAR, GONDERIMLER), sütunlarını ve örnek kayıtları gösterir. Audition ile ilgili bir şeyi okumadan/düzenlemeden önce bir kez çağır.", {}, [], async () => { const sc = await audSchema(true); return { tablo: sc.tablo, yapi: audShort(sc) }; }),
+  T("audition_oku", "Recast Audition'dan kayıt okur/arar (işler, başvurular, tape durumları, gönderimler).", { sayfa: str("Sayfa adı, ör. ISLER"), ara: str("Aranacak kelime (proje, oyuncu adı, durum…) — boşsa en yeniler") }, ["sayfa"], a => audFind(a.sayfa, a.ara)),
+  T("audition_duzenle", "Recast Audition'daki bir kaydı Burak'ın istediği gibi değiştirir (ör. işin son teslim tarihi, durum, açıklama, ücret, rol notu, tape durumu). Önce audition_oku ile kaydın id'sini ve sütunların mevcut biçimini öğren; tarih/sayı sütunlarını aynı biçimde yaz (ör. milisaniye zaman damgası ise milisaniye). Burak'a onay sorulur.", { sayfa: str("Sayfa"), id: str("Kaydın id'si"), degisiklikler_json: str('Değişecek sütunlar JSON olarak, ör. {"durum":"Kapandı"}') }, ["sayfa", "id", "degisiklikler_json"],
+    async a => {
+      let ch; try { ch = JSON.parse(a.degisiklikler_json); } catch { return { hata: "degisiklikler_json geçerli JSON değil" }; }
+      let cur = null; try { cur = ((await audFind(a.sayfa, a.id)).satirlar || []).find(r => String(r.id) === String(a.id)); } catch {}
+      if (!(await confirmBox(`Recast Audition · ${a.sayfa}${cur ? " · " + (cur.proje || cur.ad || cur.baslik || a.id) : ""}\n${diffText(cur, ch)}`, "Değiştir"))) return { iptal: true };
+      const r = await script("audUpdate", { sheetId: SET.auditionSheetId || "", sayfa: a.sayfa, id: a.id, degisiklikler: ch });
+      S.audLog = [{ at: localISO(new Date()), sayfa: a.sayfa, id: a.id, eski: r.eski, yeni: ch }, ...(S.audLog || [])].slice(0, 40); save();
+      return { ok: true, eski: r.eski, not: "Audition uygulamasında sayfayı yenileyince görünür. Bu değişiklik oyunculara/müşteriye otomatik bildirim göndermez." };
+    }),
+  T("audition_ekle", "Recast Audition'a yeni kayıt ekler (ör. yeni iş). Önce audition_yapi ile sütunları öğren, uygulamanın kullandığı biçimde doldur. Burak'a onay sorulur.", { sayfa: str("Sayfa"), kayit_json: str("Yeni kayıt JSON (sütun adı: değer)") }, ["sayfa", "kayit_json"],
+    async a => {
+      let k; try { k = JSON.parse(a.kayit_json); } catch { return { hata: "kayit_json geçerli JSON değil" }; }
+      if (!(await confirmBox(`Recast Audition · ${a.sayfa} sayfasına eklensin mi?\n${diffText(null, k)}`, "Ekle"))) return { iptal: true };
+      return script("audAdd", { sheetId: SET.auditionSheetId || "", sayfa: a.sayfa, kayit: k });
+    }),
+  T("audition_geri_al", "Titus'un Recast Audition'da yaptığı son değişikliği geri alır.", {}, [],
+    async () => { const l = (S.audLog || [])[0]; if (!l) return { hata: "Geri alınacak değişiklik yok" }; if (!(await confirmBox(`Son değişiklik geri alınsın mı?\n${l.sayfa} · ${diffText(l.yeni, l.eski)}`, "Geri al"))) return { iptal: true }; await script("audUpdate", { sheetId: SET.auditionSheetId || "", sayfa: l.sayfa, id: l.id, degisiklikler: l.eski }); S.audLog.shift(); save(); return { ok: true }; }),
+  T("audition_ac", "Recast Audition uygulamasını açar.", {}, [], async () => { if (!SET.auditionUrl) return { hata: "Audition adresi yok (Ayarlar → Recast Audition)." }; await openUrl(SET.auditionUrl); return { ok: true }; })
+);
+Object.assign(ACT_TR, { audition_yapi: "🎞 audition", audition_oku: "🎞 audition", audition_duzenle: "✏️ audition", audition_ekle: "➕ audition", audition_geri_al: "↩️ audition", audition_ac: "🎞 aç" });
+TOOL_GROUPS.push([/audition|self-?tape|tape|başvuru|seçme işi|işler|son teslim|reshoot|tekrar çek|müşteriye gönder|casting direkt/, ["audition_yapi", "audition_oku", "audition_duzenle", "audition_ekle", "audition_geri_al", "audition_ac"]]);
+{
+  const baseSys = systemPrompt;
+  systemPrompt = function () {
+    let s = baseSys();
+    if (SET.scriptUrl) s += "\nRECAST AUDITION: Burak'ın ajans audition uygulamasına audition_* araçlarıyla erişebilirsin. Okumadan önce gerekirse audition_yapi ile yapıyı öğren. Değişiklikleri onun istediği şekilde, mevcut veri biçimini koruyarak yap; büyük toplu değişikliklerde önce ne yapacağını özetle." + (AUD_SCHEMA ? "\nAUDITION YAPISI:\n" + audShort(AUD_SCHEMA).slice(0, 2500) : "");
+    return s;
+  };
+}
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    $("#b-set").insertAdjacentHTML("beforeend", `<div class="card"><h3>RECAST AUDITION</h3><div class="form">
+      <div class="lbl">Uygulama adresi</div><input data-set="auditionUrl" value="${esc(SET.auditionUrl || "")}" placeholder="https://recast-audition.netlify.app/#KODUN">
+      <div class="lbl">"RECAST AUDITION — Veriler" tablo kimliği (boş bırakırsan adıyla bulunur)</div><input data-set="auditionSheetId" value="${esc(SET.auditionSheetId || "")}" placeholder="1AbC…">
+      <div class="row"><button class="btn ghost sm" id="audTest">Bağlantıyı dene</button></div>
+      <div class="hint">Titus işleri, başvuruları ve tape durumlarını okuyup senin istediğin gibi düzenler; her değişiklik önce onayına gelir, "geri al" diyebilirsin. Titus'un Google bağlantısı, Audition'ın kurulu olduğu Google hesabıyla aynı olmalı.</div></div></div>`);
+  };
+}
+document.addEventListener("click", async e => {
+  if (!e.target.closest("#audTest")) return;
+  try { const sc = await audSchema(true); toast(`✓ ${sc.tablo}: ${(sc.sayfalar || []).map(p => p.ad + " " + p.satir).join(", ")}`, 6000); } catch (er) { toast("✗ " + er.message, 6000); }
+});
 
 /* ================= açılış ================= */
 async function boot() {

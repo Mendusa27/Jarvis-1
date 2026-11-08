@@ -14,15 +14,15 @@
         android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
         android:orientation="vertical" android:paddingStart="12dp" android:paddingEnd="8dp">
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="J.A.R.V.I.S." android:textColor="#FF4FD8FF" android:textSize="13sp"
+            android:text="T.I.T.U.S." android:textColor="#FFFF3B3B" android:textSize="13sp"
             android:textStyle="bold" android:letterSpacing="0.25"/>
         <TextView android:id="@+id/w_line1"
             android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#FFD8F3FF" android:textSize="14sp" android:maxLines="2" android:ellipsize="end"
+            android:textColor="#FFFFE5E1" android:textSize="14sp" android:maxLines="2" android:ellipsize="end"
             android:text="Titus hazır"/>
         <TextView android:id="@+id/w_line2"
             android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:textColor="#FF7AA3B8" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"
+            android:textColor="#FFBF948F" android:textSize="12sp" android:maxLines="1" android:ellipsize="end"
             android:text="Konuşmak için dokun"/>
     </LinearLayout>
 
@@ -30,5 +30,5 @@
         android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:background="@drawable/widget_chip" android:paddingStart="10dp" android:paddingEnd="10dp"
         android:paddingTop="6dp" android:paddingBottom="6dp"
-        android:text="☀ Brifing" android:textColor="#FF9BEAFF" android:textSize="12sp"/>
+        android:text="☀ Brifing" android:textColor="#FFFF9B8F" android:textSize="12sp"/>
 </LinearLayout>

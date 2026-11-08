@@ -200,3 +200,9 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - Sesle: "son brief'i hazırla", "teklif mailini oluştur".
 - Ayarlar → Recast Brief: yeni brief maili gelince haber ver.
 - Code.gs'yi yine güncelleyip yeni sürüm olarak dağıt (roster, briefMails, BCC eklendi).
+
+## v2.2 — Kırmızı tema + Recast Audition erişimi
+- Arayüz, widget ve uygulama simgesi kırmızı.
+- **Titus artık Recast Audition'a erişiyor:** işleri, başvuruları, tape durumlarını ve gönderimleri okuyup senin istediğin gibi düzenliyor ("Kahve reklamının son teslimini cumaya al", "Elif'in tape'ini onaylı yap", "Molla işini kapat"). Her değişiklik önce onay kutusuyla gelir, "geri al" diyebilirsin.
+- Kurulum: Ayarlar → Recast Audition → uygulama adresini yaz (tablo kimliği isteğe bağlı) → "Bağlantıyı dene". Titus'un Google bağlantısı Audition'ın kurulu olduğu hesapla aynı olmalı. Code.gs'yi güncelleyip yeni sürüm olarak dağıt.
+- Not: Titus doğrudan veriyi düzenler; Audition'ın kendi bildirim mailleri bu düzenlemelerde tetiklenmez.
