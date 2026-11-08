@@ -50,7 +50,7 @@ const DEF_SET = {
   wake: false, scriptUrl: "", scriptToken: "", briefTime: "08:30", briefOn: true, eveningTime: "", city: "İstanbul", lat: 41.01, lng: 28.98,
   name: "Burak", budget: 0, lock: false, headset: false, homeLat: null, homeLng: null, partnerName: "Kübra", autoSendWa: false,
   kadroSheetId: "", ntfyTopic: "", radars: [], webhooks: [], proactive: true,
-  stt: "gemini", wakeStrict: true, wakeConf: 0.92
+  stt: "gemini", wakeStrict: true, wakeConf: 0.92, speed: "hizli", greetVoice: false, sttModel: "gemini-3.5-flash-lite"
 };
 let S = EMPTY(), SET = { ...DEF_SET }, CHAT = [];
 async function kvGet(k) {
@@ -178,9 +178,21 @@ async function listen() {
 }
 async function stopListen() { if (GEM_REC) { GEM_REC.stopNow = true; return; } if (Jarvis) await nat(() => Jarvis.stopListen()); else try { webRec && webRec.stop(); } catch {} }
 async function voiceTurn(greet = false) {
-  if (greet) await speak("Efendim?", true);
+  if (greet) { if (SET.greetVoice) await speak("Efendim?", true); else { beepUp(); if (Haptics) nat(() => Haptics.impact({ style: "MEDIUM" })); } }
   const t = await listen();
   if (t) await send(t, true); else resumeWake();
+}
+// Bağlantıyı önceden ısıt: ilk komutta TLS el sıkışmasını beklemeyelim
+function warmUp() { if (SET.geminiKey && navigator.onLine) fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(SET.geminiKey)}`).catch(() => {}); }
+let _ac = null;
+function beepUp() {
+  try {
+    _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = _ac.createOscillator(), g = _ac.createGain(); o.type = "sine"; o.connect(g); g.connect(_ac.destination);
+    const t = _ac.currentTime; o.frequency.setValueAtTime(660, t); o.frequency.exponentialRampToValueAtTime(1180, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.start(t); o.stop(t + 0.2);
+  } catch {}
 }
 function resumeWake() { if (Jarvis && SET.wake) nat(() => Jarvis.resumeWake()); }
 
@@ -434,9 +446,9 @@ async function addGeo({ text, place, radius = 300 }) {
 function systemPrompt() {
   const d = new Date();
   const upc = S.reminders.filter(r => !r.done).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 30).map(r => `- [${r.id}] ${r.text} @ ${r.due}${r.repeat !== "none" ? " (" + r.repeat + ")" : ""}`).join("\n") || "(yok)";
-  const tasks = S.tasks.filter(t => !t.done).slice(0, 40).map(t => `- [${t.id}] ${t.text}${t.date ? " @ " + t.date : ""}${t.project ? " #" + t.project : ""}`).join("\n") || "(yok)";
+  const tasks = S.tasks.filter(t => !t.done).slice(0, 25).map(t => `- [${t.id}] ${t.text}${t.date ? " @ " + t.date : ""}${t.project ? " #" + t.project : ""}`).join("\n") || "(yok)";
   const doneToday = S.tasks.filter(t => t.done).slice(-10).map(t => `- [${t.id}] ✔ ${t.text}`).join("\n");
-  const notes = S.notes.slice(0, 20).map(n => `- [${n.id}] ${n.text.slice(0, 160)}${n.project ? " #" + n.project : ""}`).join("\n") || "(yok)";
+  const notes = S.notes.slice(0, 10).map(n => `- [${n.id}] ${n.text.slice(0, 120)}${n.project ? " #" + n.project : ""}`).join("\n") || "(yok)";
   const mem = S.memory.map(m => `- [${m.id}] ${m.text}`).join("\n") || "(yok)";
   const aud = S.auditions.filter(a => !a.done).map(a => `- [${a.id}] ${a.type}: ${a.title} @ ${a.date || "?"} ${a.place || ""}`).join("\n") || "(yok)";
   const sh = S.shifts.filter(s => s.date >= ymd(new Date(Date.now() - 864e5))).map(s => `- [${s.id}] ${s.date} ${s.start}-${s.end} ${s.place}`).join("\n") || "(yok)";
@@ -495,18 +507,93 @@ async function httpJson(url, body, headers = {}) {
   return j;
 }
 const GEMINI_FALLBACK = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+/* ---------- hız: düşünme seviyesi, araç seçimi, yerel onay ---------- */
+const NO_THINK = new Set();
+function thinkCfg(model, level) {
+  if (NO_THINK.has(model)) return null;
+  if (/gemini-2\.5/.test(model)) return /pro/.test(model) ? null : { thinkingBudget: 0 };
+  if (/lite/.test(model)) return { thinkingLevel: "minimal" };
+  return { thinkingLevel: level || "low" };
+}
+const TOOL_CORE = ["hatirlatici_ekle", "hatirlatici_sil", "alarm_kur", "zamanlayici_kur", "gorev_ekle", "gorev_tamamla", "gorev_sil", "not_al", "hafiza_kaydet", "internette_ara", "hava_durumu", "rutin_calistir", "uygulama_ac", "ara", "whatsapp_mesaj"];
+const TOOL_GROUPS = [
+  [/harcama|lira|\btl\b|₺|para|bütçe|fatura|abonelik|ödeme|kira|harcad/, ["harcama_ekle", "harcama_ozeti", "fatura_ekle", "butce_ayarla"]],
+  [/alışkanlık|aliskanlik|seri|su iç|spor yaptım|okudum/, ["aliskanlik_ekle", "aliskanlik_isaretle"]],
+  [/seçme|secme|casting|çekim|cekim|prova|self|başvur|basvur|callback|rol|ajans|recast|hedef|kadro|oyuncu/, ["secme_ekle", "secme_sil", "basvuru_ekle", "basvuru_guncelle", "hedef_ekle", "hedef_ilerlet", "kadro_sorgula", "replik_modu", "mail_taslagi"]],
+  [/vardiya|bar|mesai|işe gid|ise gid/, ["vardiya_ekle", "vardiya_sil"]],
+  [/proje|oyun|galerici|kod|uygulamam|geliştir/, ["proje_guncelle"]],
+  [/odak|pomodoro|çalışacağım|ders|konsantre/, ["odak_baslat", "odak_bitir"]],
+  [/takvim|toplantı|randevu|etkinlik|bugün|yarın|hafta|program/, ["takvim_listele", "takvim_ekle"]],
+  [/mail|e-?posta|gmail|ileti|taslak/, ["mail_ozeti", "mail_taslagi"]],
+  [/bildirim|kim yazdı|mesaj(lar)?ım|ne gelmiş/, ["bildirimleri_oku"]],
+  [/sms/, ["sms_hazirla"]],
+  [/link|site|harita|yol|nasıl gider|kaç dakika|trafik|toplu taşıma|metro|vapur|otobüs|çıkmalıyım/, ["link_ac", "yol_suresi", "yol_tarifi"]],
+  [/fener|flaş/, ["fener"]],
+  [/sessiz|rahatsız|dnd/, ["rahatsiz_etme"]],
+  [/varınca|gidince|vardığımda|konum|oraya gelince/, ["konum_hatirlatici_ekle"]],
+  [/unut|hafıza|hafiza|aklında/, ["hafiza_sil"]],
+  [/not/, ["not_sil"]],
+  [/rutin/, ["rutin_olustur"]],
+  [/uyku|yatıyorum|iyi geceler|uyuyacağım/, ["uyku_modu"]],
+  [/doğum|yıldönüm|özel gün|anma/, ["ozel_gun_ekle"]],
+  [/ekran|dokun|bas\b|tıkla|kaydır|geri git|ana ekran|yaz\b|gönder'e/, ["ekrani_gor", "ekranda_dokun", "ekrana_yaz", "ekran_hareket"]],
+  [/ışı|priz|klima|akıllı|lamba|televizyon/, ["akilli_ev"]],
+  [/bilgisayar|\bpc\b|laptop|masaüstü/, ["bilgisayar"]],
+  [/radar|ilan|kiralık/, ["radar_kontrol"]]
+];
+function pickTools(history) {
+  const recent = history.filter(m => m.role === "user").slice(-2).map(m => trLower(m.content)).join(" ");
+  if (/brifing|gün sonu|haftalık rapor|planla|hazırla|ne var/.test(recent)) return TOOLS;
+  const names = new Set(TOOL_CORE);
+  for (const [rx, list] of TOOL_GROUPS) if (rx.test(recent)) list.forEach(n => names.add(n));
+  return TOOLS.filter(t => names.has(t.name));
+}
+const QUICK_OK = {
+  hatirlatici_ekle: r => r.due ? `Tamam, ${fmtWhen(r.due)} hatırlatacağım${r.repeat && r.repeat !== "none" ? " (" + REP[r.repeat] + ")" : ""}.` : null,
+  alarm_kur: r => r.yedek ? "Alarm kuruldu." : `Alarm ${r.saat} için kuruldu.`,
+  zamanlayici_kur: () => "Zamanlayıcı başladı.",
+  gorev_ekle: () => "Görevlere ekledim.", gorev_tamamla: () => "Tamamlandı olarak işaretledim.", gorev_sil: () => "Görevi sildim.",
+  not_al: () => "Not aldım.", not_sil: () => "Notu sildim.", hafiza_kaydet: () => "Aklımda tutacağım.", hatirlatici_sil: () => "Hatırlatıcıyı sildim.",
+  harcama_ekle: r => `${money(r.amount)} ${r.category} olarak kaydettim.${r.uyari ? " " + r.uyari : ""}`,
+  fener: r => r.on ? "Fener açık." : "Fener kapalı.", rahatsiz_etme: r => r.ok ? (r.on ? "Sessize aldım." : "Sesi açtım.") : null,
+  uygulama_ac: r => r.opened ? `${r.label} açılıyor.` : null,
+  vardiya_ekle: () => "Vardiyayı ekledim; 1 saat önce ve bitişte haber vereceğim.",
+  secme_ekle: () => "Kaydettim; bir gün önce akşam ve 2 saat önce hatırlatacağım.",
+  aliskanlik_isaretle: r => `${r.name}: ${r.done ? "işaretlendi" : "geri alındı"}, seri ${r.streak} gün.`,
+  fatura_ekle: () => "Ekledim; 2 gün önceden hatırlatacağım.", ozel_gun_ekle: () => "Ekledim; 3 gün önce ve gününde hatırlatacağım.",
+  basvuru_ekle: () => "Başvuruyu kaydettim; 7 gün sonra takip için hatırlatacağım.", basvuru_guncelle: r => `Durum güncellendi: ${r.status}.`,
+  hedef_ekle: () => "Hedefi ekledim.", hedef_ilerlet: r => `${r.text}: ${r.count}/${r.target}.`,
+  odak_baslat: r => `${r.minutes} dakikalık odak başladı.`, proje_guncelle: () => "Proje durumunu kaydettim."
+};
+function quickConfirm(results) {
+  const out = [];
+  for (const { name, res } of results) {
+    const f = QUICK_OK[name]; if (!f || !res || res.hata || res.iptal || res.ok === false) return null;
+    const t = f(res); if (!t) return null; out.push(t);
+  }
+  return out.length ? out.join(" ") : null;
+}
+let LAST_MS = 0;
 async function askGemini(history, onAct, attach) {
   if (!SET.geminiKey) throw new Error("NOKEY");
+  const t0 = Date.now();
   const contents = history.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
   if (attach && attach.length) contents[contents.length - 1].parts.unshift(...attach.map(a => ({ inlineData: { mimeType: a.mime, data: a.data } })));
-  const body = () => ({ systemInstruction: { parts: [{ text: systemPrompt() }] }, contents, tools: [{ functionDeclarations: TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; }) }], generationConfig: { temperature: 0.4, maxOutputTokens: 2048 } });
+  const tools = pickTools(history);
+  const decl = tools.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; });
+  const sys = systemPrompt();
   const models = [SET.geminiModel, ...GEMINI_FALLBACK.filter(m => m !== SET.geminiModel)];
   let mi = 0;
+  const body = () => {
+    const gc = { temperature: 0.4, maxOutputTokens: 2048 }; const th = thinkCfg(models[mi], SET.speed === "akilli" ? "medium" : "low"); if (th) gc.thinkingConfig = th;
+    return { systemInstruction: { parts: [{ text: sys }] }, contents, tools: [{ functionDeclarations: decl }], generationConfig: gc };
+  };
   for (let step = 0; step < 12; step++) {
     let j;
     for (;;) {
       try { j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${models[mi]}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, body()); break; }
       catch (e) {
+        if (e.status === 400 && /thinking/i.test(e.message) && !NO_THINK.has(models[mi])) { NO_THINK.add(models[mi]); continue; }
         if ((e.status === 404 || e.status === 429 || e.status === 400 && /model/i.test(e.message)) && mi < models.length - 1) { mi++; continue; }
         if (e.status === 429) throw new Error("Ücretsiz Gemini kotası doldu, biraz sonra tekrar dene.");
         throw e;
@@ -516,12 +603,15 @@ async function askGemini(history, onAct, attach) {
     const cand = j.candidates && j.candidates[0];
     const parts = (cand && cand.content && cand.content.parts) || [];
     const calls = parts.filter(p => p.functionCall);
-    if (!calls.length) return parts.filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
+    if (!calls.length) { LAST_MS = Date.now() - t0; return parts.filter(p => p.text && !p.thought).map(p => p.text).join("").trim(); }
     contents.push(cand.content);
-    const responses = [];
-    for (const p of calls) { onAct(p.functionCall.name); const res = await runTool(p.functionCall.name, p.functionCall.args); responses.push({ functionResponse: { name: p.functionCall.name, response: { result: res } } }); }
+    const responses = [], results = [];
+    for (const p of calls) { onAct(p.functionCall.name); const res = await runTool(p.functionCall.name, p.functionCall.args); results.push({ name: p.functionCall.name, res }); responses.push({ functionResponse: { name: p.functionCall.name, response: { result: res } } }); }
+    // Basit işlerde ikinci kez yapay zekâya sormadan onayla (≈1-2 sn kazanç)
+    if (step === 0) { const q = quickConfirm(results); if (q) { LAST_MS = Date.now() - t0; return q; } }
     contents.push({ role: "user", parts: responses });
   }
+  LAST_MS = Date.now() - t0;
   return "İşlemleri yaptım.";
 }
 async function askClaude(history, onAct, smart, attach) {
@@ -606,7 +696,7 @@ async function send(text, byVoice = false, attach = null, label = null) {
     else out = "Bir aksaklık oldu: " + e.message;
   }
   span.textContent = out;
-  if (acts.length) { const a = document.createElement("div"); a.className = "acts"; a.textContent = acts.join(" · "); span.parentElement.appendChild(a); }
+  { const a = document.createElement("div"); a.className = "acts"; a.textContent = [...acts, LAST_MS ? (LAST_MS / 1000).toFixed(1) + " sn" : ""].filter(Boolean).join(" · "); if (a.textContent) span.parentElement.appendChild(a); LAST_MS = 0; }
   CHAT.push({ role: "assistant", content: out }); saveChat();
   busy = false; setMode("", "Hazır");
   if (byVoice || SET.speakReplies) await speak(out, byVoice);
@@ -808,7 +898,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">JARVIS v1.3 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">JARVIS v1.4 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -1105,19 +1195,23 @@ async function sleepMode() {
 }
 
 /* ================= Gemini yardımcıları (düz metin, görsel, arama) ================= */
-async function plainGemini(prompt, parts = [], tools = null) {
+async function plainGemini(prompt, parts = [], tools = null, opt = {}) {
   if (!SET.geminiKey) throw new Error("NOKEY");
-  const models = [SET.geminiModel, ...GEMINI_FALLBACK.filter(m => m !== SET.geminiModel)];
+  const first = opt.model || SET.geminiModel;
+  const models = [first, ...(opt.fallback || []), ...GEMINI_FALLBACK].filter((m, i, a) => m && a.indexOf(m) === i);
   for (let i = 0; i < models.length; i++) {
     try {
-      const body = { contents: [{ role: "user", parts: [...parts, { text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 1400 } };
+      const gc = { temperature: opt.temperature ?? 0.7, maxOutputTokens: opt.max || 1400 }; const th = thinkCfg(models[i], "low"); if (th) gc.thinkingConfig = th;
+      const body = { contents: [{ role: "user", parts: [...parts, { text: prompt }] }], generationConfig: gc };
       if (tools) body.tools = tools;
-      const j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${models[i]}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, body);
+      let j;
+      try { j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${models[i]}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, body); }
+      catch (e) { if (e.status === 400 && /thinking/i.test(e.message) && !NO_THINK.has(models[i])) { NO_THINK.add(models[i]); i--; continue; } throw e; }
       const c = j.candidates && j.candidates[0];
       const txt = ((c && c.content && c.content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
       const src = ((c && c.groundingMetadata && c.groundingMetadata.groundingChunks) || []).map(g => g.web && g.web.title).filter(Boolean).slice(0, 4);
       return src.length ? txt + "\n(Kaynaklar: " + src.join(", ") + ")" : txt;
-    } catch (e) { if ((e.status === 404 || e.status === 429) && i < models.length - 1) continue; throw e; }
+    } catch (e) { if ((e.status === 404 || e.status === 429 || (e.status === 400 && /model/i.test(e.message))) && i < models.length - 1) continue; throw e; }
   }
 }
 async function webSearch(q) { return { sonuc: await plainGemini(`Güncel bilgiye ihtiyaç var. Google'da ara ve Türkçe, kısa ve net yanıtla (en fazla 6 cümle): ${q}`, [], [{ google_search: {} }]) }; }
@@ -1767,13 +1861,13 @@ async function listenGemini() {
   await new Promise(res => {
     const iv = setInterval(() => {
       const now = Date.now();
-      if (rec.stopNow || (speechAt && now - lastLoud > 1400) || (!speechAt && now - t0 > 7000) || now - t0 > 20000) { clearInterval(iv); res(); }
+      if (rec.stopNow || (speechAt && now - lastLoud > 950) || (!speechAt && now - t0 > 7000) || now - t0 > 20000) { clearInterval(iv); res(); }
     }, 120);
   });
   const hadSpeech = !!speechAt; const b64 = await rec.stop(); GEM_REC = null;
   if (!hadSpeech) return null;
   setMode("think", "Anlıyorum…");
-  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir (ör. JARVIS, Netflix, self-tape): her kelimeyi söylendiği dilde ve doğru yazımla yaz. Saatleri rakamla yaz (ör. 07:30). Sadece dökümü yaz; açıklama, tırnak, yorum ekleme. Anlaşılır bir konuşma yoksa sadece ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }]);
+  const txt = await plainGemini("Bu ses kaydında Burak'ın söylediğini kelimesi kelimesine yazıya dök. Konuşma Türkçe ağırlıklıdır, araya İngilizce kelime/isim girebilir (ör. JARVIS, Netflix, self-tape): her kelimeyi söylendiği dilde ve doğru yazımla yaz. Saatleri rakamla yaz (ör. 07:30). Sadece dökümü yaz; açıklama, tırnak, yorum ekleme. Anlaşılır bir konuşma yoksa sadece ### yaz.", [{ inlineData: { mimeType: "audio/wav", data: b64 } }], null, { model: SET.sttModel || "gemini-3.5-flash-lite", fallback: ["gemini-3.1-flash-lite"], temperature: 0, max: 300 });
   const clean = String(txt || "").replace(/^["'“]|["'”]$/g, "").trim();
   return !clean || clean.includes("###") ? null : clean;
 }
@@ -1818,7 +1912,9 @@ async function diagnostics() {
   renderSettings = async function () {
     await base();
     const ses = [...document.querySelectorAll("#b-set .card")].find(c => /^SES$/.test(c.querySelector("h3").textContent.trim()));
-    if (ses) ses.querySelector(".form").insertAdjacentHTML("afterbegin", `<div class="lbl">Ses tanıma motoru</div><select data-set="stt"><option value="gemini" ${SET.stt === "gemini" ? "selected" : ""}>Gemini — Türkçe + İngilizce, en doğru</option><option value="google" ${SET.stt === "google" ? "selected" : ""}>Google (cihaz) — hızlı, internetsiz de çalışır</option></select>`);
+    if (ses) ses.querySelector(".form").insertAdjacentHTML("afterbegin", `<div class="lbl">Ses tanıma motoru</div><select data-set="stt"><option value="gemini" ${SET.stt === "gemini" ? "selected" : ""}>Gemini — Türkçe + İngilizce, en doğru</option><option value="google" ${SET.stt === "google" ? "selected" : ""}>Google (cihaz) — en hızlı, internetsiz de çalışır</option></select>
+      <div class="lbl">Cevap hızı</div><select data-set="speed"><option value="hizli" ${SET.speed !== "akilli" ? "selected" : ""}>Hızlı — günlük komutlar için (önerilen)</option><option value="akilli" ${SET.speed === "akilli" ? "selected" : ""}>Akıllı — daha derin düşünür, daha yavaş</option></select>
+      <label class="toggle"><span>Uyanınca "Efendim?" de<small>Kapalıyken sadece kısa bip sesi: daha hızlı</small></span><input type="checkbox" class="sw" data-set="greetVoice" ${SET.greetVoice ? "checked" : ""}></label>`);
     const hj = [...document.querySelectorAll("#b-set .card")].find(c => /^HEY JARVIS$/.test(c.querySelector("h3").textContent.trim()));
     if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Jarvis" ile uyan<small>Tek başına "Jarvis" yetmez; yanlış uyanmayı büyük ölçüde engeller</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
       <div class="lbl">Hassasiyet</div><select data-set="wakeConf"><option value="0.96" ${SET.wakeConf >= 0.95 ? "selected" : ""}>Düşük — çok nadir yanlış uyanır</option><option value="0.92" ${SET.wakeConf >= 0.9 && SET.wakeConf < 0.95 ? "selected" : ""}>Orta (önerilen)</option><option value="0.85" ${SET.wakeConf < 0.9 ? "selected" : ""}>Yüksek — uzaktan da duyar, ara sıra yanılır</option></select>`);
@@ -1856,7 +1952,7 @@ async function boot() {
     Jarvis.addListener("launch", ev => handleLaunch(ev.action));
     Jarvis.addListener("partial", ev => { $("#q").value = ev.text || ""; });
     Jarvis.addListener("wakeStatus", showWake);
-    AppP && AppP.addListener("resume", () => { lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) PERM = p; }); });
+    AppP && AppP.addListener("resume", () => { warmUp(); lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) PERM = p; }); });
     AppP && AppP.addListener("pause", () => { if (SET.lock) META.unlockedAt = Math.min(META.unlockedAt || 0, Date.now()); saveMeta(); });
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();
@@ -1870,6 +1966,7 @@ async function boot() {
   }
   loadVoices(); await pullSync();
   setTimeout(() => proactive(), 2500);
+  warmUp();
   if (SET.scriptUrl && (SET.radars || []).length) nat(() => radarCheck());
   // klavye kısayolları (bilgisayar/tablet)
   document.addEventListener("keydown", e => {
