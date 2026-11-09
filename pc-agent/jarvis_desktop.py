@@ -53,11 +53,17 @@ except Exception:
 
 
 # ---------------- ayarlar ----------------
+DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True}
+GUI = bool(os.environ.get("TITUS_GUI"))
+
+
 def load_cfg():
     if "--reset" in sys.argv and CFG.exists():
         CFG.unlink()
     if CFG.exists():
-        return json.loads(CFG.read_text("utf-8"))
+        return {**DEFAULTS, **json.loads(CFG.read_text("utf-8"))}
+    if GUI:  # pencereli sürüm: ayarlar ekrandan girilir
+        return dict(DEFAULTS)
     print("=== T.I.T.U.S. bilgisayar kurulumu ===")
     c = {
         "gemini_key": input("Gemini API anahtarı (telefonda girdiğin ile aynı olabilir): ").strip(),
@@ -78,6 +84,25 @@ def load_cfg():
 
 C = load_cfg()
 AG = {"url": C.get("url"), "token": C.get("token")}
+
+
+def save_cfg(new):
+    """Ayarları kaydeder ve çalışan uygulamaya uygular."""
+    C.update({k: v for k, v in new.items() if k in DEFAULTS})
+    AG["url"], AG["token"] = C.get("url"), C.get("token")
+    CFG.write_text(json.dumps(C, ensure_ascii=False, indent=1), "utf-8")
+
+
+# Arayüz bu fonksiyonu değiştirir: olay türleri "durum", "titus", "sen", "arac", "hata"
+def ON_EVENT(kind, data):
+    pass
+
+
+def emit(kind, data=""):
+    try:
+        ON_EVENT(kind, data)
+    except Exception:
+        pass
 
 
 # ---------------- http ----------------
@@ -196,7 +221,11 @@ def speak(text):
     if not text:
         return
     print("Titus:", text)
+    emit("titus", text)
+    if not C.get("sesli", True) or not C.get("gemini_key"):
+        return
     SPEAKING.set()
+    emit("durum", "konuşuyor")
     try:
         for m in TTS_MODELS:
             try:
@@ -220,6 +249,14 @@ def speak(text):
             pass
     finally:
         SPEAKING.clear()
+        emit("durum", "hazır")
+
+
+def stop_speaking():
+    try:
+        sd.stop()
+    except Exception:
+        pass
 
 
 # ---------------- telefonla ortak veri ----------------
@@ -477,6 +514,7 @@ def think(text):
         for fc in calls:
             name, args = fc["name"], fc.get("args", {})
             print(f"  ⚙ {name} {json.dumps(args, ensure_ascii=False)[:120]}")
+            emit("arac", name)
             try:
                 r = TOOLS[name][2](args) if name in TOOLS else {"hata": "Bilinmeyen araç"}
                 if name in ("uygulama_ac", "site_ac", "dosya_ac"):
@@ -584,17 +622,23 @@ def converse():
     with BUSY:
         for turn in range(4):
             beep(True)
+            emit("durum", "dinliyor")
             pcm = record()
             beep(False)
             if not pcm:
+                emit("durum", "hazır")
                 return
+            emit("durum", "anlıyor")
             try:
                 text = transcribe(pcm)
             except Exception as e:
-                speak("Seni duyamadım."); print(e); return
+                emit("durum", "hazır"); speak("Seni duyamadım."); print(e); return
             if not text or len(text) < 2:
+                emit("durum", "hazır")
                 return
             print("Sen:", text)
+            emit("sen", text)
+            emit("durum", "düşünüyor")
             if agent.norm(text).strip(" .!") in ("tesekkurler", "tamam", "sag ol", "kapat", "gorusuruz"):
                 speak("Rica ederim."); return
             try:
@@ -603,6 +647,7 @@ def converse():
                 reply = "Bir sorun oldu: " + str(e)[:80]
             speak(reply)
             if not reply.rstrip().endswith("?"):
+                emit("durum", "hazır")
                 return
 
 
