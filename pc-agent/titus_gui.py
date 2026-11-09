@@ -71,6 +71,8 @@ J.ON_EVENT = on_event
 
 
 def run_text(text):
+    if J.LIVE_CHAT and J.LIVE_CHAT.send_text(text):
+        return
     def work():
         with J.BUSY:
             on_event("sen", text)
@@ -85,8 +87,11 @@ def run_text(text):
 
 
 def listen_now():
-    if J.BUSY.locked():
-        J.stop_speaking(); return
+    if J.BUSY.locked():  # sohbet sürüyorsa küreye tıklamak sohbeti bitirir
+        J.LIVE_STOP.set(); J.stop_speaking()
+        if J.LIVE_CHAT:
+            J.LIVE_CHAT.player.clear()
+        return
     J.TRIGGER.set()
 
 
@@ -161,7 +166,10 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, {"hata": "Önce Ayarlar'dan Gemini anahtarını gir."})
             listen_now(); return self.send(200, {"ok": True})
         if p == "/api/stop":
-            J.stop_speaking(); return self.send(200, {"ok": True})
+            J.stop_speaking()
+            if J.LIVE_CHAT:
+                J.LIVE_CHAT.player.clear()
+            return self.send(200, {"ok": True})
         if p == "/api/config":
             new = {}
             for k, v in body.items():
@@ -218,9 +226,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 body.dinliyor .orb .core{animation:pulse .9s ease-in-out infinite}body.dinliyor .orb .arc{animation-duration:1.4s}
 body.düşünüyor .orb .arc,body.anlıyor .orb .arc{animation-duration:.8s;border-left-color:var(--red2)}
 body.konuşuyor .orb .core{animation:pulse .5s ease-in-out infinite alternate}
+body.bağlanıyor .orb .arc{animation-duration:.6s;border-left-color:var(--red2);border-right-color:var(--red2)}
 @keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
 .status{margin-top:8px;letter-spacing:.35em;font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase}
-.hint{color:var(--dim);font-size:12px;margin-top:2px}
+.hint{color:var(--dim);font-size:12px;margin-top:2px;padding:0 18px;text-align:center}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:8px 14px}
 .chip{background:rgba(255,59,59,.08);border:1px solid var(--line);color:var(--txt);padding:6px 11px;border-radius:999px;cursor:pointer;font:13px inherit;font-family:inherit}.chip:hover{border-color:var(--red)}
 #log{flex:1;overflow-y:auto;padding:6px 16px 10px;display:flex;flex-direction:column;gap:8px;user-select:text}
@@ -250,7 +259,7 @@ label.f{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
 <header><div class="logo">T.I.T.U.S.<small>BİLGİSAYAR ASİSTANI</small></div>
 <div style="display:flex;gap:10px;align-items:center"><div class="clock" id="clk"></div><button class="iconbtn" id="gear" title="Ayarlar">⚙</button></div></header>
 <div class="top"><button class="orb" id="orb" title="Konuşmak için tıkla"><span class="ring"></span><span class="arc"></span><span class="core"></span></button>
-<div class="status" id="st">HAZIR</div><div class="hint" id="hk">Tıkla, “Hey Titus” de ya da Ctrl+Alt+J</div></div>
+<div class="status" id="st">HAZIR</div><div class="hint" id="hk">Tıkla, “Titus” de ya da Ctrl+Alt+J</div></div>
 <div class="chips">
 <button class="chip" data-q="Ekranda ne var? Kısaca anlat.">👁 Ekranda ne var</button>
 <button class="chip" data-q="Panodaki metni özetle.">📋 Panoyu özetle</button>
@@ -279,7 +288,11 @@ label.f{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
 <label class="f">Ses</label><select id="voice"><option>Charon</option><option>Orus</option><option>Fenrir</option><option>Puck</option><option>Iapetus</option><option>Algenib</option><option>Kore</option><option>Aoede</option></select>
 <label class="f">Kısayol tuşu (değişince Titus'u yeniden başlat)</label><input type="text" id="hotkey">
 <div class="tg"><span>Sesli cevap<small>Kapalıysa sadece yazıyla cevap verir</small></span><input type="checkbox" class="sw" id="sesli"></div>
-<div class="tg"><span>“Hey Titus” ile uyan<small>Değişince Titus'u yeniden başlat</small></span><input type="checkbox" class="sw" id="wake"></div>
+<div class="tg"><span>Sesle uyan<small>“Titus” deyince sohbet başlar (değişince Titus'u yeniden başlat)</small></span><input type="checkbox" class="sw" id="wake"></div>
+<div class="tg"><span>Sadece “Hey Titus” ile uyan<small>Çok yanlış uyanırsa aç</small></span><input type="checkbox" class="sw" id="wake_strict"></div>
+<div class="tg"><span>Kesintisiz canlı sohbet<small>Tek bağlantı, doğal akış, araya girebilirsin (önerilen)</small></span><input type="checkbox" class="sw" id="canli"></div>
+<div class="tg"><span>Kulaklık kullanıyorum<small>Titus konuşurken hafif sesle de sözünü kesebilirsin</small></span><input type="checkbox" class="sw" id="kulaklik"></div>
+<label class="f">Sessiz kalınca sohbet kaç saniyede kapansın</label><input type="text" id="live_idle">
 <div class="tg"><span>Windows açılınca başlat<small>Arka planda hazır bekler</small></span><input type="checkbox" class="sw" id="autostart"></div>
 </div>
 <div style="display:flex;gap:8px;margin-top:14px"><button class="btn" id="save" style="flex:1;font-size:15px">Kaydet</button></div>
@@ -287,23 +300,29 @@ label.f{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
 <div class="note" style="text-align:center;margin-top:10px">Pencereyi kapatsan da Titus arka planda dinlemeye devam eder. Tamamen kapatmak için “Titus'u kapat”.</div>
 </div></div>
 <script>
-const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=true;
+const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=true, liveU=null, liveT=null;
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
-function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;}
+function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"];
 const TOOL={uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı",gorev_ekle:"görev",not_al:"not",liste:"liste"};
 async function poll(){try{const r=await api("state?since="+since);
-  document.body.className=r.durum.replace(/\s/g,"");$("#st").textContent=r.durum.toUpperCase();
-  for(const e of r.olaylar){since=e.id;if(e.k==="titus")add("t",e.d,"TITUS");else if(e.k==="sen")add("s",e.d);else if(e.k==="arac")add("a","⚙ "+(TOOL[e.d]||e.d));else if(e.k==="hata")add("e",e.d);}
-  cfg=r.ayar; $("#hk").textContent="Tıkla"+(cfg.wake?", “Hey Titus” de":"")+" ya da "+(cfg.hotkey||"ctrl+alt+j").toUpperCase().replace(/\+/g," + ");
+  document.body.className=r.durum.replace(/\s/g,"");$("#st").textContent=r.durum.toLocaleUpperCase("tr-TR");
+  for(const e of r.olaylar){since=e.id;
+    if(e.k==="titus")add("t",e.d,"TITUS");else if(e.k==="sen")add("s",e.d);else if(e.k==="arac")add("a","⚙ "+(TOOL[e.d]||e.d));else if(e.k==="hata")add("e",e.d);
+    else if(e.k==="sen_canli"){if(!liveU){liveU=add("s","");} liveU.lastChild.textContent=e.d;log.scrollTop=log.scrollHeight;}
+    else if(e.k==="titus_canli"){if(liveU)liveU=null; if(!liveT){liveT=add("t","","TITUS");} liveT.lastChild.textContent=e.d;log.scrollTop=log.scrollHeight;}
+    else if(e.k==="tur_son"){liveU=null;liveT=null;}}
+  cfg=r.ayar; const live=!["hazır"].includes(r.durum);
+  $("#hk").textContent=live?"Sohbet açık — konuşmaya devam et. Bitirmek için “görüşürüz” de ya da küreye tıkla.":"Tıkla"+(cfg.wake?(cfg.wake_strict?", “Hey Titus” de":", “Titus” de"):"")+" ya da "+(cfg.hotkey||"ctrl+alt+j").toUpperCase().replace(/\+/g," + ");
   if(first){first=false; if(!r.hazir){log.innerHTML='<div class="welcome"><b>Hoş geldin!</b><br>Başlamak için ⚙ Ayarlar\'dan Gemini anahtarını gir.</div>'; openSet();} else if(!r.olaylar.length) add("t","Merhaba "+(cfg.name||"")+". Bilgisayarda hazırım. Ne yapalım?","TITUS");}
 }catch(e){$("#st").textContent="BAĞLANTI YOK";} setTimeout(poll,400);}
 function send(t){t=(t||$("#q").value).trim();if(!t)return;$("#q").value="";api("send",{text:t}).then(r=>{if(r.hata){add("e",r.hata);openSet();}});}
 $("#send").onclick=()=>send();$("#q").onkeydown=e=>{if(e.key==="Enter")send();};
 document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>send(b.dataset.q));
 $("#orb").onclick=()=>api("listen",{}).then(r=>{if(r.hata){add("e",r.hata);openSet();}});
-function openSet(){for(const k of ["gemini_key","groq_key","url","token","name","hotkey","voice"])$("#"+k).value=cfg[k]||"";for(const k of ["sesli","wake","autostart"])$("#"+k).checked=!!cfg[k];$("#set").classList.add("on");}
+function openSet(){for(const k of ["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle"])$("#"+k).value=cfg[k]??"";for(const k of BOOLS)$("#"+k).checked=!!cfg[k];$("#set").classList.add("on");}
 $("#gear").onclick=openSet;$("#close").onclick=()=>$("#set").classList.remove("on");
-$("#save").onclick=async()=>{const b={};for(const k of ["gemini_key","groq_key","url","token","name","hotkey","voice"])b[k]=$("#"+k).value.trim();for(const k of ["sesli","wake","autostart"])b[k]=$("#"+k).checked;
+$("#save").onclick=async()=>{const b={};for(const k of ["gemini_key","groq_key","url","token","name","hotkey","voice"])b[k]=$("#"+k).value.trim();b.live_idle=Math.max(10,Math.min(300,+$("#live_idle").value||45));for(const k of BOOLS)b[k]=$("#"+k).checked;
   const r=await api("config",b);cfg=r.ayar;$("#set").classList.remove("on");if(log.querySelector(".welcome")){log.innerHTML="";add("t","Hazırım "+(cfg.name||"")+". Konuşmak için kırmızı küreye tıkla ya da yaz.","TITUS");} else add("a","✓ Ayarlar kaydedildi");};
 $("#clear").onclick=async()=>{await api("clear",{});log.innerHTML="";since=0;$("#set").classList.remove("on");};
 $("#quit").onclick=async()=>{await api("quit",{});document.body.innerHTML='<div class="welcome" style="margin-top:40vh">Titus kapatıldı. Bu pencereyi kapatabilirsin.</div>';};

@@ -53,7 +53,7 @@ except Exception:
 
 
 # ---------------- ayarlar ----------------
-DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True}
+DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False}
 GUI = bool(os.environ.get("TITUS_GUI"))
 
 
@@ -528,6 +528,8 @@ def think(text):
 
 # ---------------- uyandırma: kısayol ve "Hey Titus" ----------------
 TRIGGER = threading.Event()
+LIVE_STOP = threading.Event()  # canlı sohbeti dışarıdan bitirmek için
+LIVE_CHAT = None
 BUSY = threading.Lock()
 
 
@@ -557,7 +559,7 @@ def wake_loop():
     import vosk
     vosk.SetLogLevel(-1)
     model = vosk.Model(str(d))
-    grammar = json.dumps(["hey titus", "titus", "hey", "hello", "tight", "tie", "focus", "status", "jarvis", "[unk]"])
+    grammar = json.dumps(["hey titus", "okay titus", "titus", "hey", "okay", "hello", "tight", "tie", "ties", "tidy", "titles", "focus", "lotus", "status", "notice", "this", "is", "it", "us", "jarvis", "[unk]"])
     rec = vosk.KaldiRecognizer(model, RATE, grammar)
     rec.SetWords(True)
     q = queue.Queue()
@@ -574,7 +576,10 @@ def wake_loop():
                         words = r.get("result", [])
                         txt = r.get("text", "")
                         conf = min([w.get("conf", 0) for w in words] or [0])
-                        if "titus" in txt and (txt.startswith("hey") or conf > 0.95) and conf > 0.85:
+                        tw = [w for w in words if w.get("word") == "titus"]
+                        tconf = tw[0].get("conf", 0) if tw else 0
+                        hey = txt.startswith(("hey", "okay"))
+                        if tw and ((hey and tconf > 0.8) or (not C.get("wake_strict") and tconf > 0.9)):
                             TRIGGER.set()
                             break
         except Exception as e:
@@ -618,37 +623,46 @@ def phone_queue_loop():
 
 
 def converse():
-    """Bir tur dinle–düşün–konuş; cevap soruyla bitiyorsa tekrar dinler."""
+    """Sohbet: önce kesintisiz canlı moda geçer; olmazsa sırayla dinle–düşün–konuş döngüsü (her seferinde 'Titus' demeden)."""
     with BUSY:
-        for turn in range(4):
-            beep(True)
-            emit("durum", "dinliyor")
-            pcm = record()
-            beep(False)
-            if not pcm:
-                emit("durum", "hazır")
+        try:
+            import titus_live
+            if titus_live.run_live(sys.modules[__name__]):
                 return
+        except Exception as e:
+            print("canlı mod yok:", e)
+        beep(True)
+        quiet = 0
+        for turn in range(40):
+            emit("durum", "dinliyor")
+            pcm = record(max_sec=20)
+            if not pcm:
+                quiet += 1
+                if quiet >= 2 or LIVE_STOP.is_set():
+                    break
+                continue
+            quiet = 0
             emit("durum", "anlıyor")
             try:
                 text = transcribe(pcm)
             except Exception as e:
-                emit("durum", "hazır"); speak("Seni duyamadım."); print(e); return
+                emit("hata", "Ses anlaşılamadı: " + str(e)[:80]); continue
             if not text or len(text) < 2:
-                emit("durum", "hazır")
-                return
+                continue
             print("Sen:", text)
             emit("sen", text)
+            if agent.norm(text).strip(" .!") in ("tesekkurler", "sag ol", "kapat", "gorusuruz", "bu kadar", "tamam bu kadar"):
+                speak("Rica ederim, buradayım."); break
             emit("durum", "düşünüyor")
-            if agent.norm(text).strip(" .!") in ("tesekkurler", "tamam", "sag ol", "kapat", "gorusuruz"):
-                speak("Rica ederim."); return
             try:
                 reply = think(text)
             except Exception as e:
                 reply = "Bir sorun oldu: " + str(e)[:80]
             speak(reply)
-            if not reply.rstrip().endswith("?"):
-                emit("durum", "hazır")
-                return
+            if LIVE_STOP.is_set():
+                break
+        beep(False)
+        emit("durum", "hazır")
 
 
 def main():

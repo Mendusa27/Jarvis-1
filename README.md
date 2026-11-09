@@ -206,3 +206,10 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - **Titus artık Recast Audition'a erişiyor:** işleri, başvuruları, tape durumlarını ve gönderimleri okuyup senin istediğin gibi düzenliyor ("Kahve reklamının son teslimini cumaya al", "Elif'in tape'ini onaylı yap", "Molla işini kapat"). Her değişiklik önce onay kutusuyla gelir, "geri al" diyebilirsin.
 - Kurulum: Ayarlar → Recast Audition → uygulama adresini yaz (tablo kimliği isteğe bağlı) → "Bağlantıyı dene". Titus'un Google bağlantısı Audition'ın kurulu olduğu hesapla aynı olmalı. Code.gs'yi güncelleyip yeni sürüm olarak dağıt.
 - Not: Titus doğrudan veriyi düzenler; Audition'ın kendi bildirim mailleri bu düzenlemelerde tetiklenmez.
+
+## v2.4 — Kesintisiz, doğal sohbet (telefon + bilgisayar)
+- Sadece **"Titus"** demen yeter; sonra normal konuş, her cümlede adını söyleme. "Görüşürüz / bu kadar / sağ ol" deyince ya da 45 sn sessiz kalınca sohbet kapanır.
+- Tek açık bağlantı (Gemini Live): sen konuşurken dinler, araya girersen susar, cevabı anında sesli akıtır. Bağlantı koparsa ya da süre dolarsa kaldığı yerden sessizce devam eder; sohbet süresi sınırsız.
+- Mikrofon bağlantıdan önce açılır: "Titus" der demez konuşmaya başlayabilirsin, ilk kelimeler kaybolmaz. Önceki konuşmayı hatırlayarak başlar.
+- Konuşma tarzı: kısa, doğal, insan gibi sıra alan, araya giren sözü kibarca karşılayan bir sohbet.
+- Bilgisayar: aynı canlı sohbet + pencerede canlı yazıya dökme. Hoparlörle kendi sesini duyup kesilirse kulaklık kullan, Ayarlar → "Kulaklık kullanıyorum".

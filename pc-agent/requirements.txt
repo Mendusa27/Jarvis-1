@@ -7,3 +7,4 @@ pillow
 pygetwindow
 pyttsx3
 vosk
+websockets

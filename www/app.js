@@ -50,8 +50,8 @@ const DEF_SET = {
   wake: false, scriptUrl: "", scriptToken: "", briefTime: "08:30", briefOn: true, eveningTime: "", city: "İstanbul", lat: 41.01, lng: 28.98,
   name: "Burak", budget: 0, lock: false, headset: false, homeLat: null, homeLng: null, partnerName: "Kübra", autoSendWa: false,
   kadroSheetId: "", ntfyTopic: "", radars: [], webhooks: [], proactive: true,
-  stt: "gemini", wakeStrict: true, wakeConf: 0.92, speed: "hizli", greetVoice: false, sttModel: "gemini-3.5-flash-lite",
-  live: true, liveVoice: "Charon", liveIdle: 25, liveDuplex: false, voiceEngine: "gemini", ttsVoice: "Charon", groqKey: "", groqModel: "llama-3.3-70b-versatile", convo: true
+  stt: "gemini", wakeStrict: false, wakeConf: 0.92, speed: "hizli", greetVoice: false, sttModel: "gemini-3.5-flash-lite",
+  live: true, liveVoice: "Charon", liveIdle: 45, liveDuplex: false, voiceEngine: "gemini", ttsVoice: "Charon", groqKey: "", groqModel: "llama-3.3-70b-versatile", convo: true
 };
 let S = EMPTY(), SET = { ...DEF_SET }, CHAT = [];
 async function kvGet(k) {
@@ -894,7 +894,7 @@ async function renderSettings() {
     <div class="hint">Daha doğal ses için telefonda Ayarlar → Metin okuma → Google motoru → Türkçe ses verilerini indir.</div></div></div>
 
   <div class="card"><h3>HEY Titus</h3>
-    ${tg("wake", "Uyandırma kelimesi", "Ekran kapalıyken bile \"Hey Titus\" dinler. İlk açılışta ~40 MB ses modeli iner. Pil kullanır.")}
+    ${tg("wake", "Uyandırma kelimesi", "Ekran kapalıyken bile \"Titus\" dinler. İlk açılışta ~40 MB ses modeli iner. Pil kullanır.")}
     <div class="hint" id="wakeStatus">${NATIVE ? "" : "Sadece Android uygulamasında çalışır."}</div></div>
 
   <div class="card"><h3>BRİFİNG</h3>
@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.3 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.4 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -1938,7 +1938,7 @@ async function diagnostics() {
       <div class="lbl">Cevap hızı</div><select data-set="speed"><option value="hizli" ${SET.speed !== "akilli" ? "selected" : ""}>Hızlı — günlük komutlar için (önerilen)</option><option value="akilli" ${SET.speed === "akilli" ? "selected" : ""}>Akıllı — daha derin düşünür, daha yavaş</option></select>
       <label class="toggle"><span>Uyanınca "Efendim?" de<small>Kapalıyken sadece kısa bip sesi: daha hızlı</small></span><input type="checkbox" class="sw" data-set="greetVoice" ${SET.greetVoice ? "checked" : ""}></label>`);
     const hj = [...document.querySelectorAll("#b-set .card")].find(c => /^HEY Titus$/.test(c.querySelector("h3").textContent.trim()));
-    if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Titus" ile uyan<small>Tek başına "Titus" yetmez; yanlış uyanmayı büyük ölçüde engeller</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
+    if (hj) hj.insertAdjacentHTML("beforeend", `<label class="toggle"><span>Sadece "Hey Titus" ile uyan<small>Kapalıyken (önerilen) sadece "Titus" demen yeter; çok yanlış uyanırsa aç</small></span><input type="checkbox" class="sw" data-set="wakeStrict" ${SET.wakeStrict ? "checked" : ""}></label>
       <div class="lbl">Hassasiyet</div><select data-set="wakeConf"><option value="0.96" ${SET.wakeConf >= 0.95 ? "selected" : ""}>Düşük — çok nadir yanlış uyanır</option><option value="0.92" ${SET.wakeConf >= 0.9 && SET.wakeConf < 0.95 ? "selected" : ""}>Orta (önerilen)</option><option value="0.85" ${SET.wakeConf < 0.9 ? "selected" : ""}>Yüksek — uzaktan da duyar, ara sıra yanılır</option></select>`);
     $("#b-set").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row"><div class="hint" style="margin:0">Bir şey çalışmıyorsa önce sistem testini çalıştır.</div><button class="btn sm" id="diagBtn">🩺 Sistem testi</button></div></div>`);
   };
@@ -1973,55 +1973,91 @@ function pcm16ToBuffer(ctx, u8, rate = 24000) {
 const LIVE_MODELS = ["gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025"];
 let LIVE = null, LIVE_OFF_UNTIL = 0;
 class LiveSession {
-  constructor() { this.ws = null; this.playing = []; this.nextT = 0; this.userTxt = ""; this.botTxt = ""; this.uSpan = null; this.bSpan = null; this.lastAct = Date.now(); this.closed = false; this.acts = []; }
-  async open(model) {
+  constructor() { this.ws = null; this.playing = []; this.nextT = 0; this.userTxt = ""; this.botTxt = ""; this.uSpan = null; this.bSpan = null; this.lastAct = Date.now(); this.closed = false; this.acts = []; this.handle = null; this.model = ""; this.lite = false; this.reconnecting = false; this.endAfter = false; }
+  setupMsg(model, lite) {
+    const decl = TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; });
+    const setup = {
+      model: "models/" + model,
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.liveVoice || "Charon" } } } },
+      systemInstruction: { parts: [{ text: systemPrompt() + LIVE_PERSONA() }] },
+      tools: [{ functionDeclarations: decl }],
+      inputAudioTranscription: {}, outputAudioTranscription: {}
+    };
+    if (!lite) {
+      // hızlı ve doğal sıra alma + sınırsız süre + kopunca kaldığı yerden devam
+      setup.realtimeInputConfig = { automaticActivityDetection: { startOfSpeechSensitivity: "START_SENSITIVITY_HIGH", endOfSpeechSensitivity: "END_SENSITIVITY_HIGH", prefixPaddingMs: 120, silenceDurationMs: Number(SET.liveSilence) || 600 } };
+      setup.contextWindowCompression = { slidingWindow: {} };
+      setup.sessionResumption = this.handle ? { handle: this.handle } : {};
+    }
+    return { setup };
+  }
+  async open(model, lite) {
     return new Promise((res, rej) => {
       const ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(SET.geminiKey)}`);
-      this.ws = ws; let ready = false;
+      let ready = false;
       const to = setTimeout(() => { if (!ready) { try { ws.close(); } catch {} rej(new Error("zaman aşımı")); } }, 8000);
-      ws.onopen = () => {
-        const decl = TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; });
-        ws.send(JSON.stringify({ setup: {
-          model: "models/" + model,
-          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.liveVoice || "Charon" } } } },
-          systemInstruction: { parts: [{ text: systemPrompt() + "\nŞU AN CANLI SESLİ SOHBETTESİN: doğal, akıcı ve kısa konuş; Türkçe konuş. Bir işlem istenirse önce aracı çağır, sonra kısaca söyle." }] },
-          tools: [{ functionDeclarations: decl }],
-          inputAudioTranscription: {}, outputAudioTranscription: {}
-        } }));
-      };
+      ws.onopen = () => ws.send(JSON.stringify(this.setupMsg(model, lite)));
       ws.onmessage = async ev => {
         let msg; try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : await ev.data.text()); } catch { return; }
-        if (msg.setupComplete && !ready) { ready = true; clearTimeout(to); res(); return; }
+        if (msg.setupComplete && !ready) { ready = true; clearTimeout(to); const old = this.ws; this.ws = ws; this.model = model; this.lite = lite; if (old && old !== ws) { old.onclose = null; try { old.close(); } catch {} } res(); return; }
+        if (ws !== this.ws) return;
+        if (msg.sessionResumptionUpdate && msg.sessionResumptionUpdate.resumable && msg.sessionResumptionUpdate.newHandle) this.handle = msg.sessionResumptionUpdate.newHandle;
         this.onMsg(msg);
       };
       ws.onerror = () => {};
-      ws.onclose = ev => { clearTimeout(to); if (!ready) rej(new Error(ev.reason || "bağlantı kapandı " + ev.code)); else if (!this.closed) { if (/quota|exceed|limit/i.test(ev.reason || "")) LIVE_OFF_UNTIL = Date.now() + 36e5; this.stop(ev.reason ? "Canlı oturum kapandı: " + ev.reason : null); } };
+      ws.onclose = ev => {
+        clearTimeout(to);
+        if (!ready) return rej(new Error(ev.reason || "bağlantı kapandı " + ev.code));
+        if (ws !== this.ws || this.closed) return;
+        if (/quota|exceed|limit/i.test(ev.reason || "")) { LIVE_OFF_UNTIL = Date.now() + 36e5; return this.stop("Canlı sohbet kotası doldu, normal moda geçtim."); }
+        this.reconnect();
+      };
     });
   }
+  // Bağlantı koparsa ya da sunucu "süre doldu" derse sohbeti bölmeden yeniden bağlan
+  async reconnect() {
+    if (this.reconnecting || this.closed) return; this.reconnecting = true;
+    for (let i = 0; i < 4 && !this.closed; i++) {
+      try { await this.open(this.model, this.lite); this.reconnecting = false; if (this.lite || !this.handle) this.seed(); return; }
+      catch (e) { await sleep(600 * (i + 1)); }
+    }
+    this.reconnecting = false; this.stop("Bağlantı koptu; tekrar konuşmak için Titus de.");
+  }
+  // Önceki konuşmayı bağlam olarak ver: sohbet kaldığı yerden devam etsin
+  seed() {
+    const h = CHAT.slice(-12).filter(m => m.content && m.role !== "sys").map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: String(m.content).slice(0, 600) }] }));
+    if (h.length && this.ws && this.ws.readyState === 1) try { this.ws.send(JSON.stringify({ clientContent: { turns: h, turnComplete: false } })); } catch {}
+  }
   async start() {
-    const models = [SET.liveModel, ...LIVE_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
-    let err = null;
-    for (const m of models) { try { await this.open(m); if (SET.liveModel !== m) { SET.liveModel = m; saveSet(); } err = null; break; } catch (e) { err = e; } }
-    if (err) throw err;
-    // mikrofon
+    // Mikrofon bağlantıdan ÖNCE açılır: "Titus" der demez konuşmaya başlayabilirsin, bağlanırken söylediklerin kaybolmaz
+    this.pre = []; this.preLen = 0;
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     this.inCtx = new (window.AudioContext || window.webkitAudioContext)();
     const src = this.inCtx.createMediaStreamSource(this.stream);
     this.proc = this.inCtx.createScriptProcessor(2048, 1, 1);
     const ratio = this.inCtx.sampleRate / 16000; let pend = [];
     this.proc.onaudioprocess = e => {
-      if (!this.ws || this.ws.readyState !== 1) return;
+      if (this.closed) return;
       const d = e.inputBuffer.getChannelData(0); const n = Math.floor(d.length / ratio); const pcm = new Int16Array(n);
       let q = 0; for (let i = 0; i < n; i++) { const v = d[Math.floor(i * ratio)]; q += v * v; pcm[i] = Math.max(-1, Math.min(1, v)) * 0x7fff; }
       const rms = Math.sqrt(q / n);
       // Hoparlörden çıkan sesi geri duymasın: Titus konuşurken sadece yüksek sesle söz kesilebilir
-      if (this.isPlaying() && rms < (SET.liveDuplex ? 0.02 : 0.09)) pcm.fill(0); else if (rms > 0.03) this.lastAct = Date.now();
+      if (this.isPlaying() && rms < (SET.liveDuplex ? 0.02 : 0.07)) pcm.fill(0); else if (rms > 0.03) this.lastAct = Date.now();
+      const live = this.ws && this.ws.readyState === 1 && !this.reconnecting && this.ready;
+      if (!live) { this.pre.push(pcm); this.preLen += pcm.length; while (this.preLen > 16000 * 8) this.preLen -= this.pre.shift().length; return; }
+      if (this.pre.length) { pend = this.pre.concat(pend); this.pre = []; this.preLen = 0; }
       pend.push(pcm);
       if (pend.length >= 2) { const tot = pend.reduce((s, a) => s + a.length, 0), all = new Int16Array(tot); let o = 0; for (const a of pend) { all.set(a, o); o += a.length; } pend = [];
         this.ws.send(JSON.stringify({ realtimeInput: { audio: { data: bytesToB64(new Uint8Array(all.buffer)), mimeType: "audio/pcm;rate=16000" } } })); }
     };
     src.connect(this.proc); this.proc.connect(this.inCtx.destination);
-    this.idle = setInterval(() => { if (!this.isPlaying() && Date.now() - this.lastAct > (SET.liveIdle || 25) * 1000) this.stop(); }, 1000);
+    setMode("listen", "Canlı · dinliyorum (bağlanıyor)"); $("#mic").classList.add("on");
+    const models = [SET.liveModel, ...LIVE_MODELS].filter((m, i, a) => m && a.indexOf(m) === i);
+    let err = null;
+    outer: for (const m of models) for (const lite of [false, true]) { try { await this.open(m, lite); if (SET.liveModel !== m) { SET.liveModel = m; saveSet(); } err = null; break outer; } catch (e) { err = e; } }
+    if (err) { try { this.proc.disconnect(); this.stream.getTracks().forEach(t => t.stop()); this.inCtx.close(); } catch {} throw err; }
+    this.seed(); this.ready = true; this.lastAct = Date.now();
+    this.idle = setInterval(() => { if (this.isPlaying() || this.reconnecting) return; if (this.endAfter || Date.now() - this.lastAct > (SET.liveIdle || 45) * 1000) this.stop(); }, 700);
     setMode("listen", "Canlı · konuş"); $("#mic").classList.add("on");
   }
   isPlaying() { return OUT_CTX && this.nextT > OUT_CTX.currentTime + 0.05; }
@@ -2047,6 +2083,7 @@ class LiveSession {
         $("#log").scrollTop = 1e9;
       }
       if (sc.turnComplete || sc.generationComplete) {
+        if (BYE_RX.test(this.userTxt.trim())) this.endAfter = true;
         if (this.userTxt.trim()) CHAT.push({ role: "user", content: this.userTxt.trim() });
         if (this.botTxt.trim()) CHAT.push({ role: "assistant", content: this.botTxt.trim() });
         if (this.acts.length && this.bSpan) { const a = document.createElement("div"); a.className = "acts"; a.textContent = this.acts.join(" · ") + " · canlı"; this.bSpan.parentElement.appendChild(a); }
@@ -2060,7 +2097,7 @@ class LiveSession {
       if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
       this.lastAct = Date.now();
     }
-    if (msg.goAway) this.stop();
+    if (msg.goAway) this.reconnect();
   }
   stop(note) {
     if (this.closed) return; this.closed = true;
@@ -2077,6 +2114,15 @@ class LiveSession {
     resumeWake();
   }
 }
+const BYE_RX = /^(tamam(dır)?[, ]*)?(görüşürüz|hoşça kal|bu kadar|şimdilik bu kadar|teşekkürler titus|sağ ?ol titus|kapat|iyi geceler|bye)\b/i;
+const LIVE_PERSONA = () => `
+ŞU AN CANLI, KESİNTİSİZ BİR SESLİ SOHBETTESİN. Burak her cümlede "Titus" demek zorunda değil; sohbet akıp gidiyor.
+Bir insan gibi konuş: doğal, sıcak, akıcı Türkçe; kısa cümleler; konuşma dilinde ("tabii", "hmm, bakalım", "anladım"). Yazı dili, madde işareti, uzun liste yok.
+Sıra al: genelde 1-3 cümle söyle, sonra sözü ona bırak. Gerekirse kısa bir soru sor, ama her cevabı soruyla bitirme.
+Önceki konuşulanları hatırla ve bağla ("az önce dediğin…"). Onu adıyla ara ama abartma. Yerinde hafif espri yapabilirsin.
+Burak yarım cümle kurar, düzeltir ya da sözünü keserse doğal karşıla; söz kesildiğinde hemen sus ve dinle.
+Anlamadığın bir şey olursa tahmin yürütme, kısaca sor. Bir işlem istenirse aracı hemen çağır, araç adlarını söyleme; işi yapınca kısaca söyle.
+Burak "görüşürüz", "bu kadar", "sağ ol" gibi vedalaşırsa kısa ve sıcak bir vedayla bitir.`;
 async function startLive() {
   if (LIVE) { LIVE.stop(); return true; }
   if (!SET.live || !SET.geminiKey || !navigator.onLine || Date.now() < LIVE_OFF_UNTIL || !window.WebSocket) return false;
@@ -3232,6 +3278,7 @@ async function boot() {
   await loadAll();
   try { const f = JSON.parse(await kvGet("jarvis_focus") || "null"); if (f) FOCUS = f; } catch {}
   try { const m = JSON.parse(await kvGet("jarvis_meta") || "null"); if (m) META = Object.assign(META, m); } catch {}
+  if (!META.v24) { META.v24 = true; SET.wakeStrict = false; if (!SET.liveIdle || SET.liveIdle <= 25) SET.liveIdle = 45; SET.live = true; saveSet(); saveMeta(); } // v2.4: sadece "Titus" yeter, sohbet daha uzun açık kalır
   seedRoutines(); rollGoals();
   if (Jarvis) PERM = await nat(() => Jarvis.permissionsStatus(), {}) || {};
   bind(); clock(); setInterval(clock, 10000); drawChat(); renderAll();
