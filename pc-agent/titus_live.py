@@ -212,6 +212,8 @@ class LiveChat:
                 if self.bot_txt.strip():
                     J.HIST.append({"role": "model", "parts": [{"text": self.bot_txt.strip()}]})
                 del J.HIST[:-30]
+                try: J.save_hist()
+                except Exception: pass
                 J.emit("tur_son", "")
                 self.user_txt = self.bot_txt = ""; self.last_act = time.time()
         tc = m.get("toolCall")

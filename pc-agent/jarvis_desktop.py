@@ -23,7 +23,40 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
+VERSION = "2.5"
 CFG = Path.home() / ".jarvis_desktop.json"
+DATA = Path.home() / ".titus"
+DATA.mkdir(exist_ok=True)
+LOG = []  # (saat, seviye, mesaj) — arayüzdeki Günlük sekmesi
+
+
+def log(level, msg):
+    line = (time.strftime("%H:%M:%S"), level, str(msg))
+    LOG.append(line)
+    del LOG[:-400]
+    try:
+        with open(DATA / "gunluk.txt", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d')} {line[0]} [{level}] {line[2]}\n")
+        if (DATA / "gunluk.txt").stat().st_size > 2_000_000:
+            (DATA / "gunluk.txt").replace(DATA / "gunluk-eski.txt")
+    except Exception:
+        pass
+
+
+def jload(name, default):
+    try:
+        return json.loads((DATA / name).read_text("utf-8"))
+    except Exception:
+        return default
+
+
+def jsave(name, obj):
+    try:
+        tmp = DATA / (name + ".tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=1), "utf-8")
+        tmp.replace(DATA / name)
+    except Exception as e:
+        log("hata", f"{name} kaydedilemedi: {e}")
 MODELS_DIR = Path.home() / ".jarvis_models"
 OS = platform.system()
 RATE = 16000
@@ -53,7 +86,7 @@ except Exception:
 
 
 # ---------------- ayarlar ----------------
-DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False}
+DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False, "city": "İstanbul", "lat": 41.0082, "lon": 28.9784, "ntfy": "", "groq_model": ""}
 GUI = bool(os.environ.get("TITUS_GUI"))
 
 
@@ -99,6 +132,8 @@ def ON_EVENT(kind, data):
 
 
 def emit(kind, data=""):
+    if kind == "hata":
+        log("hata", data)
     try:
         ON_EVENT(kind, data)
     except Exception:
@@ -106,49 +141,116 @@ def emit(kind, data=""):
 
 
 # ---------------- http ----------------
+try:
+    import requests
+    _TL = threading.local()
+
+    def _sess():
+        if not hasattr(_TL, "s"):
+            _TL.s = requests.Session()  # bağlantıyı açık tutar: her istekte yeniden el sıkışma yok
+        return _TL.s
+except Exception:
+    requests = None
+
+
+class ApiError(RuntimeError):
+    def __init__(self, status, msg, raw=""):
+        super().__init__(f"HTTP {status}: {msg}")
+        self.status, self.msg, self.raw = status, msg, raw
+
+
+def _err_msg(code, text):
+    try:
+        return json.loads(text)["error"]["message"]
+    except Exception:
+        return text[:500]
+
+
 def post_json(url, body, headers=None, timeout=60):
-    data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
+    h = {"Content-Type": "application/json", **(headers or {})}
+    if requests:
+        try:
+            r = _sess().post(url, data=json.dumps(body).encode("utf-8"), headers=h, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            _TL.__dict__.pop("s", None)
+            raise ApiError(0, "Bağlantı hatası: " + str(e)[:200])
+        if r.status_code >= 400:
+            raise ApiError(r.status_code, _err_msg(r.status_code, r.text), r.text[:4000])
+        return r.json()
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=h)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        msg = e.read().decode("utf-8", "ignore")[:300]
-        err = RuntimeError(f"HTTP {e.code}: {msg}")
-        err.status = e.code
-        raise err
+        t = e.read().decode("utf-8", "ignore")
+        raise ApiError(e.code, _err_msg(e.code, t), t[:4000])
+    except urllib.error.URLError as e:
+        raise ApiError(0, "Bağlantı hatası: " + str(e.reason)[:200])
 
 
-def gemini(contents, tools=None, system=None, max_tokens=1200):
+def friendly(e):
+    """Hatayı Burak'ın anlayacağı dile çevirir (ayrıntı Günlük'te)."""
+    st, m = getattr(e, "status", None), str(getattr(e, "msg", e))
+    low = m.lower()
+    if "api key not valid" in low or "api_key_invalid" in low or st == 403:
+        return "Gemini anahtarı geçersiz görünüyor. Ayarlar'dan anahtarı kontrol et."
+    if st == 429 or "quota" in low or "resource_exhausted" in low:
+        return "Ücretsiz kullanım kotası şu an dolu. Birkaç dakika sonra tekrar dene" + ("; bu arada Groq ile devam ediyorum." if C.get("groq_key") else "; Ayarlar'a Groq anahtarı eklersen yedek beyinle devam ederim.")
+    if st == 0 or "bağlantı" in low:
+        return "İnternete ulaşamadım. Bağlantını kontrol eder misin?"
+    if st and st >= 500:
+        return "Google tarafında geçici bir sorun var, birazdan tekrar dene."
+    return "Beklenmedik bir sorun oldu; ayrıntısı Günlük sekmesinde."
+
+
+def _gem_url(m):
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={C['gemini_key']}"
+
+
+GOOD_MODEL = {"m": None}
+
+
+def gemini(contents, tools=None, system=None, max_tokens=1200, json_mode=False, temperature=0.5):
+    """Gemini'ye istek atar; model yoksa/kota doluysa sıradaki ücretsiz modele geçer."""
+    if not C.get("gemini_key"):
+        raise ApiError(401, "Gemini anahtarı girilmemiş")
     last = None
-    for m in GEMINI:
-        body = {"contents": contents, "generationConfig": {"temperature": 0.5, "maxOutputTokens": max_tokens}}
-        if "2.5" in m:
-            body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
-        elif "lite" in m:
-            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "minimal"}
-        else:
-            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "low"}
+    order = [GOOD_MODEL["m"]] + GEMINI if GOOD_MODEL["m"] else GEMINI
+    for m in [x for i, x in enumerate(order) if x and x not in order[:i]]:
+        gc = {"temperature": temperature, "maxOutputTokens": max_tokens}
+        if json_mode:
+            gc["responseMimeType"] = "application/json"
+        gc["thinkingConfig"] = {"thinkingBudget": 0} if "2.5" in m else {"thinkingLevel": "minimal" if "lite" in m else "low"}
+        body = {"contents": contents, "generationConfig": gc}
         if tools:
             body["tools"] = tools
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
-        try:
-            j = post_json(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={C['gemini_key']}", body)
-            return j["candidates"][0].get("content", {"parts": []})
-        except RuntimeError as e:
-            last = e
-            if getattr(e, "status", 0) == 400 and "thinking" in str(e).lower():
-                try:
-                    body["generationConfig"].pop("thinkingConfig", None)
-                    j = post_json(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={C['gemini_key']}", body)
-                    return j["candidates"][0].get("content", {"parts": []})
-                except RuntimeError as e2:
-                    last = e2
-            if getattr(last, "status", 0) in (404, 429, 500, 503) or "model" in str(last).lower():
-                continue
-            raise
+        for attempt in (1, 2):
+            try:
+                j = post_json(_gem_url(m), body)
+                GOOD_MODEL["m"] = m
+                cands = j.get("candidates") or []
+                if not cands:
+                    fb = (j.get("promptFeedback") or {}).get("blockReason")
+                    raise ApiError(200, "Boş cevap" + (f" ({fb})" if fb else ""))
+                return cands[0].get("content") or {"parts": []}
+            except ApiError as e:
+                last = e
+                if e.status == 400 and "thinking" in e.msg.lower() and attempt == 1:
+                    gc.pop("thinkingConfig", None); continue
+                break
+        e = last
+        if e.status in (404, 429, 500, 502, 503, 504, 0, 200) or ("model" in e.msg.lower() and e.status == 400 and "not found" in e.msg.lower()):
+            log("uyarı", f"{m}: {e.status} {e.msg[:160]} → sıradaki model")
+            continue
+        log("hata", f"{m}: {e.status} {e.msg}")
+        raise e
     raise last
+
+
+def gemini_text(c):
+    return "".join(p.get("text", "") for p in (c or {}).get("parts", []) if not p.get("thought")).strip()
 
 
 # ---------------- ses: kayıt ----------------
@@ -216,43 +318,96 @@ def transcribe(pcm):
 SPEAKING = threading.Event()
 
 
+TTS_OK = {"m": None, "off_until": 0}
+STOP_TALK = threading.Event()
+
+
+def _tts(text):
+    """Metni Gemini'nin doğal sesiyle PCM'e çevirir; olmazsa None."""
+    if time.time() < TTS_OK["off_until"]:
+        return None
+    order = [TTS_OK["m"]] + TTS_MODELS if TTS_OK["m"] else TTS_MODELS
+    for m in [x for i, x in enumerate(order) if x and x not in order[:i]]:
+        try:
+            j = post_json(_gem_url(m), {
+                "contents": [{"role": "user", "parts": [{"text": "Sakin, sıcak, kendinden emin ve doğal bir Türkçeyle söyle: " + text[:900]}]}],
+                "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": C.get("voice", "Charon")}}}}}, timeout=40)
+            part = next(p for p in j["candidates"][0]["content"]["parts"] if p.get("inlineData"))
+            TTS_OK["m"] = m
+            return np.frombuffer(base64.b64decode(part["inlineData"]["data"]), dtype=np.int16)
+        except ApiError as e:
+            if e.status == 429:
+                TTS_OK["off_until"] = time.time() + 600; log("uyarı", "Ses kotası doldu, 10 dk Windows sesine geçiyorum"); return None
+        except Exception as e:
+            log("uyarı", f"ses {m}: {str(e)[:120]}")
+    TTS_OK["off_until"] = time.time() + 120
+    return None
+
+
+def _chunks(text):
+    """Uzun cevabı cümle gruplarına böler: ilk parça hemen çalarken diğerleri hazırlanır."""
+    import re as _re
+    parts = [x.strip() for x in _re.split(r"(?<=[.!?…])\s+", text) if x.strip()]
+    out, cur = [], ""
+    for p in parts:
+        if cur and len(cur) + len(p) > (140 if not out else 320):
+            out.append(cur); cur = p
+        else:
+            cur = (cur + " " + p).strip()
+    if cur:
+        out.append(cur)
+    return out or [text]
+
+
+def _sapi(text):
+    try:
+        import pyttsx3
+        e = pyttsx3.init()
+        for v in e.getProperty("voices"):
+            if "tr" in (v.id + v.name).lower() or "turk" in v.name.lower():
+                e.setProperty("voice", v.id)
+        e.say(text); e.runAndWait()
+    except Exception as ex:
+        log("uyarı", f"Windows sesi: {ex}")
+
+
 def speak(text):
-    text = text.strip()
+    text = (text or "").strip()
     if not text:
         return
     print("Titus:", text)
     emit("titus", text)
     if not C.get("sesli", True) or not C.get("gemini_key"):
         return
-    SPEAKING.set()
+    SPEAKING.set(); STOP_TALK.clear()
     emit("durum", "konuşuyor")
     try:
-        for m in TTS_MODELS:
-            try:
-                j = post_json(f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={C['gemini_key']}", {
-                    "contents": [{"role": "user", "parts": [{"text": "Sakin, kendinden emin, hafif İngiliz uşağı zarafetinde, doğal Türkçe oku: " + text[:1200]}]}],
-                    "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": C.get("voice", "Charon")}}}}}, timeout=40)
-                d = j["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
-                pcm = np.frombuffer(base64.b64decode(d), dtype=np.int16)
+        chunks = _chunks(text)
+        q = queue.Queue()
+
+        def producer():
+            for c in chunks:
+                if STOP_TALK.is_set():
+                    break
+                q.put((c, _tts(c)))
+            q.put(None)
+        threading.Thread(target=producer, daemon=True).start()
+        while True:
+            item = q.get()
+            if item is None or STOP_TALK.is_set():
+                break
+            c, pcm = item
+            if pcm is None:
+                _sapi(c)
+            else:
                 sd.play(pcm, 24000); sd.wait()
-                return
-            except Exception:
-                continue
-        try:
-            import pyttsx3
-            e = pyttsx3.init()
-            for v in e.getProperty("voices"):
-                if "tr" in (v.id + v.name).lower() or "turk" in v.name.lower():
-                    e.setProperty("voice", v.id)
-            e.say(text); e.runAndWait()
-        except Exception:
-            pass
     finally:
         SPEAKING.clear()
         emit("durum", "hazır")
 
 
 def stop_speaking():
+    STOP_TALK.set()
     try:
         sd.stop()
     except Exception:
@@ -473,14 +628,36 @@ TOOLS = {
 }
 import urllib.parse  # noqa: E402
 
-DECL = [{"functionDeclarations": [{"name": n, "description": {
+TOOL_DESC = {
     "uygulama_ac": "Bilgisayarda uygulama açar.", "site_ac": "Tarayıcıda site açar ya da Google'da arar.", "dosya_ara": "Bilgisayarda dosya arar.",
     "dosya_ac": "Dosyayı açar.", "dosyayi_maile_ekle": "Dosyayı Gmail taslağına ekler.", "yazi_yaz": "Aktif pencereye metin yazar (mail, mesaj, belge).",
     "tusa_bas": "Klavye kısayoluna basar.", "pencere": "Pencereleri yönetir.", "ekrana_bak": "Ekran görüntüsü alıp ne olduğunu anlar. Ekrandaki hatalar, sayfalar, görseller hakkında sorularda kullan.",
     "ekranda_tikla": "Ekrandaki bir düğmeye/yazıya tıklar.", "medya": "Müzik/video ve ses düzeyi kontrolü.", "pano": "Panoyu okur ya da panoya yazar.",
     "ekrani_kilitle": "Ekranı kilitler.", "guc": "Bilgisayarı kapatır/yeniden başlatır/uyutur. Önce Burak'tan sözlü onay al, onay verirse onay=true ile çağır.",
-    "hatirlatici_ekle": "Hatırlatıcı ekler (telefondaki Titus ile ortak).", "gorev_ekle": "Görev ekler.", "not_al": "Not alır.", "liste": "Açık hatırlatıcı ve görevleri listeler."}[n],
-    **({"parameters": {"type": "OBJECT", "properties": props, "required": req}} if props else {})} for n, (props, req, _) in TOOLS.items()]}]
+    "hatirlatici_ekle": "Hatırlatıcı ekler (telefondaki Titus ile ortak).", "gorev_ekle": "Görev ekler.", "not_al": "Not alır.", "liste": "Açık hatırlatıcı ve görevleri listeler."}
+DECL = [{"functionDeclarations": []}]
+
+
+def rebuild_decl():
+    DECL[0]["functionDeclarations"] = [{"name": n, "description": TOOL_DESC.get(n, n), **({"parameters": {"type": "OBJECT", "properties": props, "required": req}} if props else {})}
+                                       for n, (props, req, _) in TOOLS.items()]
+
+
+def register(name, desc, props, req, fn):
+    """Yeni araç ekler (ya da aynı adlıyı değiştirir)."""
+    def safe(a, _fn=fn, _n=name):
+        try:
+            return _fn(a or {})
+        except Exception as e:
+            log("hata", f"araç {_n}: {e}")
+            return {"hata": str(e)[:200]}
+    TOOLS[name] = (props, req, safe)
+    TOOL_DESC[name] = desc
+    rebuild_decl()
+
+
+rebuild_decl()
+MEMORY_HOOK = []  # titus_plus: sistem talimatına eklenecek metinler (hafıza, hatırlatıcılar)
 
 
 def system_prompt():
@@ -491,10 +668,12 @@ def system_prompt():
             "Bilgisayarda bir şey yapılması istenince MUTLAKA araç kullan, yapmadan 'yaptım' deme. "
             "Birden çok adım gerekiyorsa sırayla araçları çağır (ör. uygulamayı aç → bekle → yaz). "
             "Ekranda ne olduğunu bilmen gerekiyorsa ekrana_bak kullan. "
-            "Mail/mesaj yazdırılınca kendiliğinden göndermeye basma; Burak 'gönder' derse bas.")
+            "Mail/mesaj yazdırılınca kendiliğinden göndermeye basma; Burak 'gönder' derse bas. "
+            "Güncel bilgi (haber, fiyat, hava, maç, kim kimdir) gerekiyorsa internette_ara kullan; tahmin etme."
+            + "".join(f() for f in MEMORY_HOOK if callable(f)))
 
 
-HIST = []
+HIST = []  # açılışta titus_plus diskten yükler
 
 
 def _is_call(h):
@@ -540,12 +719,69 @@ def think(text):
         return "Tamam, şimdi yapıyorum." if r.get("ok") else r.get("hata", "Yapamadım.")
     base = clean_hist(HIST)
     try:
-        return _think(base, text)
-    except RuntimeError as e:
-        if getattr(e, "status", 0) != 400:
-            raise
-        print("geçmiş sorunlu, temiz geçmişle yeniden deniyorum:", str(e)[:120])
-        return _think([], text)  # geçmiş bozuksa sadece bu mesajla tekrar dene
+        try:
+            return _think(base, text)
+        except ApiError as e:
+            if e.status != 400 or "api key" in e.msg.lower():
+                raise
+            log("uyarı", "Sohbet geçmişi Gemini'ye uymadı, temiz geçmişle yeniden deniyorum: " + e.msg[:200])
+            return _think([], text)
+    except ApiError as e:
+        if C.get("groq_key") and e.status in (0, 429, 500, 502, 503, 504, 200, 400):
+            log("uyarı", f"Gemini olmadı ({e.status}), Groq yedek beyinle devam")
+            try:
+                return groq_think(base, text)
+            except Exception as g:
+                log("hata", f"Groq da olmadı: {g}")
+        raise
+
+
+def _json_schema(o):
+    if isinstance(o, dict):
+        return {k: (v.lower() if k == "type" and isinstance(v, str) else _json_schema(v)) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_json_schema(x) for x in o]
+    return o
+
+
+def groq_think(base, text):
+    """Yedek beyin: Gemini kotası dolunca ücretsiz Groq (Llama) ile aynı araçları kullanır."""
+    tools = [{"type": "function", "function": {"name": n, "description": TOOL_DESC.get(n, n),
+              "parameters": _json_schema({"type": "OBJECT", "properties": props, "required": req})}} for n, (props, req, _) in TOOLS.items()]
+    msgs = [{"role": "system", "content": system_prompt()}]
+    for h in base:
+        t = " ".join(p.get("text", "") for p in h.get("parts", []) if p.get("text"))
+        if t.strip() and not _is_call(h) and not _is_resp(h):
+            msgs.append({"role": "assistant" if h["role"] == "model" else "user", "content": t})
+    msgs.append({"role": "user", "content": text})
+    for _ in range(6):
+        j = post_json("https://api.groq.com/openai/v1/chat/completions", {"model": C.get("groq_model") or "llama-3.3-70b-versatile", "messages": msgs, "tools": tools, "temperature": 0.4, "max_tokens": 900},
+                      headers={"Authorization": "Bearer " + C["groq_key"]}, timeout=40)
+        m = j["choices"][0]["message"]
+        calls = m.get("tool_calls") or []
+        if not calls:
+            reply = (m.get("content") or "Tamam.").strip()
+            HIST[:] = clean_hist(base + [{"role": "user", "parts": [{"text": text}]}, {"role": "model", "parts": [{"text": reply}]}], 30)
+            save_hist()
+            return reply
+        msgs.append({"role": "assistant", "content": m.get("content") or "", "tool_calls": calls})
+        for c in calls:
+            name = c["function"]["name"]
+            try:
+                args = json.loads(c["function"].get("arguments") or "{}")
+            except Exception:
+                args = {}
+            emit("arac", name)
+            r = TOOLS[name][2](args) if name in TOOLS else {"hata": "Bilinmeyen araç"}
+            msgs.append({"role": "tool", "tool_call_id": c.get("id", name), "content": json.dumps(r, ensure_ascii=False)[:6000]})
+    return "İşlemleri yaptım."
+
+
+def save_hist():
+    try:
+        jsave("gecmis.json", [h for h in clean_hist(HIST, 30) if not _is_call(h) and not _is_resp(h)])
+    except Exception:
+        pass
 
 
 def _think(base, text):
@@ -558,6 +794,7 @@ def _think(base, text):
             reply = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip() or "Tamam."
             conv.append({"role": "model", "parts": [{"text": reply}]})
             HIST[:] = clean_hist(conv, 30)  # sadece başarılı turlar geçmişe yazılır
+            save_hist()
             return reply
         conv.append({"role": "model", "parts": parts})
         resp = []
@@ -577,6 +814,7 @@ def _think(base, text):
             resp.append({"functionResponse": fr})
         conv.append({"role": "user", "parts": resp})
     HIST[:] = clean_hist(conv, 30)
+    save_hist()
     return "İşlemleri yaptım."
 
 
@@ -717,6 +955,13 @@ def converse():
                 break
         beep(False)
         emit("durum", "hazır")
+
+
+try:
+    import titus_plus  # noqa: F401  (10 fazın eklentileri: hafıza, arama, belgeler, ekran ajanı, hatırlatıcılar…)
+    titus_plus.setup(sys.modules[__name__])
+except Exception as _e:
+    log("hata", f"eklentiler yüklenemedi: {_e}")
 
 
 def main():

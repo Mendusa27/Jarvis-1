@@ -64,3 +64,15 @@ Donanım: GTX 1650 (4 GB). Ağır modeller (video üretimi, model eğitimi) ücr
 Kendi yüz/ses modelini eğitme (LoRA, ses klonlama), sıfırdan yapay zekâ videosu ve müzik üretimi, dudak senkronu,
 sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recast tam otomasyonu, canlı sunum asistanı,
 çok ajanlı içerik üretimi, sahne algılamalı akıllı showreel, doğal (yapay zekâ) rötuş, ağır işlerin Kaggle/Colab'a otomatik gönderimi.
+
+## Bilgisayar sürümü v2.5 — 10 faz (uygulandı)
+1. Sağlamlık: sürüm kontrolü (eski kopya otomatik kapanır), anlaşılır hata mesajları, Günlük sekmesi, sistem kontrolü
+2. Sekmeli arayüz: Sohbet · Görevler · Hafıza · Günlük · Ayarlar
+3. Kalıcı sohbet ve hafıza (kapatıp açınca kaldığı yerden; "bunu hatırla")
+4. Yedek beyin: Gemini kotası dolunca ya da hata verince Groq (ücretsiz) aynı araçlarla devam eder
+5. Hız: kalıcı bağlantı (keep-alive), bağlantı ısıtma, cevabı cümle cümle seslendirme, en son çalışan modeli hatırlama
+6. İnternet araştırması: Google arama ile güncel bilgi + kaynaklar
+7. Belge zekâsı: PDF/Word/Excel/metin okuma, özet ve soru-cevap; klasör düzenleme (silmeden, geri alınabilir)
+8. Ekran ajanı: ekrana bakarak çok adımlı iş (Esc ile durur, ödeme/gönderme/silme yapmaz)
+9. Zaman: yerel hatırlatıcı ve zamanlayıcı, Windows bildirimi + sesli hatırlatma, sabah brifingi, hava durumu
+10. Telefonla bağlantı: telefona not/link gönderme (Titus notları + ntfy bildirimi), telefondaki görevleri görme

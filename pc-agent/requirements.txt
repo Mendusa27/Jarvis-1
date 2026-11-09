@@ -1,5 +1,7 @@
 numpy
 sounddevice
+requests
+websockets
 pyautogui
 pyperclip
 keyboard
@@ -7,4 +9,6 @@ pillow
 pygetwindow
 pyttsx3
 vosk
-websockets
+pypdf
+python-docx
+openpyxl
