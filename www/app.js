@@ -34,7 +34,7 @@ function toast(t, ms = 2400) { const el = $("#toast"); el.textContent = t; el.cl
 const Cap = window.Capacitor;
 const NATIVE = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
 const plug = n => (NATIVE && Cap.registerPlugin) ? Cap.registerPlugin(n) : null;
-const Jarvis = plug("Titus");
+const Jarvis = plug("Jarvis"); // yerel eklentinin adı; değiştirme (Android tarafında "Jarvis" olarak kayıtlı)
 const LN = plug("LocalNotifications");
 const TTS = plug("TextToSpeech");
 const Prefs = plug("Preferences");
@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.2 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.3 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -3246,7 +3246,7 @@ async function boot() {
     Jarvis.addListener("launch", ev => handleLaunch(ev.action));
     Jarvis.addListener("partial", ev => { $("#q").value = ev.text || ""; });
     Jarvis.addListener("wakeStatus", showWake);
-    AppP && AppP.addListener("resume", () => { warmUp(); { const h = new Date().getHours(); if (h >= 5 && h < 12) prefetchBrief().catch(() => {}); } lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) PERM = p; }); });
+    AppP && AppP.addListener("resume", () => { warmUp(); { const h = new Date().getHours(); if (h >= 5 && h < 12) prefetchBrief().catch(() => {}); } lockCheck(); sweepPast(); pullSync(); proactive(); if (FOCUS.until && FOCUS.until < Date.now()) endFocus(true); nat(() => Jarvis.permissionsStatus()).then(p => { if (p) { PERM = p; if ($("#v-set.on")) renderSettings(); } }); });
     AppP && AppP.addListener("pause", () => { if (SET.lock) META.unlockedAt = Math.min(META.unlockedAt || 0, Date.now()); saveMeta(); });
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();

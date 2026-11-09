@@ -444,8 +444,8 @@ public class JarvisPlugin extends Plugin {
         o.put("microphone", has(Manifest.permission.RECORD_AUDIO));
         o.put("contacts", has(Manifest.permission.READ_CONTACTS));
         o.put("phone", has(Manifest.permission.CALL_PHONE));
-        o.put("location", has(Manifest.permission.ACCESS_FINE_LOCATION));
-        o.put("backgroundLocation", Build.VERSION.SDK_INT < 29 ? has(Manifest.permission.ACCESS_FINE_LOCATION) : has(Manifest.permission.ACCESS_BACKGROUND_LOCATION));
+        o.put("location", has(Manifest.permission.ACCESS_FINE_LOCATION) || has(Manifest.permission.ACCESS_COARSE_LOCATION));
+        o.put("backgroundLocation", Build.VERSION.SDK_INT < 29 ? (has(Manifest.permission.ACCESS_FINE_LOCATION) || has(Manifest.permission.ACCESS_COARSE_LOCATION)) : has(Manifest.permission.ACCESS_BACKGROUND_LOCATION));
         o.put("notifications", Build.VERSION.SDK_INT < 33 || has(Manifest.permission.POST_NOTIFICATIONS));
         boolean exact = true;
         if (Build.VERSION.SDK_INT >= 31) exact = ((AlarmManager) c.getSystemService(Context.ALARM_SERVICE)).canScheduleExactAlarms();

@@ -31,7 +31,9 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: JS sözdizimi kontrolü
-        run: node --check www/app.js
+        run: |
+          node --check www/app.js
+          grep -q 'plug("Jarvis")' www/app.js || (echo "Yerel eklenti adı bozulmuş" && exit 1)
       - name: Bağımlılıklar
         run: npm ci
 
