@@ -497,19 +497,69 @@ def system_prompt():
 HIST = []
 
 
+def _is_call(h):
+    return h.get("role") == "model" and any("functionCall" in p for p in h.get("parts", []))
+
+
+def _is_resp(h):
+    return h.get("role") == "user" and any("functionResponse" in p for p in h.get("parts", []))
+
+
+def _has_text(h):
+    return any((p.get("text") or "").strip() for p in h.get("parts", []) if not p.get("thought"))
+
+
+def clean_hist(hist, keep=18):
+    """Gemini'nin kabul ettiği sıraya getirir: her araç çağrısının hemen ardından cevabı gelir,
+    yarım kalmış/boş turlar atılır, geçmiş her zaman kullanıcının yazdığı bir mesajla başlar."""
+    out, i = [], 0
+    while i < len(hist):
+        h = hist[i]
+        if _is_call(h):
+            if i + 1 < len(hist) and _is_resp(hist[i + 1]):
+                out += [h, hist[i + 1]]; i += 2; continue
+            i += 1; continue  # cevabı olmayan çağrı
+        if _is_resp(h):
+            i += 1; continue  # çağrısı olmayan cevap
+        if not _has_text(h):
+            i += 1; continue
+        if out and out[-1]["role"] == h["role"] and not _is_call(out[-1]) and not _is_resp(out[-1]):
+            out[-1] = {"role": h["role"], "parts": out[-1]["parts"] + [p for p in h["parts"] if (p.get("text") or "").strip()]}
+        else:
+            out.append(h)
+        i += 1
+    out = out[-keep:]
+    while out and not (out[0]["role"] == "user" and not _is_resp(out[0])):
+        out.pop(0)
+    return out
+
+
 def think(text):
-    HIST.append({"role": "user", "parts": [{"text": text}]})
-    del HIST[:-16]
     if PENDING.get("power") and agent.norm(text).strip(" .!") in ("evet", "onayliyorum", "evet yap", "tamam"):
         r = t_power({"islem": PENDING.pop("power"), "onay": True})
         return "Tamam, şimdi yapıyorum." if r.get("ok") else r.get("hata", "Yapamadım.")
+    base = clean_hist(HIST)
+    try:
+        return _think(base, text)
+    except RuntimeError as e:
+        if getattr(e, "status", 0) != 400:
+            raise
+        print("geçmiş sorunlu, temiz geçmişle yeniden deniyorum:", str(e)[:120])
+        return _think([], text)  # geçmiş bozuksa sadece bu mesajla tekrar dene
+
+
+def _think(base, text):
+    conv = base + [{"role": "user", "parts": [{"text": text}]}]
     for _ in range(7):
-        c = gemini(HIST, DECL, system_prompt())
-        parts = c.get("parts", [])
+        c = gemini(conv, DECL, system_prompt())
+        parts = [p for p in c.get("parts", []) if p]
         calls = [p["functionCall"] for p in parts if "functionCall" in p]
-        HIST.append({"role": "model", "parts": parts or [{"text": ""}]})
         if not calls:
-            return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip() or "Tamam."
+            reply = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip() or "Tamam."
+            conv.append({"role": "model", "parts": [{"text": reply}]})
+            HIST[:] = clean_hist(conv, 30)  # sadece başarılı turlar geçmişe yazılır
+            return reply
+        conv.append({"role": "model", "parts": parts})
         resp = []
         for fc in calls:
             name, args = fc["name"], fc.get("args", {})
@@ -521,8 +571,12 @@ def think(text):
                     time.sleep(1.2)
             except Exception as e:
                 r = {"hata": str(e)}
-            resp.append({"functionResponse": {"name": name, "response": r if isinstance(r, dict) else {"sonuc": r}}})
-        HIST.append({"role": "user", "parts": resp})
+            fr = {"name": name, "response": r if isinstance(r, dict) else {"sonuc": r}}
+            if fc.get("id"):
+                fr["id"] = fc["id"]
+            resp.append({"functionResponse": fr})
+        conv.append({"role": "user", "parts": resp})
+    HIST[:] = clean_hist(conv, 30)
     return "İşlemleri yaptım."
 
 
