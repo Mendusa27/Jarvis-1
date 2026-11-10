@@ -112,3 +112,15 @@ sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recas
 8. Güvenlik modu ("eve vardım", acil konum)
 9. Uluslararası casting asistanı
 10. Kendini genişleten Titus
+
+## Yeni Faz 4 (ücretsiz, henüz yapılmadı)
+1. Gece dönüş asistanı
+2. Vardiya–seçme planlayıcı
+3. Ev arama ajanı
+4. Drama eğitmeni modu
+5. Dramaturgi ortağı (Senaryo Masası ile)
+6. Stüdyo ve atölye iş akışı (Raw Frame, atölye kayıtları)
+7. Sesli kitap ve podcast stüdyosu
+8. Hayat arşivi (zaman çizelgesi)
+9. Sevdiklerinle ortak alan (onaylı paylaşım)
+10. Eğlence modu (sesli yarışma, interaktif hikâye)
