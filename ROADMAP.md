@@ -138,3 +138,10 @@ Oyunculuk/sanat: 11 Kostüm denemesi · 12 Seçme istatistiği · 13 Karakter se
 İş/yazılım: 21 Özel gün tebrikleri · 22 KADRO veri temizliği · 23 Ajans haftalık raporu · 24 Sektör takibi · 25 Kod inceleme ajanı · 26 Mağaza hazırlığı · 27 Oyun çevirisi · 28 Geri bildirim toplayıcı · 29 Proje yedekleyici · 30 Randevu ayarlayıcı
 Günlük: 31 Yemek planlayıcı · 32 Tasarruf hedefleri · 33 Abonelik takibi · 34 Eşya hafızası · 35 Kıyafet önerisi · 36 Hareket planı · 37 Mola hatırlatıcı · 38 Seyahat planlayıcı · 39 Ev işleri sırası · 40 Etkinlik keşfi
 Sistem: 41 Dolandırıcılık dedektörü · 42 Gizlilik paneli · 43 Misafir modu · 44 Pil dostu mod · 45 İnternetsiz iş kuyruğu · 46 Canlı durum paneli · 47 Yeni widget'lar · 48 Kulaklık/araba otomasyonu · 49 Bilgisayarda hızlı pencere · 50 Taşınma sihirbazı
+
+## Yeni Faz 7 (ücretsiz, henüz yapılmadı)
+Ses/kişilik: 1 Kişilik ayarı · 2 Duruma göre ses · 3 Söz kesme hassasiyeti · 4 Hitap · 5 Sesli parola · 6 Özetle/detay ver · 7 Ortama göre ses · 8 Telaffuz sözlüğü · 9 Jest komutu · 10 Sohbeti kaydetme
+Yaratıcı: 11 Afiş/davetiye · 12 Çizgi roman · 13 Şarkı sözü/şiir ortağı · 14 Eski fotoğraf onarma · 15 Müzik üretici · 16 Ses efekti üretici · 17 Uzun videodan kısa klipler · 18 Kapak görseli · 19 Görselden 3D model · 20 Oyun görselleri
+Oyunculuk: 21 Rol araştırma dosyası · 22 Rol hazırlık takvimi · 23 Yönetmen/yapımcı takibi · 24 En iyi deneme seçici · 25 Seçme günü modu · 26 Showreel hatırlatıcı · 27 Sahne analizi · 28 Eğitim fırsatları · 29 Fiziksel karakter koçu · 30 Kişisel marka metinleri
+Recast/iş: 31 Yeni oyuncu karşılama · 32 Ödeme takibi · 33 Sözleşme şablonları · 34 Ekip görev dağıtımı · 35 Toplu fotoğraf düzenleme · 36 Müşteri anketi · 37 Brief arşivi · 38 Toplantı gündemi · 39 Aylık hedef takibi · 40 Belge çevirisi
+Şehir/hayat: 41 Yol durumu uyarısı · 42 Nöbetçi eczane · 43 Yağmur uyarısı · 44 Fatura okuyucu · 45 Kargo takibi · 46 Randevu hatırlatıcı · 47 Hediye fikirleri · 48 Sesli günlük · 49 Kayıp telefon modu · 50 Bilgisayarda not panosu
