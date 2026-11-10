@@ -131,3 +131,10 @@ Ses: 6 Ses tonunu fark eden Titus · 7 Gece modu · 8 Çok kişili sohbet · 9 G
 Oyunculuk: 11 Aksan/şive koçu · 12 Monolog kütüphanesi · 13 Oyunculuk günlüğü · 14 Storyboard üretici · 15 Telifsiz müzik/efekt
 İş: 16 Kişi/müşteri hafızası · 17 Teklif/fatura taslağı · 18 Görüşme öncesi brifing · 19 Casting trend analizi · 20 Gelen kutusu düzenleyici
 Günlük: 21 Akıllı alışveriş · 22 Belge kasası · 23 Cihaz bakımı · 24 Ekran modu · 25 Yılın özeti
+
+## Yeni Faz 6 (ücretsiz, henüz yapılmadı)
+Öğrenme: 1 Günün sorusu · 2 Kitap koçu · 3 Kavram haritası · 4 Tartışma partneri · 5 Sınav planlayıcı · 6 İkinci dil arkadaşı · 7 Kanal özetleri · 8 Sektör bülteni · 9 Zihin egzersizleri · 10 Gün sonu dersi
+Oyunculuk/sanat: 11 Kostüm denemesi · 12 Seçme istatistiği · 13 Karakter ses bankası · 14 Doğaçlama üretici · 15 Headshot poz koçu · 16 Masa okuması · 17 İfade aynası · 18 Festival takvimi · 19 Kısa film planlayıcı · 20 Oyuncu hakları rehberi
+İş/yazılım: 21 Özel gün tebrikleri · 22 KADRO veri temizliği · 23 Ajans haftalık raporu · 24 Sektör takibi · 25 Kod inceleme ajanı · 26 Mağaza hazırlığı · 27 Oyun çevirisi · 28 Geri bildirim toplayıcı · 29 Proje yedekleyici · 30 Randevu ayarlayıcı
+Günlük: 31 Yemek planlayıcı · 32 Tasarruf hedefleri · 33 Abonelik takibi · 34 Eşya hafızası · 35 Kıyafet önerisi · 36 Hareket planı · 37 Mola hatırlatıcı · 38 Seyahat planlayıcı · 39 Ev işleri sırası · 40 Etkinlik keşfi
+Sistem: 41 Dolandırıcılık dedektörü · 42 Gizlilik paneli · 43 Misafir modu · 44 Pil dostu mod · 45 İnternetsiz iş kuyruğu · 46 Canlı durum paneli · 47 Yeni widget'lar · 48 Kulaklık/araba otomasyonu · 49 Bilgisayarda hızlı pencere · 50 Taşınma sihirbazı
