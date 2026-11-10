@@ -100,3 +100,15 @@ sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recas
 8. Recast tek komut paketleri (KADRO portfolyo, kişiselleştirilmiş toplu taslak)
 9. Geliştirici paneli (GitHub derleme durumu)
 10. Alışkanlıklarını öğrenen Titus
+
+## Yeni Faz 3 (ücretsiz, henüz yapılmadı)
+1. Ajan ekibi (araştıran, yazan, kontrol eden)
+2. Kendini test eden Titus (otomatik hata raporu)
+3. Canlı self-tape yönetmeni
+4. Instagram yöneticisi (@tuncbilekburak, Recast)
+5. Kendini güncelleyen portfolyo sitesi
+6. Oyun test ajanı
+7. Belge ve sözleşme asistanı
+8. Güvenlik modu ("eve vardım", acil konum)
+9. Uluslararası casting asistanı
+10. Kendini genişleten Titus
