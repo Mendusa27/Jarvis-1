@@ -76,3 +76,15 @@ sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recas
 8. Ekran ajanı: ekrana bakarak çok adımlı iş (Esc ile durur, ödeme/gönderme/silme yapmaz)
 9. Zaman: yerel hatırlatıcı ve zamanlayıcı, Windows bildirimi + sesli hatırlatma, sabah brifingi, hava durumu
 10. Telefonla bağlantı: telefona not/link gönderme (Titus notları + ntfy bildirimi), telefondaki görevleri görme
+
+## Yeni Faz 1 (karşılaştırmadan — hepsi ücretsiz, henüz yapılmadı)
+1. Otomatik güncelleme (telefon APK + bilgisayar zip)
+2. Kendi kurduğun takipler (sayfa/ilan/fiyat değişince haber ver)
+3. Derin araştırma modu (çok adımlı, kaynaklı rapor)
+4. Telegram botu ile her yerden Titus
+5. Hesap/grafik/tablo çalışma alanı
+6. Sağlam tarayıcı ajanı (bilgisayarda)
+7. Hafıza yönetimi (çelişki düzeltme, kaynak gösterme)
+8. Kendi asistanlarını yaratma (özel modlar)
+9. Canlı çeviri (iki kişilik konuşma)
+10. Konuşurken hareket eden Titus yüzü
