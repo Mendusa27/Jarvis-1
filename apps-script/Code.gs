@@ -39,6 +39,8 @@ function doPost(e) {
       case "audRead":      return out(Object.assign({ ok: true }, audRead(req)));
       case "audUpdate":    return out(Object.assign({ ok: true }, audUpdate(req)));
       case "audAdd":       return out(Object.assign({ ok: true }, audAdd(req)));
+      case "phPush":       return out({ ok: true, id: phPush(req) });
+      case "phPull":       return out({ ok: true, cmds: phPull() });
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
@@ -402,4 +404,24 @@ function audAdd(req) {
   if (head.indexOf("olusturma") > -1 && !k.olusturma) k.olusturma = Date.now();
   sh.appendRow(head.map(h => k[h] !== undefined ? k[h] : ""));
   return { eklendi: true, id: k.id || "" };
+}
+
+
+/* ---------- v2.6: bilgisayardan telefona istek kuyruğu ---------- */
+function phPush(req) {
+  const lock = LockService.getScriptLock(); lock.waitLock(8000);
+  try {
+    const q = jget_("phQueue", []).filter(x => Date.now() - x.at < 6 * 3600000).slice(-30);
+    const id = Utilities.getUuid().slice(0, 8);
+    q.push({ id: id, kind: req.kind === "note" ? "note" : "ask", text: String(req.text || "").slice(0, 2000), at: Date.now() });
+    jset_("phQueue", q); return id;
+  } finally { lock.releaseLock(); }
+}
+function phPull() {
+  const lock = LockService.getScriptLock(); lock.waitLock(8000);
+  try {
+    const q = jget_("phQueue", []); if (!q.length) return [];
+    jset_("phQueue", []);
+    return q.filter(x => Date.now() - x.at < 6 * 3600000).map(x => ({ id: x.id, kind: x.kind, text: x.text }));
+  } finally { lock.releaseLock(); }
 }

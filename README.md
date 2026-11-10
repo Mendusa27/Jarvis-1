@@ -213,3 +213,12 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - Mikrofon bağlantıdan önce açılır: "Titus" der demez konuşmaya başlayabilirsin, ilk kelimeler kaybolmaz. Önceki konuşmayı hatırlayarak başlar.
 - Konuşma tarzı: kısa, doğal, insan gibi sıra alan, araya giren sözü kibarca karşılayan bir sohbet.
 - Bilgisayar: aynı canlı sohbet + pencerede canlı yazıya dökme. Hoparlörle kendi sesini duyup kesilirse kulaklık kullan, Ayarlar → "Kulaklık kullanıyorum".
+
+## v2.6 — Uygulamalar, sağlamlık, video, tek kodla bağlantı
+- **Uygulamalar** (telefon: Stüdyo → Uygulamalar ya da ana ekrandaki 🧩; bilgisayar: Uygulamalar sekmesi): birlikte yapılan 22 uygulama tek yerde; "Titus, Uyku Transı'nı aç". KADRO ve Recast Audition'ın Netlify adreslerini Ayarlar → Uygulama adresleri'ne bir kez yaz.
+- **Uyku** (telefon: Hayat → Uyku): yerleşik sesli hipnoz/gevşeme seansı.
+- **Video**: "şu konuda video oluştur" — senaryo, sahne görselleri, seslendirme, altyazı. Cloudflare bağlı değilse anahtarsız ücretsiz görsel servisi kullanılır. Bilgisayarda Videolar/Titus'a kaydedilir.
+- **HTTP 400 hataları**: sohbet geçmişi her istekte düzeltilir, hata gelirse otomatik yeniden denenir, olmazsa Groq'a geçilir. Hatalar Ayarlar → Son hatalar'da.
+- **Ayarlar**: katlanır başlıklar + arama.
+- **Bilgisayarı bağla**: telefonda Ayarlar → Bilgisayarı bağla → kod; bilgisayarda Ayarlar'a yapıştır. Bilgisayardaki Titus Gmail, takvim, KADRO kullanır; "telefonda şunu yap" der; telefon "bilgisayara söyle" der.
+- Code.gs'yi güncelleyip yeni sürüm olarak dağıt (phPush/phPull eklendi).

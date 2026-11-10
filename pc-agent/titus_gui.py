@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "2.5"
+GUI_VERSION = "2.6"
 
 
 def open_window():
@@ -69,6 +69,10 @@ try:
     import titus_plus as TP
 except Exception:
     TP = None
+try:
+    import titus_extra as TX
+except Exception:
+    TX = None
 
 EVENTS, LOCK = [], threading.Lock()
 STATE = {"durum": "hazır", "n": 0}
@@ -163,7 +167,7 @@ def masked(v):
 
 def public_cfg():
     c = dict(J.C)
-    for k in ("gemini_key", "groq_key", "token"):
+    for k in ("gemini_key", "groq_key", "token", "cf_token"):
         c[k] = masked(c.get(k, ""))
     c["autostart"] = startup_link().exists()
     c["version"] = J.VERSION
@@ -234,6 +238,8 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"durum": STATE["durum"], "olaylar": ev, "hazir": bool(J.C.get("gemini_key")), "ayar": public_cfg()})
         if p.startswith("/api/log"):
             return self.send(200, {"log": [list(x) for x in J.LOG[-300:]]})
+        if p.startswith("/api/apps"):
+            return self.send(200, {"apps": TX.apps() if TX else []})
         if p.startswith("/api/memory"):
             return self.send(200, {"hafiza": TP.mem_list() if TP else []})
         if p.startswith("/api/tasks"):
@@ -274,7 +280,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/config":
             new = {}
             for k, v in body.items():
-                if k in ("gemini_key", "groq_key", "token") and (not v or str(v).startswith("•")):
+                if k in ("gemini_key", "groq_key", "token", "cf_token") and (not v or str(v).startswith("•")):
                     continue  # değiştirilmemiş gizli alan
                 new[k] = v.strip() if isinstance(v, str) else v
             city = str(new.get("city", "")).strip().lower()
@@ -290,6 +296,22 @@ class H(BaseHTTPRequestHandler):
             with LOCK:
                 EVENTS.clear()
             J.jsave(CHAT_FILE, [])
+            return self.send(200, {"ok": True})
+        if p == "/api/pair":
+            r = TX.apply_pair(body.get("code", ""))
+            r["ayar"] = public_cfg()
+            return self.send(200, r)
+        if p == "/api/app/open":
+            return self.send(200, TX.open_app(body.get("k", "")))
+        if p == "/api/app/add":
+            n, u = str(body.get("n", "")).strip(), str(body.get("u", "")).strip()
+            if n and u:
+                J.save_cfg({"apps": (J.C.get("apps") or []) + [{"n": n, "u": u if u.startswith("http") else "https://" + u}]})
+            return self.send(200, {"ok": True})
+        if p == "/api/app/del":
+            lst = list(J.C.get("apps") or []); i = int(body.get("i", -1))
+            if 0 <= i < len(lst):
+                lst.pop(i); J.save_cfg({"apps": lst})
             return self.send(200, {"ok": True})
         if p == "/api/selftest":
             return self.send(200, TP.selftest() if TP else {"sonuclar": []})
@@ -383,6 +405,9 @@ label.f{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
 nav{display:flex;border-top:1px solid var(--line);background:rgba(10,2,3,.9)}
 nav button{flex:1;background:none;border:none;color:var(--dim);padding:8px 0 10px;cursor:pointer;font:11px inherit;font-family:inherit}
 nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}nav button.on{color:var(--red)}
+.appgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.app{position:relative;background:rgba(255,59,59,.07);border:1px solid var(--line);border-radius:12px;padding:10px 4px 8px;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;font-family:inherit;cursor:pointer}
+.app:hover{border-color:var(--red)}.app i{font-style:normal;font-size:26px}.app b{font-size:12px;line-height:1.15}.app small{font-size:10px;color:var(--dim);line-height:1.15}.app.off{opacity:.55}.app .x{position:absolute;top:2px;right:6px}
 .welcome{margin:auto;text-align:center;color:var(--dim);padding:20px}.welcome b{color:var(--txt)}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(255,59,59,.25);border-radius:8px}
 </style></head><body class="hazır">
@@ -397,7 +422,7 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 <button class="chip" data-q="Panodaki metni özetle.">📋 Panoyu özetle</button>
 <button class="chip" data-q="İndirilenler klasörünü düzenle.">🗂 İndirilenleri düzenle</button>
 <button class="chip" data-q="Bugün gündemde ne var? İnternetten bak, kısaca anlat.">📰 Gündem</button>
-<button class="chip" data-q="Müziği durdur ya da devam ettir.">⏯ Müzik</button>
+<button class="chip" data-q="Okunmamış maillerimi özetle, önemli olan var mı?">✉️ Mailler</button>
 <button class="chip" data-q="Ekranı kilitle.">🔒 Kilitle</button>
 </div>
 <div id="log"></div>
@@ -430,6 +455,9 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 
 <section class="view" id="v-set"><div class="in">
 <h2>AYARLAR</h2>
+<div class="card"><h3>TELEFONDAN TEK KODLA BAĞLAN (ÖNERİLEN)</h3>
+<div class="note" style="margin-top:0">Telefondaki Titus → Ayarlar → “Bilgisayarı bağla” → “Bağlantı kodu oluştur”. Kodu buraya yapıştır: anahtarlar, Gmail, takvim, KADRO ve görevler tek seferde gelir.</div>
+<textarea id="pairIn" placeholder="TITUS1.…" style="margin-top:8px"></textarea><button class="btn sm" id="pairGo" style="margin-top:8px">🔗 Bağla</button><div class="note" id="pairOut"></div></div>
 <div class="card"><h3>ANAHTARLAR</h3>
 <label class="f">Gemini API anahtarı (zorunlu)</label><input type="password" id="gemini_key" placeholder="AIza…">
 <div class="note">Telefondakiyle aynısını kullanabilirsin. Yoksa: <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></div>
@@ -441,6 +469,13 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 <label class="f">Gizli anahtar (TOKEN)</label><input type="password" id="token">
 <label class="f">ntfy konusu (telefona anlık bildirim için, isteğe bağlı)</label><input type="text" id="ntfy" placeholder="ör. titus-burak-4821">
 <div class="note">Telefondaki ntfy uygulamasında aynı konuya abone olursan “telefona gönder” anında bildirim olarak gelir.</div></div>
+<div class="card"><h3>GÖRSEL VE UYGULAMA ADRESLERİ (İSTEĞE BAĞLI)</h3>
+<label class="f">Cloudflare hesap kimliği (Account ID)</label><input type="text" id="cf_account">
+<label class="f">Cloudflare API token (Workers AI)</label><input type="password" id="cf_token">
+<div class="note">Boş bırakırsan görsel ve video için anahtarsız ücretsiz servis kullanılır (biraz daha yavaş: 15 sn'de 1 görsel).</div>
+<label class="f">KADRO adresi</label><input type="text" id="kadro_url" placeholder="https://….netlify.app/#KODUN">
+<label class="f">Recast Audition adresi</label><input type="text" id="audition_url" placeholder="https://recast-audition.netlify.app/#KODUN">
+<label class="f">KADRO tablo kimliği (kadroda arama için)</label><input type="text" id="kadro_sheet"></div>
 <div class="card"><h3>SEN VE SES</h3>
 <label class="f">Adın</label><input type="text" id="name">
 <label class="f">Şehir (hava durumu için: İstanbul, Ankara, İzmir, Kütahya, Bursa, Antalya, Eskişehir)</label><input type="text" id="city" placeholder="İstanbul">
@@ -459,16 +494,22 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 <div class="note" style="text-align:center;margin-top:10px">Pencereyi kapatsan da Titus arka planda dinler. Tamamen kapatmak için “Titus'u kapat”. <span id="ver"></span></div>
 </div></section>
 
-<nav><button data-v="chat" class="on"><i>◉</i>Sohbet</button><button data-v="tasks"><i>✓</i>Görevler</button><button data-v="mem"><i>🧠</i>Hafıza</button><button data-v="logs"><i>🩺</i>Günlük</button><button data-v="set"><i>⚙</i>Ayarlar</button></nav>
+<section class="view" id="v-apps"><div class="in">
+<h2>UYGULAMALARIM</h2><div class="note">Birlikte yaptığımız uygulamalar. Tıkla, açılsın — ya da “Titus, Senaryo Masası'nı aç” de. Claude hesabınla giriş yapılı tarayıcıda açılır.</div>
+<div id="apList"></div>
+<div class="card"><h3>UYGULAMA EKLE</h3><div class="row"><input type="text" id="apN" placeholder="Ad" style="max-width:130px"><input type="text" id="apU" placeholder="https://…"><button class="btn sm" id="apAdd" style="flex:none">Ekle</button></div></div>
+</div></section>
+
+<nav><button data-v="chat" class="on"><i>◉</i>Sohbet</button><button data-v="apps"><i>🧩</i>Uygulamalar</button><button data-v="tasks"><i>✓</i>Görevler</button><button data-v="mem"><i>🧠</i>Hafıza</button><button data-v="logs"><i>🩺</i>Günlük</button><button data-v="set"><i>⚙</i>Ayarlar</button></nav>
 <script>
 const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=true, liveU=null, liveT=null, view="chat";
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
-const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy"];
-const TOOL={uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
+const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet"];
+const TOOL={mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
 function show(v){view=v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
+  if(v==="apps")loadApps(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
 async function poll(){try{const r=await api("state?since="+since);
   document.body.className=r.durum.replace(/\s/g,"");$("#st").textContent=r.durum.toLocaleUpperCase("tr-TR");
@@ -503,6 +544,12 @@ async function loadTasks(phone){const r=await api("tasks"+(phone?"?telefon=1":""
   document.querySelectorAll("[data-done]").forEach(b=>b.onclick=async()=>{await api("task/done",{id:b.dataset.done});loadTasks(false);});}
 $("#tAdd").onclick=async()=>{const t=$("#tText").value.trim(),d=$("#tDue").value;if(!t||!d)return alert("Ne ve ne zaman?");const r=await api("task/add",{text:t,due:d,repeat:$("#tRep").value});if(r.hata)return alert(r.hata);$("#tText").value="";loadTasks(false);};
 $("#tRef").onclick=()=>loadTasks(true);
+// uygulamalar
+async function loadApps(){const r=await api("apps");const A=r.apps||[];const cats=[...new Set(A.map(a=>a.c))];
+  $("#apList").innerHTML=cats.map(c=>`<div class="card"><h3>${esc(c.toLocaleUpperCase("tr-TR"))}</h3><div class="appgrid">${A.filter(a=>a.c===c).map(a=>`<button class="app${a.url?"":" off"}" data-app="${esc(a.k)}"><i>${a.e}</i><b>${esc(a.n)}</b><small>${esc(a.url?a.d:"adres gir (Ayarlar)")}</small>${a.custom!==undefined?`<span class="x" data-apdel="${a.custom}">✕</span>`:""}</button>`).join("")}</div></div>`).join("");
+  document.querySelectorAll("[data-app]").forEach(b=>b.onclick=async e=>{if(e.target.dataset.apdel!==undefined){await api("app/del",{i:+e.target.dataset.apdel});return loadApps();}const r=await api("app/open",{k:b.dataset.app});if(r.hata){alert(r.hata);if(/adres/.test(r.hata))show("set");}});}
+$("#apAdd").onclick=async()=>{const n=$("#apN").value.trim(),u=$("#apU").value.trim();if(!n||!u)return;await api("app/add",{n,u});$("#apN").value="";$("#apU").value="";loadApps();};
+$("#pairGo").onclick=async()=>{const r=await api("pair",{code:$("#pairIn").value.trim()});if(r.hata){$("#pairOut").textContent="✗ "+r.hata;return;}cfg=r.ayar;$("#pairIn").value="";fillSet();$("#pairOut").textContent="✓ Bağlandı: "+(r.gelenler||[]).join(", ");const w=log.querySelector(".welcome");if(w)w.remove();};
 // hafıza
 async function loadMem(){const r=await api("memory");$("#mList").innerHTML=(r.hafiza||[]).map((x,i)=>`<div class="item"><div class="t">${esc(x.t)}<div class="meta">${fmtDue(x.at)}</div></div><button class="x" data-mdel="${i}" title="Sil">✕</button></div>`).reverse().join("")||'<div class="empty">Henüz bir şey kaydedilmedi.</div>';
   document.querySelectorAll("[data-mdel]").forEach(b=>b.onclick=async()=>{await api("memory/del",{i:+b.dataset.mdel});loadMem();});}

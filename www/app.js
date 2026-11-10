@@ -708,7 +708,7 @@ async function send(text, byVoice = false, attach = null, label = null) {
     if (local) out = (offline ? "(internetsiz mod) " : "") + local;
     else if (e.message === "NOKEY") out = "Beynimi çalıştırmak için ücretsiz bir Gemini API anahtarı gerekli. Ayarlar → Beyin bölümünden ekleyebilirsin.";
     else if (offline) out = "İnternet yok. Hatırlatıcı, not, görev, fener, uygulama açma, arama ve rutinler gibi temel komutları yine yapabilirim.";
-    else out = "Bir aksaklık oldu: " + e.message;
+    else out = friendlyErr(e);
   }
   ON_DELTA = null;
   span.textContent = out;
@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.4 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.6 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -2225,7 +2225,7 @@ async function geminiStream(model, body, onDelta) {
       for (const p of ps) { parts.push(p); if (p.text && !p.thought && onDelta) onDelta(p.text); }
     }
   }
-  return { candidates: [{ content: { role, parts } }] };
+  return { candidates: [{ content: { role, parts: compactParts(parts) } }] };
 }
 let STREAM_OK = true, CUR_DEEP = false, ON_DELTA = null;
 // httpJson'u Gemini generateContent için akışlıya yönlendir (onDelta varsa)
@@ -2383,7 +2383,8 @@ async function cfImage(prompt, w = 1024, h = 1024) {
   if (!SET.cfAccount || !SET.cfToken) throw new Error("Cloudflare bağlı değil (Ayarlar → Stüdyo).");
   let en = prompt;
   if (/[çğıöşüÇĞİÖŞÜ]|\b(ve|bir|için|ile)\b/.test(prompt) && SET.geminiKey) { try { en = (await plainGemini("Translate this image description to a rich English image-generation prompt. Only output the prompt: " + prompt, [], null, { max: 200, temperature: 0.3, model: "gemini-3.5-flash-lite" })) || prompt; } catch {} }
-  const j = await httpJson(`https://api.cloudflare.com/client/v4/accounts/${SET.cfAccount}/ai/run/@cf/black-forest-labs/flux-1-schnell`, { prompt: en, steps: 6, width: w, height: h }, { Authorization: "Bearer " + SET.cfToken });
+  const cfU = `https://api.cloudflare.com/client/v4/accounts/${SET.cfAccount}/ai/run/@cf/black-forest-labs/flux-1-schnell`, cfH = { Authorization: "Bearer " + SET.cfToken };
+  let j; try { j = await httpJson(cfU, { prompt: en, steps: 6, width: w, height: h }, cfH); } catch (e) { if (e.status !== 400) throw e; j = await httpJson(cfU, { prompt: en, steps: 4 }, cfH); }
   const b64 = j.result && (j.result.image || j.result); if (!b64 || typeof b64 !== "string") throw new Error((j.errors && j.errors[0] && j.errors[0].message) || "Görsel üretilemedi");
   return "data:image/jpeg;base64," + b64;
 }
@@ -2631,7 +2632,7 @@ TOOLS.push(
   T("sunum_hazirla", "PowerPoint sunumu (.pptx) hazırlar ve telefona kaydeder (görsellerle).", { konu: str("Konu ve amaç"), slayt: num("Slayt sayısı, varsayılan 8"), ton: str("Ton (profesyonel, samimi, ikna edici...)") }, ["konu"], a => makePresentation(a)),
   T("belge_hazirla", "Word belgesi (.docx) hazırlar: CV, teklif, mektup, sözleşme taslağı, rapor...", { tur: str("Tür", ["cv", "teklif", "mektup", "rapor", "sozlesme", "serbest"]), konu: str("Konu"), detay: str("Ek bilgiler") }, ["konu"], a => makeDocument(a)),
   T("gorsel_uret", "Yapay zekâyla görsel üretir (afiş, post, sunum görseli) ve galeriye kaydeder.", { aciklama: str("Görsel tarifi"), oran: str("Oran", ["1:1", "9:16", "16:9"]) }, ["aciklama"],
-    async a => { const [w, h] = a.oran === "9:16" ? [768, 1344] : a.oran === "16:9" ? [1344, 768] : [1024, 1024]; const d = await cfImage(a.aciklama, w, h); const r = await saveFile(await (await fetch(d)).blob(), fname("gorsel", "jpg"), "pictures"); STUDIO_LAST = d; return { ok: true, yer: r.yer }; }),
+    async a => { const [w, h] = a.oran === "9:16" ? [768, 1344] : a.oran === "16:9" ? [1344, 768] : [1024, 1024]; const d = await anyImage(a.aciklama, w, h); const r = await saveFile(await (await fetch(d)).blob(), fname("gorsel", "jpg"), "pictures"); STUDIO_LAST = d; return { ok: true, yer: r.yer }; }),
   T("fotograf_duzenle", "Stüdyo'da açık fotoğrafı düzenleyip kaydeder.", { oran: str("Oran", ["orig", "1:1", "4:5", "9:16", "16:9", "8x10"]), filtre: str("Filtre", ["none", "bw", "warm", "cool", "cine"]), parlaklik: num("50-150"), kontrast: num("50-150"), doygunluk: num("0-200"), yazi: str("Üstüne yazı"), arka_plan: str("Arka plan", ["none", "blur", "white", "black", "grey", "remove"]) }, [],
     async a => { if (!ED.img) return { hata: "Önce Stüdyo → Fotoğraf'tan bir fotoğraf seç." }; Object.assign(ED, { aspect: a.oran || ED.aspect, filter: a.filtre || ED.filter, bri: a.parlaklik || ED.bri, con: a.kontrast || ED.con, sat: a.doygunluk ?? ED.sat, text: a.yazi ?? ED.text, bg: a.arka_plan || ED.bg }); await previewPhoto(); const r = await savePhoto(); return { ok: true, yer: r.yer }; }),
   T("portfolyo_sitesi", "Burak için oyuncu portfolyo web sayfası (HTML) hazırlar.", {}, [], () => portfolioSite()),
@@ -3272,6 +3273,309 @@ document.addEventListener("click", async e => {
   if (!e.target.closest("#audTest")) return;
   try { const sc = await audSchema(true); toast(`✓ ${sc.tablo}: ${(sc.sayfalar || []).map(p => p.ad + " " + p.satir).join(", ")}`, 6000); } catch (er) { toast("✗ " + er.message, 6000); }
 });
+
+/* =====================================================================
+   v2.6 — SAĞLAMLIK + UYGULAMALAR + UYKU TRANSI + YZ VİDEO + EŞLEŞTİRME + AYARLAR DÜZENİ
+   ===================================================================== */
+
+/* ---------- 1) hata dayanıklılığı (HTTP 400 ve benzerleri) ---------- */
+function friendlyErr(e) {
+  const m = String((e && e.message) || e), st = e && e.status;
+  try { logIssue("hata", (st ? st + " " : "") + m); } catch {}
+  if (/api key not valid|api_key_invalid|permission denied/i.test(m) || st === 403) return "Gemini anahtarı geçersiz görünüyor. Ayarlar → Beyin bölümünden anahtarı kontrol eder misin?";
+  if (st === 429 || /quota|kota|exhausted/i.test(m)) return "Ücretsiz kullanım kotası şu an dolu. Birkaç dakika sonra tekrar deneyelim" + (SET.groqKey ? "." : "; Ayarlar'a ücretsiz Groq anahtarı eklersen kota dolunca yedek beyinle devam ederim.");
+  if (st >= 500) return "Google tarafında geçici bir sorun var, birazdan tekrar dener misin?";
+  if (st === 400) return "Bu isteği işleyemedim (ayrıntısı Ayarlar → Son hatalar'da). Biraz farklı söyler misin?";
+  return "Bir aksaklık oldu: " + m.slice(0, 140);
+}
+// Gemini'nin kabul ettiği sohbet sırası: boş mesaj yok, aynı rol art arda gelmez, kullanıcıyla başlar
+function cleanHist(history) {
+  const out = [];
+  for (const m of history || []) {
+    const c = String((m && m.content) || "").trim(); if (!c) continue;
+    const role = m.role === "assistant" ? "assistant" : "user";
+    if (out.length && out[out.length - 1].role === role) out[out.length - 1] = { role, content: out[out.length - 1].content + "\n" + c };
+    else out.push({ role, content: c });
+  }
+  while (out.length && out[0].role !== "user") out.shift();
+  return out;
+}
+// Akışlı cevapta parça parça gelen metinleri birleştir, boş parçaları at (geri gönderirken 400 olmasın)
+function compactParts(parts) {
+  const out = [];
+  for (const p of parts || []) {
+    if (!p) continue;
+    const plain = typeof p.text === "string" && !p.thought && !p.thoughtSignature && !p.functionCall;
+    if (plain && !p.text) continue;
+    const last = out[out.length - 1];
+    if (plain && last && typeof last.text === "string" && !last.thought && !last.thoughtSignature && !last.functionCall) last.text += p.text;
+    else out.push(plain ? { text: p.text } : p);
+  }
+  return out;
+}
+{
+  const base = askGemini;
+  askGemini = async function (history, onAct, attach) {
+    const h = cleanHist(history);
+    if (!h.length) return "Seni duyamadım, tekrar söyler misin?";
+    try { return await base(h, onAct, attach); }
+    catch (e) {
+      if (e.status !== 400 || /api key|api_key|NOKEY/i.test(e.message)) throw e;
+      try { logIssue("400", e.message); } catch {}
+      const od = ON_DELTA; ON_DELTA = null; // ikinci denemede akışsız ve geçmişsiz dene
+      try { return await base(h.slice(-1), onAct, attach); }
+      catch (e2) {
+        if (SET.groqKey && !attach) { onAct("groq"); return askGroq(h, onAct); }
+        throw e2;
+      } finally { ON_DELTA = od; }
+    }
+  };
+}
+
+/* ---------- 2) görsel: Cloudflare varsa o, yoksa anahtarsız ücretsiz servis ---------- */
+let POLL_AT = 0;
+const blobToDataUrl = b => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res(String(f.result)); f.onerror = rej; f.readAsDataURL(b); });
+async function pollImage(prompt, w, h) {
+  const wait = 16000 - (Date.now() - POLL_AT); if (POLL_AT && wait > 0) await sleep(wait); // anahtarsız kullanımda 15 sn'de 1 görsel
+  POLL_AT = Date.now();
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(String(prompt).slice(0, 380))}?width=${w}&height=${h}&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`;
+  for (const f of [rawFetch, (...a) => fetch(...a)]) {
+    try { const r = await f(url); if (r.ok) { const b = await r.blob(); if (b && b.size > 3000) return await blobToDataUrl(b.type ? b : new Blob([b], { type: "image/jpeg" })); } } catch {}
+  }
+  return new Promise((res, rej) => {
+    const im = new Image(); im.crossOrigin = "anonymous";
+    im.onload = () => { try { const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext("2d").drawImage(im, 0, 0); res(c.toDataURL("image/jpeg", 0.92)); } catch (e) { rej(e); } };
+    im.onerror = () => rej(new Error("Görsel servisi şu an yanıt vermiyor, biraz sonra tekrar dene.")); im.src = url;
+  });
+}
+async function anyImage(prompt, w = 1024, h = 1024) {
+  if (SET.cfAccount && SET.cfToken) { try { return await cfImage(prompt, w, h); } catch (e) { try { logIssue("görsel", "Cloudflare: " + e.message); } catch {} } }
+  let en = prompt;
+  if (/[çğıöşüÇĞİÖŞÜ]|\b(ve|bir|için|ile)\b/.test(prompt) && SET.geminiKey) { try { en = (await plainGemini("Translate this image description to a rich English image-generation prompt. Only output the prompt: " + prompt, [], null, { max: 200, temperature: 0.3 })) || prompt; } catch {} }
+  return pollImage(en, Math.min(w, 1280), Math.min(h, 1280));
+}
+
+/* ---------- 3) yapay zekâ videosu: senaryo → görseller → seslendirme → video ---------- */
+let AIV_BUSY = false;
+async function aiVideo({ konu, sahne = 5, format = "9:16", seslendirme = true }, onStep = () => {}) {
+  if (AIV_BUSY) throw new Error("Zaten bir video hazırlanıyor.");
+  if (!konu) throw new Error("Video konusu ne olsun?");
+  AIV_BUSY = true;
+  try {
+    const n = Math.max(3, Math.min(8, Number(sahne) || 5));
+    const [w, h] = format === "16:9" ? [1024, 576] : format === "1:1" ? [768, 768] : [576, 1024];
+    onStep("Senaryo yazılıyor…");
+    const plan = await geminiJSON(`"${konu}" hakkında ${n} sahnelik kısa, akıcı bir video hazırla. Anlatım Türkçe ve sesli okunacak (her sahne 1-2 cümle). JSON: {"baslik":"","sahneler":[{"anlatim":"","gorsel":"English image prompt: cinematic, detailed, no text, no letters"}]}`);
+    const sc = (plan.sahneler || []).filter(s => s && s.anlatim).slice(0, 8);
+    if (!sc.length) throw new Error("Senaryo çıkarılamadı, konuyu biraz daha açık yazar mısın?");
+    const clips = [];
+    for (let i = 0; i < sc.length; i++) {
+      onStep(`Görsel ${i + 1}/${sc.length} hazırlanıyor…`);
+      try { const img = await loadImg(await anyImage(sc[i].gorsel || sc[i].anlatim, w, h)); clips.push({ kind: "image", img, text: sc[i].anlatim, pan: i % 2 ? 1 : -1 }); }
+      catch (e) { clips.push({ kind: "card", text: plan.baslik || konu, sub: sc[i].anlatim.replace(/(.{1,34})(\s|$)/g, "$1\n").trim() }); }
+    }
+    const full = sc.map(s => s.anlatim).join(" ");
+    let narration = null;
+    if (seslendirme && SET.geminiKey) { onStep("Seslendiriliyor…"); try { narration = await geminiTtsBuffer(full); } catch (e) { try { logIssue("video", "seslendirme: " + e.message); } catch {} } }
+    const total = narration ? narration.duration + 0.5 : sc.length * 3.6;
+    clips.forEach((c, i) => { c.start = 0; c.end = Math.max(1.8, total * sc[i].anlatim.length / full.length); });
+    onStep("Video işleniyor…");
+    const r = await renderVideo({ clips, format, narration, cleanAudio: false, onProgress: p => onStep(`Video işleniyor %${Math.round(p * 100)}`) });
+    const s = await saveFile(r.blob, fname("video-" + (plan.baslik || konu), r.ext), "movies");
+    return { ok: true, yer: s.yer, baslik: plan.baslik || konu, sahne: sc.length, gorselli: clips.filter(c => c.kind === "image").length, sesli: !!narration };
+  } finally { AIV_BUSY = false; }
+}
+
+/* ---------- 4) UYGULAMALARIM: daha önce yaptığımız her şey tek yerde ---------- */
+const A_ = id => "https://claude.ai/artifact/" + id;
+const MY_APPS = [
+  { k: "audition", n: "Recast Audition", e: "🎬", c: "İş", set: "auditionUrl", u: A_("FDqkLhxBpP3Ar4tQNB94AZ"), d: "İş gönder, self-tape topla, müşteriye ilet" },
+  { k: "kadro", n: "KADRO", e: "🗂", c: "İş", set: "kadroUrl", u: "", d: "Oyuncu kadrosu yönetimi" },
+  { k: "selftape", n: "Self-Tape Okuyucu", e: "🎥", c: "İş", u: A_("WWFaSsPAaqAqGw7VtsLWa4"), d: "Karşı replikleri okur, kayıt alır" },
+  { k: "kesit", n: "Kesit Kurgu", e: "✂️", c: "İş", u: A_("G4rD1YYkTbvbLwEBdF64RC"), d: "Video kurgu, showreel sihirbazı" },
+  { k: "senaryo", n: "Senaryo Masası", e: "📝", c: "İş", u: A_("99uPyFnzRmmpUeKt4t4PJR"), d: "Senaryo yazım uygulaması" },
+  { k: "casting", n: "Casting Masası", e: "📋", c: "İş", u: A_("NiR7qT4pgoADJ1zEb2Yn9h"), d: "Ajanslar için casting uygulaması" },
+  { k: "atolye", n: "Atölye Paneli", e: "🎭", c: "İş", u: A_("C8FbAfv2WYKh8tqcSNqrJE"), d: "Atölye yönetimi ve başvuru" },
+  { k: "acik", n: "Açık Stüdyo Paneli", e: "🏛", c: "İş", u: A_("YMexZbTmac9CRh8r2smsvi"), d: "React Açık Stüdyo ekip paneli" },
+  { k: "react", n: "React Açık Stüdyo", e: "🎟", c: "İş", u: A_("HpVUQ5bCFjrsv7nsD9wnLv"), d: "Atölye başvuru ve görüşme" },
+  { k: "transfer", n: "Recast Transfer", e: "📦", c: "İş", u: A_("KBbdKXsqeav5esRQKVNaCJ"), d: "Dosya gönderim demosu" },
+  { k: "uyku", n: "Uyku Transı", e: "🌙", c: "Gelişim", u: A_("EusyDvvPxqhnCbNR43Dmdv"), d: "Kişisel uyku hipnozu (tam sürüm)" },
+  { k: "replik", n: "Replik", e: "🇬🇧", c: "Gelişim", u: A_("G2gUa5nS94jq73nQwrNTuG"), d: "İngilizce öğrenme" },
+  { k: "okuma", n: "Okuma Atölyesi", e: "📖", c: "Gelişim", u: A_("D38iR4tvyrMuuU96ckyNcm"), d: "Hızlı okuma antrenmanı" },
+  { k: "filiz", n: "Filiz", e: "🌱", c: "Gelişim", u: A_("KA3KdDnUfAXhvCX4ty5gcL"), d: "Bütçeye göre iş planı" },
+  { k: "kira", n: "Kira Radarı", e: "🏠", c: "Gelişim", u: A_("GBKEb7uVfknigTC7BWeD9R"), d: "Kiralık ilan takibi" },
+  { k: "saha", n: "Saha Yıldızı", e: "⚽", c: "Oyun", u: A_("Nb1Zu1BdRdTXTRNmF68QPx"), d: "Futbol kariyer oyunu" },
+  { k: "galerici", n: "Galerici", e: "🚗", c: "Oyun", u: A_("W17Y3E6HiXmRAG7KR6xChH"), d: "3D araba al-sat simülatörü" },
+  { k: "cephe", n: "Cephe 1921", e: "🎖", c: "Oyun", u: A_("MR82LwnzN7SjeG76EgmL3E"), d: "Kurtuluş Savaşı oyunu" },
+  { k: "sahnede", n: "Burak Sahnede", e: "🌟", c: "Oyun", u: A_("5uMBKKnvas6ePSqpqHnVJw"), d: "Oyuncu hayat simülasyonu" },
+  { k: "okey", n: "Istaka Okey", e: "🀄", c: "Oyun", u: A_("U9sk8xD2q8mAnsHaUEZDbx"), d: "Okey ve 101" },
+  { k: "tarih", n: "Tarihin İçinde", e: "🏺", c: "Oyun", u: A_("9YxPr8pSwrD4HgRAMTMfhH"), d: "Tarihî hayat ve strateji oyunu" },
+  { k: "istiklal", n: "İstiklal Harbi", e: "🇹🇷", c: "Oyun", u: A_("DBp1JFcUWU1Rw39Nt7nEDr"), d: "Harekât ve hayat oyunu" }
+];
+const allApps = () => [...MY_APPS.map(a => ({ ...a, url: (a.set && SET[a.set]) || a.u })), ...(SET.customApps || []).map((a, i) => ({ k: "c" + i, n: a.n, e: "🔗", c: "Eklediklerim", url: a.u, d: a.u.replace(/^https?:\/\//, "").slice(0, 40), custom: i }))];
+async function openMyApp(q) {
+  const nq = normTxt(q || ""); const apps = allApps();
+  const a = apps.find(a => a.k === q) || apps.find(a => normTxt(a.n) === nq) || apps.find(a => normTxt(a.n).includes(nq) || nq.includes(normTxt(a.n))) || apps.find(a => nq.split(" ").some(w => w.length > 3 && normTxt(a.n + " " + a.d).includes(w)));
+  if (!a) return { hata: "Böyle bir uygulama bulamadım. Uygulamalar: " + apps.map(a => a.n).join(", ") };
+  if (!a.url) { go("set"); return { hata: `${a.n} adresi kayıtlı değil. Ayarlar → Uygulama adresleri bölümüne yaz.` }; }
+  await openUrl(a.url); return { ok: true, acildi: a.n };
+}
+function appsHTML() {
+  const apps = allApps(); const cats = [...new Set(apps.map(a => a.c))];
+  return `<div class="hint" style="margin:0 0 8px">Birlikte yaptığımız uygulamalar. Dokun, açılsın — ya da “Titus, Uyku Transı'nı aç” de. Claude hesabınla giriş yapılı tarayıcıda açılır.</div>` +
+    cats.map(c => `<div class="card"><h3>${esc(c.toLocaleUpperCase("tr-TR"))}</h3><div class="appgrid">${apps.filter(a => a.c === c).map(a => `<button class="app${a.url ? "" : " off"}" data-myapp="${a.k}"><i>${a.e}</i><b>${esc(a.n)}</b><small>${esc(a.url ? a.d : "adres gir")}</small>${a.custom !== undefined ? `<span class="x" data-appdel="${a.custom}">✕</span>` : ""}</button>`).join("")}</div></div>`).join("") +
+    `<div class="card"><h3>UYGULAMA EKLE</h3><div class="form"><input id="apN" placeholder="Ad"><div class="row"><input id="apU" placeholder="https://…"><button class="btn" id="apAdd">+</button></div></div></div>`;
+}
+
+/* ---------- 5) UYKU TRANSI (yerleşik, sesli) ---------- */
+const HYP = { on: false, stop: false, status: "", ac: null };
+const HYP_GOALS = { uyku: ["Derin uyku", "derin, kesintisiz ve dinlendirici bir uykuya dalmak"], stres: ["Günü bırak", "günün stresini ve düşüncelerini bırakıp gevşemek"], ozguven: ["Özgüven", "özgüven ve sahne cesareti"], kaygi: ["Seçme kaygısı", "seçme ve sahne kaygısını bırakıp sakin, hazır hissetmek"], odak: ["Odak", "odaklanma, disiplin ve motivasyon"] };
+function brownNoise(ac, vol) {
+  const len = ac.sampleRate * 4, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0); let last = 0;
+  for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2; }
+  const src = ac.createBufferSource(); src.buffer = buf; src.loop = true; const g = ac.createGain(); g.gain.value = vol; src.connect(g); g.connect(ac.destination); src.start(); return g;
+}
+const hypStat = s => { HYP.status = s; const e = $("#hypStat"); if (e) e.textContent = s; };
+async function hypnoStart({ amac = "uyku", dk = 10, ozel = "" } = {}) {
+  if (HYP.on) return { hata: "Seans zaten sürüyor." };
+  const goal = HYP_GOALS[amac] || HYP_GOALS.uyku; dk = Math.max(3, Math.min(30, Number(dk) || 10));
+  HYP.on = true; HYP.stop = false; hypStat("Seans hazırlanıyor…"); if (CUR.life === "uyku") renderSec("life");
+  try { if (Jarvis && SET.wake) await nat(() => Jarvis.pauseWake()); } catch {}
+  let noise = null;
+  try {
+    const txt = await plainGemini(`${SET.name} için Türkçe bir hipnoz/gevşeme seansı metni yaz. Amaç: ${goal[1]}.${ozel ? " Kişisel not: " + ozel + "." : ""} Yaklaşık ${dk * 70} kelime.
+Kurallar: ikinci tekil şahıs, şimdiki zaman, yavaş, yumuşak ve tekrarlı telkin dili; kısa cümleler. Başlık, madde işareti, parantez, sahne notu YOK — sadece okunacak metin. Paragrafları boş satırla ayır (her paragraf 2-4 cümle).
+Akış: nefese odaklanma → bedeni baştan ayağa gevşetme → 10'dan 1'e sayarak derinleşme → huzurlu bir yer imgesi → amaca yönelik olumlu telkinler → ${amac === "uyku" || amac === "stres" ? "uykuya bırakma (uyandırma yok, son cümleler giderek sakinleşsin)" : "1'den 5'e sayarak zinde ve sakin uyanış"}. Tıbbi iddia ve vaat yok.`, [], null, { max: 5000, temperature: 0.85 });
+    const paras = String(txt).split(/\n\s*\n/).map(p => p.replace(/[*_#]/g, "").trim()).filter(p => p.length > 10);
+    if (!paras.length) throw new Error("Seans metni hazırlanamadı");
+    const ac = HYP.ac = new (window.AudioContext || window.webkitAudioContext)(); noise = brownNoise(ac, 0.035);
+    const getBuf = p => geminiTtsBuffer(p).catch(() => null);
+    let next = getBuf(paras[0]);
+    for (let i = 0; i < paras.length && !HYP.stop; i++) {
+      hypStat(`Seans sürüyor · ${i + 1}/${paras.length}`);
+      const buf = await next; next = i + 1 < paras.length ? getBuf(paras[i + 1]) : null;
+      if (HYP.stop) break;
+      if (buf) await new Promise(res => { const s = ac.createBufferSource(); s.buffer = buf; s.playbackRate.value = 0.94; const g = ac.createGain(); g.gain.value = 0.9; s.connect(g); g.connect(ac.destination); s.onended = res; HYP.src = s; s.start(); });
+      else await speak(paras[i], true);
+      for (let k = 0; k < 6 && !HYP.stop; k++) await sleep(500);
+    }
+    if (!HYP.stop && (amac === "uyku" || amac === "stres")) { hypStat("Seans bitti · ses yavaşça kısılıyor"); noise.gain.linearRampToValueAtTime(0, ac.currentTime + 240); for (let k = 0; k < 480 && !HYP.stop; k++) await sleep(500); }
+    return { ok: true, sure_dk: dk };
+  } catch (e) { toast("✗ " + friendlyErr(e), 5000); return { hata: e.message }; }
+  finally {
+    try { if (HYP.src) HYP.src.stop(); } catch {} try { if (HYP.ac) await HYP.ac.close(); } catch {}
+    HYP.on = false; HYP.ac = null; hypStat(""); resumeWake(); if (CUR.life === "uyku") renderSec("life");
+  }
+}
+function hypnoStop() { HYP.stop = true; try { if (HYP.src) HYP.src.stop(); } catch {} stopSpeaking(); }
+function hypHTML() {
+  return `<div class="card"><h3>UYKU TRANSI</h3>${HYP.on ? `<div class="hint" id="hypStat" style="margin-top:0;font-size:14px">${esc(HYP.status)}</div><button class="btn" id="hypStop" style="width:100%;margin-top:10px">■ Seansı bitir</button><div class="hint">Telefonu yanına koy, ekranı kapatabilirsin. Kulaklık önerilir.</div>` :
+    `<div class="form"><div class="lbl">Bu geceki amaç</div><select id="hypGoal">${Object.entries(HYP_GOALS).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join("")}</select>
+     <div class="lbl">Süre</div><select id="hypMin"><option value="5">5 dakika</option><option value="10" selected>10 dakika</option><option value="15">15 dakika</option><option value="20">20 dakika</option></select>
+     <div class="lbl">Kişisel not (isteğe bağlı)</div><input id="hypNote" placeholder="ör. yarın seçmem var, sakin uyanmak istiyorum">
+     <button class="btn" id="hypGo">🌙 Seansı başlat</button></div>
+     <div class="hint">Titus sana özel bir metin yazar, doğal sesle yavaşça okur; arkada hafif bir uğultu çalar. “Titus, uyku seansı başlat” da diyebilirsin. Tam sürüm için: <a href="#" data-myapp="uyku">Uyku Transı uygulaması</a>.</div>`}</div>`;
+}
+
+/* ---------- 6) bölümler ve tıklamalar ---------- */
+{
+  const base = listHTML;
+  listHTML = function (sec) {
+    if (sec === "apps") return appsHTML();
+    if (sec === "uyku") return hypHTML();
+    if (sec === "video") return base(sec) + `<div class="card"><h3>YAPAY ZEKÂ VİDEOSU</h3><div class="form"><input id="aivTopic" placeholder="Konu (ör. Kadıköy'de bir oyuncunun günü)"><div class="row"><select id="aivFmt"><option value="9:16">Dikey 9:16</option><option value="16:9">Yatay 16:9</option><option value="1:1">Kare</option></select><select id="aivN"><option value="4">4 sahne</option><option value="5" selected>5 sahne</option><option value="6">6 sahne</option><option value="8">8 sahne</option></select></div><button class="btn" id="aivGo">🎬 Videoyu oluştur</button><div class="hint" id="aivStat">Titus senaryoyu yazar, sahne görsellerini üretir, seslendirir ve videoyu Filmler/TITUS'a kaydeder. Cloudflare bağlı değilse ücretsiz servis kullanılır (sahne başına ~15 sn). İşlem sırasında uygulamayı açık tut.</div></div></div>`;
+    return base(sec);
+  };
+}
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-appdel],[data-myapp],#apAdd,#hypGo,#hypStop,#aivGo,#pairMake,#pairCopy,#pairMail,[data-goapps]"); if (!t) return;
+  try {
+    if (t.dataset.appdel !== undefined) { e.stopPropagation(); SET.customApps.splice(+t.dataset.appdel, 1); await saveSet(); renderSec("studio"); }
+    else if (t.dataset.myapp) { e.preventDefault(); const r = await openMyApp(t.dataset.myapp); if (r.hata) toast(r.hata, 4500); }
+    else if (t.id === "apAdd") { const n = $("#apN").value.trim(); let u = $("#apU").value.trim(); if (!n || !u) return toast("Ad ve adres yaz"); if (!/^https?:\/\//.test(u)) u = "https://" + u; SET.customApps = [...(SET.customApps || []), { n, u }]; await saveSet(); renderSec("studio"); }
+    else if (t.id === "hypGo") hypnoStart({ amac: $("#hypGoal").value, dk: +$("#hypMin").value, ozel: $("#hypNote").value.trim() });
+    else if (t.id === "hypStop") hypnoStop();
+    else if (t.id === "aivGo") { const k = $("#aivTopic").value.trim(); if (!k) return toast("Konu yaz"); t.disabled = true; try { const r = await aiVideo({ konu: k, format: $("#aivFmt").value, sahne: +$("#aivN").value }, s => { const el = $("#aivStat"); if (el) el.textContent = "⏳ " + s; }); const el = $("#aivStat"); if (el) el.textContent = `✓ Kaydedildi: ${r.yer} (${r.gorselli}/${r.sahne} sahne görselli${r.sesli ? ", seslendirmeli" : ""})`; toast("✓ Video hazır", 4000); } finally { t.disabled = false; } }
+    else if (t.dataset.goapps !== undefined) { go("studio"); openSec("studio", "apps"); }
+    else if (t.id === "pairMake") { $("#pairOut").value = pairCode(); $("#pairBox").style.display = ""; }
+    else if (t.id === "pairCopy") { const v = $("#pairOut").value; try { await navigator.clipboard.writeText(v); toast("✓ Kod kopyalandı"); } catch { $("#pairOut").select(); toast("Kodu seçip kopyala"); } }
+    else if (t.id === "pairMail") openUrl("mailto:?subject=" + encodeURIComponent("Titus bağlantı kodu") + "&body=" + encodeURIComponent($("#pairOut").value));
+  } catch (er) { const el = $("#aivStat"); if (el && t.id === "aivGo") el.textContent = "✗ " + friendlyErr(er); toast("✗ " + friendlyErr(er), 5000); }
+});
+
+/* ---------- 7) araçlar ---------- */
+TOOLS.push(
+  T("video_olustur", "Verilen konuda yapay zekâyla kısa bir video üretir: senaryo yazar, sahne görsellerini üretir, seslendirir ve galeriye kaydeder. 1-3 dakika sürer.", { konu: str("Video konusu"), sahne: num("Sahne sayısı (3-8)"), format: str("Biçim", ["9:16", "16:9", "1:1"]) }, ["konu"],
+    async a => { go("studio"); openSec("studio", "video"); const r = await aiVideo(a, s => { const el = $("#aivStat"); if (el) el.textContent = "⏳ " + s; setMode("think", s); }); return r; }),
+  T("uygulamam_ac", "Burak'la birlikte yapılan uygulamalardan birini açar: Recast Audition, KADRO, Self-Tape Okuyucu, Uyku Transı, Kesit Kurgu, Senaryo Masası, Replik, Okuma Atölyesi, Filiz, Kira Radarı, Saha Yıldızı, Galerici, Cephe 1921, Burak Sahnede, Istaka Okey vb.", { ad: str("Uygulama adı") }, ["ad"], a => openMyApp(a.ad)),
+  T("uyku_transi", "Yerleşik sesli hipnoz/gevşeme seansı başlatır.", { amac: str("Amaç", ["uyku", "stres", "ozguven", "kaygi", "odak"]), dakika: num("Süre (dakika)") }, [], a => { go("life"); openSec("life", "uyku"); hypnoStart({ amac: a.amac || "uyku", dk: a.dakika || 10 }); return { ok: true, not: "Seans birazdan başlıyor." }; }),
+  T("uyku_transi_bitir", "Süren hipnoz seansını bitirir.", {}, [], () => { hypnoStop(); return { ok: true }; }),
+  T("bilgisayara_soyle", "Bilgisayardaki Titus'a bir iş yaptırır (ör. 'Chrome'u aç', 'şu konuda görsel üret', 'masaüstündeki CV'yi maile ekle'). Bilgisayarda Titus açık olmalı.", { gorev: str("Bilgisayarda yapılacak iş") }, ["gorev"],
+    async a => { const { id } = await script("pcPush", { cmd: { action: "ask", arg: a.gorev } }); for (let i = 0; i < 20; i++) { await sleep(3000); const r = await script("pcResult", { id }); if (r.result) return r.result; } return { hata: "Bilgisayardan cevap gelmedi; Titus bilgisayarda açık mı?" }; })
+);
+Object.assign(ACT_TR, { video_olustur: "🎬 video", uygulamam_ac: "🧩 uygulama", uyku_transi: "🌙 seans", uyku_transi_bitir: "🌙 bitti", bilgisayara_soyle: "💻 bilgisayar" });
+TOOL_GROUPS.push(
+  [/video|klip|reels/, ["video_olustur"]],
+  [/uygulama|aç|audition|kadro|self-?tape|kurgu|senaryo|replik|okuma|filiz|oyun|okey|galerici|cephe|saha/, ["uygulamam_ac"]],
+  [/hipnoz|trans|uyku|uyu|gevşe|rahatla|seans/, ["uyku_transi", "uyku_transi_bitir"]],
+  [/bilgisayar/, ["bilgisayara_soyle"]],
+  [/görsel|resim|afiş|poster/, ["gorsel_uret"]]
+);
+{
+  const baseSys = systemPrompt;
+  systemPrompt = function () { return baseSys() + "\nUYGULAMALAR: Burak'la yaptığınız uygulamaları uygulamam_ac ile açabilirsin. Video istenirse video_olustur, görsel istenirse gorsel_uret kullan (Cloudflare bağlı olmasa da çalışır). Bilgisayarda yapılacak işler için bilgisayara_soyle kullan."; };
+}
+
+/* ---------- 8) bilgisayarla eşleştirme (tek kod) + bilgisayardan gelen istekler ---------- */
+function pairCode() {
+  const o = { v: 1, u: SET.scriptUrl || "", t: SET.scriptToken || "", g: SET.geminiKey || "", q: SET.groqKey || "", ca: SET.cfAccount || "", ct: SET.cfToken || "", k: SET.kadroSheetId || "", a: SET.auditionSheetId || "", au: SET.auditionUrl || "", ku: SET.kadroUrl || "", n: SET.name || "", nt: SET.ntfyTopic || "" };
+  return "TITUS1." + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+}
+let PH_BUSY = false;
+async function phonePull() {
+  if (!SET.scriptUrl || PH_BUSY || document.hidden || busy) return; PH_BUSY = true;
+  try {
+    const r = await script("phPull");
+    for (const c of r.cmds || []) {
+      if (c.kind === "note") { bubble("assistant", "💻 Bilgisayardan: " + c.text); CHAT.push({ role: "assistant", content: "Bilgisayardan gelen not: " + c.text }); saveChat(); }
+      else { bubble("sys", "💻 Bilgisayardaki Titus'tan istek"); await send(String(c.text || "")); }
+    }
+  } catch {} finally { PH_BUSY = false; }
+}
+setInterval(phonePull, 45000); setTimeout(phonePull, 8000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) setTimeout(phonePull, 1500); });
+
+/* ---------- 9) AYARLAR: katlanır, aranabilir, düzenli ---------- */
+{
+  const base = renderSettings;
+  let SET_BUSY = false;
+  renderSettings = async function () {
+    if (SET_BUSY) return; SET_BUSY = true;
+    try {
+      const box = $("#b-set"); const y = box ? box.scrollTop : 0; const q0 = ($("#setSearch") || {}).value || "";
+      await base();
+      box.insertAdjacentHTML("beforeend", `
+      <div class="card"><h3>UYGULAMA ADRESLERİ</h3><div class="form"><div class="lbl">KADRO adresi (Netlify)</div><input data-set="kadroUrl" value="${esc(SET.kadroUrl || "")}" placeholder="https://kadro….netlify.app/#KODUN"><div class="lbl">Recast Audition adresi (Netlify)</div><input data-set="auditionUrl" value="${esc(SET.auditionUrl || "")}" placeholder="https://recast-audition.netlify.app/#KODUN"><div class="hint">Bunları bir kez yaz; Stüdyo → Uygulamalar'dan ya da “Titus, KADRO'yu aç” diyerek açarsın.</div></div></div>
+      <div class="card"><h3>BİLGİSAYARI BAĞLA</h3><div class="hint" style="margin-top:0">Bilgisayardaki Titus'u tek kodla bağla: Gmail, takvim, KADRO, görevler ve anahtarların hepsi bilgisayara geçer. Kodu kimseyle paylaşma.</div><button class="btn ghost sm" id="pairMake" style="margin-top:8px">Bağlantı kodu oluştur</button>
+        <div id="pairBox" style="display:none;margin-top:8px"><textarea id="pairOut" readonly style="min-height:70px;font-size:11px"></textarea><div class="row" style="margin-top:6px"><button class="btn ghost sm" id="pairCopy">Kopyala</button><button class="btn ghost sm" id="pairMail">Kendime mail at</button></div><div class="hint">Bilgisayarda Titus → Ayarlar → “Telefondan bağlantı kodu” kutusuna yapıştır.</div></div></div>
+      <div class="card"><h3>SON HATALAR</h3><div class="hint" style="margin-top:0">${(S.issues || []).slice(-8).reverse().map(i => `${esc((i.at || "").slice(5, 16).replace("T", " "))} · ${esc(i.detail)}`).join("<br>") || "Kayıtlı hata yok."}</div></div>`);
+      // katlanır kartlar
+      const open = new Set(META.setOpen || []); const cards = [...box.querySelectorAll(":scope > .card")];
+      let nth = 0; cards.forEach(c => { const h = c.querySelector(":scope > h3"); if (!h) return; h.textContent = h.textContent.replace(/HEY Titus/g, "HEY TITUS"); const key = h.textContent.trim(); c.classList.add("fold"); c.dataset.key = key; if (open.has(key) || (!META.setOpen && nth === 0)) c.classList.add("open"); nth++; });
+      box.insertAdjacentHTML("afterbegin", `<div class="setbar"><input id="setSearch" placeholder="Ayarlarda ara… (ör. ses, izin, yedek)" value="${esc(q0)}"><button class="btn ghost sm" id="setAll">Tümünü aç</button></div>`);
+      const filt = () => { const q = trLower($("#setSearch").value.trim()); cards.forEach(c => { const hit = !q || trLower(c.textContent).includes(q); c.style.display = hit ? "" : "none"; c.classList.toggle("found", !!q && hit); }); };
+      $("#setSearch").addEventListener("input", filt); if (q0) filt();
+      box.scrollTop = y;
+    } finally { SET_BUSY = false; }
+  };
+  document.addEventListener("click", e => {
+    const all = e.target.closest("#setAll");
+    if (all) { const cs = [...document.querySelectorAll("#b-set > .card.fold")]; const any = cs.some(c => !c.classList.contains("open")); cs.forEach(c => c.classList.toggle("open", any)); all.textContent = any ? "Tümünü kapat" : "Tümünü aç"; META.setOpen = any ? cs.map(c => c.dataset.key) : []; saveMeta(); return; }
+    const h = e.target.closest("#b-set > .card.fold > h3"); if (!h) return;
+    const c = h.parentElement; c.classList.toggle("open");
+    META.setOpen = [...document.querySelectorAll("#b-set > .card.fold.open")].map(c => c.dataset.key); saveMeta();
+  });
+}
 
 /* ================= açılış ================= */
 async function boot() {

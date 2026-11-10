@@ -428,6 +428,11 @@ def to_phone(a):
             J.state_add("notes", {"id": _id(), "text": "💻 " + msg, "at": _now()}); sent.append("Titus notlarına")
         except Exception as e:
             J.log("uyarı", f"telefon notu: {e}")
+    if J.AG.get("url"):
+        try:
+            J.agent.call(J.AG, "phPush", kind="note", text=msg); sent.append("telefondaki Titus sohbetine")
+        except Exception as e:
+            J.log("uyarı", f"telefon kuyruğu: {e}")
     if J.C.get("ntfy"):
         try:
             req = urllib.request.Request("https://ntfy.sh/" + urllib.parse.quote(J.C["ntfy"]), data=msg.encode("utf-8"), headers={"Title": "Titus (bilgisayar)"})
@@ -480,7 +485,7 @@ def selftest(a=None):
         add("Hoparlör", bool(outs), (sd.query_devices(kind="output") or {}).get("name", "") if outs else "Ses çıkışı bulunamadı")
     except Exception as e:
         add("Ses aygıtları", False, e)
-    for mod, name in (("websockets", "Canlı sohbet paketi"), ("vosk", "'Titus' uyandırma paketi"), ("pyautogui", "Ekran kontrolü"), ("pypdf", "PDF okuma"), ("docx", "Word okuma"), ("requests", "Hızlı bağlantı")):
+    for mod, name in (("imageio_ffmpeg", "Video üretimi"), ("websockets", "Canlı sohbet paketi"), ("vosk", "'Titus' uyandırma paketi"), ("pyautogui", "Ekran kontrolü"), ("pypdf", "PDF okuma"), ("docx", "Word okuma"), ("requests", "Hızlı bağlantı")):
         try:
             __import__(mod); add(name, True)
         except Exception:
@@ -534,4 +539,9 @@ def setup(jd):
         except Exception:
             pass
     threading.Thread(target=warm, daemon=True).start()
+    try:
+        import titus_extra
+        titus_extra.setup(jd, P)
+    except Exception as e:
+        jd.log("hata", f"ek araçlar yüklenemedi: {e}")
     jd.log("bilgi", f"Titus {jd.VERSION} hazır — {len(jd.TOOLS)} araç")

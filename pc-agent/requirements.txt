@@ -12,3 +12,4 @@ vosk
 pypdf
 python-docx
 openpyxl
+imageio-ffmpeg
