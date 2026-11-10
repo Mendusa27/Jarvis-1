@@ -321,5 +321,10 @@ def setup(jd, p):
     reg("gorsel_uret", "Yapay zekâyla görsel üretir (afiş, post, kapak, illüstrasyon) ve Resimler/Titus'a kaydeder.", {"aciklama": P("STRING", "Görsel tarifi"), "oran": P("STRING", "", ["1:1", "9:16", "16:9"]), "adet": P("NUMBER", "Kaç tane (1-4)")}, ["aciklama"], t_image)
     reg("video_olustur", "Verilen konuda kısa bir video üretir: senaryo, sahne görselleri, seslendirme, altyazı. Videolar/Titus'a kaydeder. 1-3 dakika sürer.", {"konu": P("STRING", "Video konusu"), "sahne": P("NUMBER", "Sahne sayısı (3-8)"), "format": P("STRING", "", ["16:9", "9:16", "1:1"])}, ["konu"], t_video)
     reg("uygulamam_ac", "Burak'la birlikte yapılan uygulamalardan birini açar: Recast Audition, KADRO, Self-Tape Okuyucu, Uyku Transı, Kesit Kurgu, Senaryo Masası, Replik, Okuma Atölyesi, Filiz, Kira Radarı, Saha Yıldızı, Galerici, Cephe 1921, Burak Sahnede, Istaka Okey vb.", {"ad": P("STRING", "Uygulama adı")}, ["ad"], lambda a: open_app(a.get("ad", "")))
+    try:
+        import titus_media
+        titus_media.setup(jd, p, __import__(__name__))
+    except Exception as e:
+        jd.log("hata", f"medya eklentisi yüklenemedi: {e}")
     jd.MEMORY_HOOK.append(lambda: "\nGmail, takvim ve KADRO için mailleri_oku / mail_taslagi / takvim / takvime_ekle / kadro_ara kullan. Görsel için gorsel_uret, video için video_olustur, Burak'ın uygulamaları için uygulamam_ac, telefonda yapılacak işler (alarm, arama, telefon bildirimi) için telefonda_yap kullan."
                           + ("" if jd.AG.get("url") else " (Google bağlantısı henüz kurulmamış: mail/takvim/KADRO istenirse Ayarlar'a telefondaki bağlantı kodunun yapıştırılması gerektiğini söyle.)"))

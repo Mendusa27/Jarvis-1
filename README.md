@@ -222,3 +222,11 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - **Ayarlar**: katlanır başlıklar + arama.
 - **Bilgisayarı bağla**: telefonda Ayarlar → Bilgisayarı bağla → kod; bilgisayarda Ayarlar'a yapıştır. Bilgisayardaki Titus Gmail, takvim, KADRO kullanır; "telefonda şunu yap" der; telefon "bilgisayara söyle" der.
 - Code.gs'yi güncelleyip yeni sürüm olarak dağıt (phPush/phPull eklendi).
+
+## v2.7 — Dosya/görsel analizi, kimliği koruyan montaj, modeller, konuşan video
+- 📎 ile fotoğraf, PDF, Word, Excel, metin, ses ve kısa video eklenir; sonraki 4 soruda da bağlamda kalır. Bilgisayarda sürükle-bırak ve Ctrl+V de çalışır.
+- **Fotoğraf montajı**: "beni Paris'te gün batımında göster" — yüz, el, kol değişmeden yeni ortam. Ücretsiz motor: Hugging Face FLUX Kontext (Ayarlar'a ücretsiz HF token ekle; günde birkaç hak).
+- **Modeller**: 1-3 fotoğrafla bir kişiyi kaydet ("bunu Burak adıyla model olarak kaydet"); görsellerde ve videolarda aynı yüzle kullanılır. Telefon ve bilgisayar ortak (Drive'daki "TITUS Modeller").
+- **İsteğe sadık görsel**: istek ayrıntılandırılır → üretilir → Gemini görsele bakıp isteğe uyup uymadığını puanlar → eksikse düzeltip yeniden üretir.
+- **Konuşan video** (bilgisayar): model + metin → seslendirme → Hugging Face'teki ücretsiz dudak senkronu alanları. Alanlar dolu/kapalıysa o sahne hareketli fotoğraf + ses olarak eklenir ve bunu söyler.
+- Code.gs'yi güncelleyip yeni sürüm olarak dağıt (listFolder, getFileB64, saveFile replace).

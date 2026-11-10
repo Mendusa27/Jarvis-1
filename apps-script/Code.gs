@@ -41,6 +41,8 @@ function doPost(e) {
       case "audAdd":       return out(Object.assign({ ok: true }, audAdd(req)));
       case "phPush":       return out({ ok: true, id: phPush(req) });
       case "phPull":       return out({ ok: true, cmds: phPull() });
+      case "listFolder":   return out({ ok: true, files: listFolder(req) });
+      case "getFileB64":   return out(Object.assign({ ok: true }, getFileB64(req)));
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
@@ -288,6 +290,7 @@ function folder_(name) { const it = DriveApp.getFoldersByName(name); return it.h
 function saveFile(req) {
   const f = folder_(req.folder || "Titus");
   const blob = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || "application/octet-stream", req.name || "dosya");
+  if (req.replace) { const it0 = f.getFilesByName(req.name || "dosya"); while (it0.hasNext()) it0.next().setTrashed(true); }
   const file = f.createFile(blob);
   if (req.keep) { // eski yedekleri temizle
     const files = []; const it = f.getFiles(); while (it.hasNext()) files.push(it.next());
@@ -424,4 +427,17 @@ function phPull() {
     jset_("phQueue", []);
     return q.filter(x => Date.now() - x.at < 6 * 3600000).map(x => ({ id: x.id, kind: x.kind, text: x.text }));
   } finally { lock.releaseLock(); }
+}
+
+
+/* ---------- v2.7: model kütüphanesi senkronu (telefon ↔ bilgisayar) ---------- */
+function listFolder(req) {
+  const f = folder_(req.folder || "TITUS Modeller"); const out = []; const it = f.getFiles();
+  while (it.hasNext() && out.length < 200) { const x = it.next(); out.push({ id: x.getId(), name: x.getName(), size: x.getSize(), updated: fmt_(x.getLastUpdated()) }); }
+  return out;
+}
+function getFileB64(req) {
+  const x = DriveApp.getFileById(req.id);
+  if (x.getSize() > 25 * 1024 * 1024) throw new Error("Dosya çok büyük");
+  return { name: x.getName(), mime: x.getMimeType(), data: Utilities.base64Encode(x.getBlob().getBytes()) };
 }

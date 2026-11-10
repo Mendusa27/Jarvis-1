@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
-VERSION = "2.6"
+VERSION = "2.7"
 CFG = Path.home() / ".jarvis_desktop.json"
 DATA = Path.home() / ".titus"
 DATA.mkdir(exist_ok=True)
@@ -713,21 +713,54 @@ def clean_hist(hist, keep=18):
     return out
 
 
-def think(text):
+CTX_FILES = {"parts": [], "left": 0, "names": []}
+
+
+def _file_parts(files):
+    """Eklenen dosyaları Gemini parçalarına çevirir; sonraki 4 soruda da bağlamda tutar."""
+    if files:
+        parts, names = [], []
+        for f in files[:8]:
+            try:
+                parts += MEDIA.file_to_parts(f) if MEDIA else []
+                names.append(f.get("name", "dosya"))
+            except Exception as e:
+                emit("hata", str(e))
+        CTX_FILES.update(parts=parts, left=4, names=names)
+        return parts
+    if CTX_FILES["left"] > 0 and CTX_FILES["parts"]:
+        CTX_FILES["left"] -= 1
+        return CTX_FILES["parts"]
+    return []
+
+
+def clear_files():
+    CTX_FILES.update(parts=[], left=0, names=[])
+    if MEDIA:
+        MEDIA.CUR["imgs"] = []
+
+
+MEDIA = None
+
+
+def think(text, files=None):
+    fparts = _file_parts(files)
+    if fparts:
+        text = (text or "Bu dosyayı incele.") + f"\n[Ekli: {', '.join(CTX_FILES['names'])}]"
     if PENDING.get("power") and agent.norm(text).strip(" .!") in ("evet", "onayliyorum", "evet yap", "tamam"):
         r = t_power({"islem": PENDING.pop("power"), "onay": True})
         return "Tamam, şimdi yapıyorum." if r.get("ok") else r.get("hata", "Yapamadım.")
     base = clean_hist(HIST)
     try:
         try:
-            return _think(base, text)
+            return _think(base, text, fparts)
         except ApiError as e:
             if e.status != 400 or "api key" in e.msg.lower():
                 raise
             log("uyarı", "Sohbet geçmişi Gemini'ye uymadı, temiz geçmişle yeniden deniyorum: " + e.msg[:200])
-            return _think([], text)
+            return _think([], text, fparts)
     except ApiError as e:
-        if C.get("groq_key") and e.status in (0, 429, 500, 502, 503, 504, 200, 400):
+        if C.get("groq_key") and not fparts and e.status in (0, 429, 500, 502, 503, 504, 200, 400):
             log("uyarı", f"Gemini olmadı ({e.status}), Groq yedek beyinle devam")
             try:
                 return groq_think(base, text)
@@ -784,8 +817,19 @@ def save_hist():
         pass
 
 
-def _think(base, text):
-    conv = base + [{"role": "user", "parts": [{"text": text}]}]
+def _strip(conv):
+    """Geçmişe dosya verisini (base64) yazma; yerine kısa not koy."""
+    out = []
+    for h in conv:
+        parts = [p for p in h.get("parts", []) if "inlineData" not in p and not (p.get("text", "").startswith("[") and len(p.get("text", "")) > 4000)]
+        if len(parts) != len(h.get("parts", [])) and not any(p.get("text") for p in parts):
+            parts = [{"text": "(dosya eklendi)"}] + parts
+        out.append({**h, "parts": parts})
+    return out
+
+
+def _think(base, text, fparts=None):
+    conv = base + [{"role": "user", "parts": list(fparts or []) + [{"text": text}]}]
     for _ in range(7):
         c = gemini(conv, DECL, system_prompt())
         parts = [p for p in c.get("parts", []) if p]
@@ -793,7 +837,7 @@ def _think(base, text):
         if not calls:
             reply = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip() or "Tamam."
             conv.append({"role": "model", "parts": [{"text": reply}]})
-            HIST[:] = clean_hist(conv, 30)  # sadece başarılı turlar geçmişe yazılır
+            HIST[:] = clean_hist(_strip(conv), 30)  # sadece başarılı turlar geçmişe yazılır (dosyalar hariç)
             save_hist()
             return reply
         conv.append({"role": "model", "parts": parts})
@@ -813,7 +857,7 @@ def _think(base, text):
                 fr["id"] = fc["id"]
             resp.append({"functionResponse": fr})
         conv.append({"role": "user", "parts": resp})
-    HIST[:] = clean_hist(conv, 30)
+    HIST[:] = clean_hist(_strip(conv), 30)
     save_hist()
     return "İşlemleri yaptım."
 

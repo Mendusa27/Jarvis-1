@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.6 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v2.7 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -3575,6 +3575,309 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) setT
     const c = h.parentElement; c.classList.toggle("open");
     META.setOpen = [...document.querySelectorAll("#b-set > .card.fold.open")].map(c => c.dataset.key); saveMeta();
   });
+}
+
+/* =====================================================================
+   v2.7 — DOSYA/GÖRSEL ANALİZİ, KİMLİĞİ KORUYAN MONTAJ, MODEL KÜTÜPHANESİ,
+          İSTEĞE SADIK GÖRSEL ÜRETİMİ (yaz → üret → kontrol et → düzelt), KONUŞAN VİDEO (bilgisayarda)
+   ===================================================================== */
+
+/* ---------- 1) her tür dosya ekleme ---------- */
+const MAX_INLINE = 15 * 1024 * 1024;
+let CTX_ATT = null; // son eklenen dosyalar: sonraki sorularda da bağlamda kalsın
+let CUR_IMGS = []; // son eklenen fotoğraflar (base64 jpeg) — montaj/model için
+const b64utf8 = s => btoa(unescape(encodeURIComponent(s)));
+const extOf = n => (String(n).match(/\.(\w+)$/) || [, ""])[1].toLowerCase();
+async function loadScript(src, glob) { if (glob && window[glob]) return window[glob]; await new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Kütüphane yüklenemedi (internet?)")); document.head.appendChild(s); }); return glob ? window[glob] : null; }
+async function docxText(f) {
+  const JSZip = await loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js", "JSZip");
+  const z = await JSZip.loadAsync(await f.arrayBuffer()); const x = await z.file("word/document.xml").async("string");
+  return x.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/>/g, "\t").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+}
+async function sheetText(f) {
+  const X = await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js", "XLSX");
+  const wb = X.read(new Uint8Array(await f.arrayBuffer()), { type: "array" });
+  return wb.SheetNames.slice(0, 6).map(n => "## " + n + "\n" + X.utils.sheet_to_csv(wb.Sheets[n]).split("\n").slice(0, 500).join("\n")).join("\n\n");
+}
+async function fileToAttach(f) {
+  const ext = extOf(f.name), type = f.type || "";
+  if (type.startsWith("image/") || /^(jpe?g|png|webp|heic|gif|bmp)$/.test(ext)) { const data = await shrinkImage(f, 1600); return { mime: "image/jpeg", data, name: f.name, kind: "image" }; }
+  if (type === "application/pdf" || ext === "pdf") { if (f.size > MAX_INLINE) throw new Error(`${f.name} çok büyük (en fazla 15 MB)`); return { mime: "application/pdf", data: await blobToB64(f), name: f.name, kind: "pdf" }; }
+  if (/^(docx)$/.test(ext)) return { mime: "text/plain", data: b64utf8(`[${f.name}]\n` + (await docxText(f)).slice(0, 200000)), name: f.name, kind: "doc" };
+  if (/^(xlsx|xls|ods)$/.test(ext)) return { mime: "text/plain", data: b64utf8(`[${f.name}]\n` + (await sheetText(f)).slice(0, 200000)), name: f.name, kind: "doc" };
+  if (type.startsWith("audio/") || /^(mp3|m4a|wav|ogg|aac|opus)$/.test(ext)) { if (f.size > MAX_INLINE) throw new Error(`${f.name} çok büyük (en fazla 15 MB)`); return { mime: type || "audio/mpeg", data: await blobToB64(f), name: f.name, kind: "audio" }; }
+  if (type.startsWith("video/") || /^(mp4|mov|webm|3gp)$/.test(ext)) { if (f.size > MAX_INLINE) throw new Error(`${f.name} çok büyük; 15 MB altı bir video seç (ya da bilgisayardaki Titus'a ver)`); return { mime: type || "video/mp4", data: await blobToB64(f), name: f.name, kind: "video" }; }
+  if (type.startsWith("text/") || /^(txt|md|csv|json|srt|html|xml|log|js|py|ini)$/.test(ext)) return { mime: "text/plain", data: b64utf8(`[${f.name}]\n` + (await f.text()).slice(0, 300000)), name: f.name, kind: "doc" };
+  if (/^(doc|ppt|pptx)$/.test(ext)) throw new Error(`${f.name}: bu biçimi okuyamıyorum; PDF olarak kaydedip gönder.`);
+  throw new Error(`${f.name}: bu dosya türünü tanımıyorum.`);
+}
+function attachInfo() {
+  const el = $("#attachInfo"); if (!el) return;
+  const items = pendingAttach.length ? pendingAttach : (CTX_ATT ? CTX_ATT.items : []);
+  if (!items.length) { el.innerHTML = ""; return; }
+  const icon = a => ({ image: "🖼", pdf: "📄", doc: "📝", audio: "🎵", video: "🎬" }[a.kind] || "📎");
+  el.innerHTML = (pendingAttach.length ? "Eklendi: " : "Bağlamda: ") + items.map(a => a.kind === "image" ? `<img src="data:image/jpeg;base64,${a.data}" style="height:34px;border-radius:6px;vertical-align:middle;margin-right:4px">` : `${icon(a)} ${esc(a.name || "")} `).join("") + ` <a href="#" id="attClear" style="color:var(--dim)">✕</a>` + (pendingAttach.length ? `<br><small>Ne yapayım? (ör. "bunu incele", "bu fotoğrafımı Paris'te yap", "bunu model olarak kaydet")</small>` : "");
+}
+async function pickAny(accept) {
+  const inp = document.createElement("input"); inp.type = "file"; inp.multiple = true; inp.accept = accept || "image/*,application/pdf,.pdf,.doc,.docx,.xlsx,.xls,.csv,.txt,.md,.json,audio/*,video/*";
+  inp.style.display = "none"; document.body.appendChild(inp);
+  inp.onchange = async () => {
+    const fs = [...(inp.files || [])].slice(0, 6); inp.remove(); if (!fs.length) return;
+    let total = 0;
+    for (const f of fs) {
+      try { const a = await fileToAttach(f); total += a.data.length * 0.75; if (total > 18 * 1024 * 1024) { toast("Toplam boyut çok büyük; bazı dosyalar eklenmedi"); break; } pendingAttach.push(a); if (a.kind === "image") CUR_IMGS = [...CUR_IMGS.slice(-5), a.data]; }
+      catch (e) { toast("✗ " + e.message, 5000); }
+    }
+    if (pendingAttach.some(a => a.kind === "image")) CUR_IMGS = pendingAttach.filter(a => a.kind === "image").map(a => a.data);
+    attachInfo(); $("#q").focus();
+  };
+  inp.click();
+}
+pickPhoto = () => pickAny();
+document.addEventListener("click", e => { if (e.target.closest("#attClear")) { e.preventDefault(); pendingAttach = []; CTX_ATT = null; CUR_IMGS = []; attachInfo(); } });
+{
+  const baseSend = send;
+  send = async function (text, byVoice = false, attach = null, label = null) {
+    const t = String(text || "").trim();
+    if (!attach && pendingAttach.length) { attach = pendingAttach; pendingAttach = []; CTX_ATT = { items: attach, left: 4 }; }
+    else if (!attach && CTX_ATT && CTX_ATT.left > 0 && t && !t.startsWith("__") && !/^(yeni konu|başka bir şey|tamam|teşekkür)/i.test(t)) { attach = CTX_ATT.items; CTX_ATT.left--; }
+    else if (CTX_ATT && CTX_ATT.left <= 0) CTX_ATT = null;
+    if (attach && attach.length) { const imgs = attach.filter(a => a.kind === "image" || (a.mime || "").startsWith("image/")); if (imgs.length) CUR_IMGS = imgs.map(a => a.data); }
+    attachInfo();
+    if (attach && attach.length && t && !label) { // kullanıcının mesajını eklerle birlikte göster
+      const r = await baseSend(t, byVoice, attach, "📎 " + t); return r;
+    }
+    return baseSend(text, byVoice, attach, label);
+  };
+}
+
+/* ---------- 2) görsel motorları ---------- */
+const IMG_OFF = {}; // motor → kapalı olduğu zamana kadar
+const offFor = (k, ms) => { IMG_OFF[k] = Date.now() + ms; try { META.imgOff = IMG_OFF; saveMeta(); } catch {} };
+const isOff = k => (IMG_OFF[k] || (META.imgOff || {})[k] || 0) > Date.now();
+const GEM_IMG_MODELS = ["gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gemini-2.0-flash-preview-image-generation"];
+async function geminiImage(prompt, refs = []) {
+  if (!SET.geminiKey || isOff("gemini")) throw new Error("kapalı");
+  for (const m of GEM_IMG_MODELS) {
+    if (isOff("g:" + m)) continue;
+    try {
+      const j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, {
+        contents: [{ role: "user", parts: [...refs.map(d => ({ inlineData: { mimeType: "image/jpeg", data: d } })), { text: prompt }] }],
+        generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+      });
+      const p = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).find(p => p.inlineData && /^image\//.test(p.inlineData.mimeType || ""));
+      if (p) return `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
+    } catch (e) { offFor("g:" + m, e.status === 429 ? 12 * 36e5 : e.status === 404 ? 7 * 864e5 : 30 * 6e4); }
+  }
+  offFor("gemini", 6 * 36e5); throw new Error("Gemini görsel kotası yok");
+}
+// Hugging Face (FLUX.1 Kontext) — ücretsiz hesapla günlük birkaç düzenleme; yüzü/kimliği korur
+const KONTEXT_SPACES = ["black-forest-labs-flux-1-kontext-dev", "zerogpu-aoti-flux-1-kontext-dev"];
+async function gradioCall(host, api, data, token) {
+  const H = token ? { Authorization: "Bearer " + token } : {};
+  const r1 = await rawFetch(`https://${host}.hf.space/gradio_api/call/${api}`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ data }) });
+  if (!r1.ok) { const e = new Error(`HF ${r1.status}`); e.status = r1.status; throw e; }
+  const { event_id } = await r1.json();
+  const r2 = await rawFetch(`https://${host}.hf.space/gradio_api/call/${api}/${event_id}`, { headers: H });
+  const txt = await r2.text();
+  const blocks = txt.split(/\n\n/); let ev = "", out = null, err = "";
+  for (const b of blocks) { const e = (b.match(/^event:\s*(\w+)/m) || [])[1]; const d = (b.match(/^data:\s*(.*)$/m) || [])[1]; if (e) ev = e; if (e === "complete" && d) out = JSON.parse(d); if (e === "error") err = d || "hata"; }
+  if (!out) { const e = new Error(/quota|GPU/i.test(err) ? "Hugging Face ücretsiz günlük GPU kotası doldu" : "Hugging Face: " + (err || ev || "cevap yok")); e.quota = /quota|GPU/i.test(err); throw e; }
+  return out;
+}
+async function gradioUpload(host, blob, token) {
+  const fd = new FormData(); fd.append("files", blob, "girdi.jpg");
+  const r = await rawFetch(`https://${host}.hf.space/gradio_api/upload`, { method: "POST", headers: token ? { Authorization: "Bearer " + token } : {}, body: fd });
+  if (!r.ok) throw new Error("HF yükleme " + r.status);
+  const [path] = await r.json(); return path;
+}
+async function kontextEdit(refB64, prompt) {
+  if (isOff("hf")) throw new Error("Hugging Face kotası dolu");
+  const blob = await (await fetch("data:image/jpeg;base64," + refB64)).blob(); let last;
+  for (const host of [SET.hfSpace, ...KONTEXT_SPACES].filter(Boolean)) {
+    try {
+      const path = await gradioUpload(host, blob, SET.hfToken);
+      const out = await gradioCall(host, "infer", [{ path, meta: { _type: "gradio.FileData" } }, prompt, Math.floor(Math.random() * 1e6), false, 2.5, 28], SET.hfToken);
+      const f = out[0]; const url = f && (f.url || (f.path && `https://${host}.hf.space/gradio_api/file=${f.path}`));
+      if (!url) throw new Error("boş sonuç");
+      const b = await (await rawFetch(url, { headers: SET.hfToken ? { Authorization: "Bearer " + SET.hfToken } : {} })).blob();
+      return await blobToDataUrl(b);
+    } catch (e) { last = e; if (e.quota) { offFor("hf", 3 * 36e5); break; } }
+  }
+  throw last || new Error("Hugging Face yanıt vermedi");
+}
+// kimliği koruyarak düzenleme: Gemini görsel → HF Kontext
+async function editKeepIdentity(refs, prompt) {
+  const keep = "Keep the person's identity EXACTLY the same: same face, facial features, skin tone, hair, body shape, hands and arms. Do not beautify or change the person. Photorealistic, natural lighting matching the new scene, realistic shadows. ";
+  const errs = [];
+  try { return { img: await geminiImage(keep + prompt, refs.slice(0, 3)), motor: "Gemini" }; } catch (e) { errs.push("Gemini: " + e.message); }
+  try { return { img: await kontextEdit(refs[0], keep + prompt), motor: "FLUX Kontext" }; } catch (e) { errs.push("HF: " + e.message); }
+  const err = new Error("KIMLIK_YOK"); err.detail = errs; throw err;
+}
+
+/* ---------- 3) isteğe sadık üretim: yaz → üret → kontrol et → düzelt ---------- */
+async function planImage(istek, { ref = false, model = null } = {}) {
+  return geminiJSON(`Kullanıcı Türkçe bir görsel istiyor. İsteği, görsel yapay zekâsının TAM uygulayacağı ayrıntılı İngilizce bir prompt'a çevir.
+Kurallar: kullanıcının söylediği HER ayrıntıyı (kişi sayısı, kıyafet, renk, mekân, saat, ışık, kamera açısı, poz, ifade, nesneler, yazı) koru ve açıkça yaz; kendinden yeni ana unsur ekleme; belirsiz kalanları gerçekçi ve sade doldur. Yazı istenmişse tırnak içinde aynen yaz.
+${ref ? "Bir referans fotoğraf var: prompt DÜZENLEME talimatı olsun (ör. 'Place this person in ... , keep the face identical').\n" : ""}${model ? "Kullanılacak kişi/model tarifi (birebir koru): " + model + "\n" : ""}Gerçekçi istenmişse: "photorealistic, 35mm photo, natural skin texture" ekle.
+JSON: {"prompt":"", "oran":"1:1|9:16|16:9 (istekte belli değilse uygun olanı seç)", "kontrol":["görselde mutlaka olması gereken 3-8 madde, Türkçe"]}
+İSTEK: ${istek}`);
+}
+async function checkImage(dataUrl, istek, kontrol) {
+  try {
+    const r = await geminiJSON(`Bu görsel şu isteğe ne kadar uyuyor? İSTEK: "${istek}". KONTROL LİSTESİ: ${JSON.stringify(kontrol || [])}.
+Her maddeye bak. JSON: {"puan":0-100,"eksikler":["Türkçe kısa"],"duzeltme":"eksikleri gideren İngilizce ek prompt cümlesi"}`, [{ inlineData: { mimeType: "image/jpeg", data: await toJpegB64(dataUrl, 1024) } }]);
+    return r;
+  } catch { return { puan: 70, eksikler: [] }; }
+}
+async function toJpegB64(src, max = 1280) {
+  const im = await loadImg(src); const k = Math.min(1, max / Math.max(im.width, im.height)); const c = document.createElement("canvas");
+  c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+}
+const SIZE = { "1:1": [1024, 1024], "9:16": [768, 1344], "16:9": [1344, 768], "4:5": [896, 1120] };
+async function smartImage({ istek, oran, refs = [], modelId = null, onStep = () => {} }) {
+  let mdl = null; if (modelId) { mdl = await modelGet(modelId); if (!mdl) throw new Error("Böyle bir model kayıtlı değil"); refs = [...(mdl.imgs || []), ...refs].slice(0, 3); }
+  onStep("İstek ayrıntılandırılıyor…");
+  const plan = await planImage(istek, { ref: refs.length > 0, model: mdl && mdl.desc });
+  const [w, h] = SIZE[oran || plan.oran] || SIZE["1:1"];
+  let best = null, prompt = plan.prompt || istek, notes = [];
+  for (let attempt = 0; attempt < 3; attempt++) {
+    onStep(attempt ? `Düzeltiliyor (${attempt + 1}. deneme)…` : "Görsel üretiliyor…");
+    let img, motor;
+    if (refs.length) {
+      try { ({ img, motor } = await editKeepIdentity(refs, prompt)); }
+      catch (e) {
+        if (e.message !== "KIMLIK_YOK") throw e;
+        notes.push("Yüzü birebir koruyan ücretsiz motorlara şu an ulaşılamadı; tarife göre çizildi (yüz farklı olabilir).");
+        img = await anyImage((mdl ? mdl.desc + ". " : "") + prompt, w, h); motor = "metinden";
+        refs = [];
+      }
+    } else { img = await anyImage(prompt, w, h); motor = SET.cfAccount && SET.cfToken ? "Cloudflare FLUX" : "FLUX (ücretsiz)"; }
+    onStep("İsteğe uygunluğu kontrol ediliyor…");
+    const c = await checkImage(img, istek, plan.kontrol);
+    if (!best || (c.puan || 0) > best.puan) best = { img, puan: c.puan || 0, eksik: c.eksikler || [], motor };
+    if ((c.puan || 0) >= 80 || !c.duzeltme) break;
+    prompt = prompt + " " + c.duzeltme;
+  }
+  return { ...best, notlar: notes };
+}
+
+/* ---------- 4) model kütüphanesi (yüz/kişi/karakter) ---------- */
+const MDB = { db: null };
+const mdb = () => MDB.db ? Promise.resolve(MDB.db) : new Promise((res, rej) => { const r = indexedDB.open("titus_models", 1); r.onupgradeneeded = () => r.result.createObjectStore("m", { keyPath: "id" }); r.onsuccess = () => { MDB.db = r.result; res(MDB.db); }; r.onerror = () => rej(r.error); });
+const mtx = (mode, fn) => mdb().then(d => new Promise((res, rej) => { const t = d.transaction("m", mode); const q = fn(t.objectStore("m")); t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }));
+const modelList = () => mtx("readonly", s => s.getAll()).then(a => a || []);
+async function modelGet(q) { const all = await modelList(); const n = normTxt(String(q || "")); return all.find(m => m.id === q) || all.find(m => normTxt(m.name) === n) || all.find(m => n && (normTxt(m.name).includes(n) || n.includes(normTxt(m.name)))) || null; }
+async function modelSave({ ad, imgs, not = "" }) {
+  if (!imgs || !imgs.length) throw new Error("Önce modelin fotoğraflarını ekle (📎) — farklı açılardan 1-3 net fotoğraf en iyisi.");
+  const small = await Promise.all(imgs.slice(0, 3).map(d => toJpegB64("data:image/jpeg;base64," + d, 1024)));
+  const desc = await plainGemini(`Bu fotoğraflardaki kişiyi bir görsel yapay zekâsının birebir yeniden çizebileceği şekilde İngilizce tarif et: yaş aralığı, cinsiyet, ten rengi, yüz şekli, gözler, kaşlar, burun, dudaklar, çene, saç (renk, uzunluk, stil), sakal/bıyık, belirgin işaretler (ben, iz, dövme), boy-yapı, tipik kıyafet. Tek paragraf, sadece fiziksel özellikler, isim yok.${not ? " Ek not: " + not : ""}`, small.map(d => ({ inlineData: { mimeType: "image/jpeg", data: d } })), null, { max: 600, temperature: 0.2 });
+  const old = await modelGet(ad); const m = { id: old ? old.id : uid(), name: ad, desc: String(desc).trim(), imgs: small, at: localISO(new Date()) };
+  await mtx("readwrite", s => s.put(m));
+  if (SET.scriptUrl) script("saveFile", { name: `model-${m.id}.json`, mime: "application/json", data: b64utf8(JSON.stringify(m)), folder: "TITUS Modeller", replace: true }).catch(() => {});
+  return m;
+}
+const modelDel = id => mtx("readwrite", s => s.delete(id));
+async function modelsFromDrive() {
+  if (!SET.scriptUrl) return 0;
+  const r = await script("listFolder", { folder: "TITUS Modeller" }); let n = 0; const have = new Set((await modelList()).map(m => m.id));
+  for (const f of r.files || []) { const id = (f.name.match(/^model-(.+)\.json$/) || [])[1]; if (!id || have.has(id)) continue; try { const g = await script("getFileB64", { id: f.id }); const m = JSON.parse(decodeURIComponent(escape(atob(g.data)))); await mtx("readwrite", s => s.put(m)); n++; } catch {} }
+  return n;
+}
+
+/* ---------- 5) Stüdyo ekranı: Görsel / Montaj / Modeller ---------- */
+let STUDIO_RES = null;
+async function showResult(r, title) {
+  STUDIO_RES = r;
+  const s = await saveFile(await (await fetch(r.img)).blob(), fname(title || "gorsel", "jpg"), "pictures");
+  const el = $("#smOut");
+  if (el) el.innerHTML = `<img src="${r.img}" style="width:100%;border-radius:12px;margin-top:8px"><div class="hint">✓ ${esc(s.yer)} · motor: ${esc(r.motor)} · uyum: %${r.puan}${r.eksik && r.eksik.length ? " · eksik: " + esc(r.eksik.join(", ")) : ""}${r.notlar && r.notlar.length ? "<br>⚠️ " + esc(r.notlar.join(" ")) : ""}</div>`;
+  return s;
+}
+{
+  const base = listHTML;
+  listHTML = function (sec) {
+    if (sec === "image") return `<div class="card"><h3>GÖRSEL ÜRET</h3><div class="form"><textarea id="smTxt" placeholder="Ne istiyorsan ayrıntılı yaz: kim, nerede, ne giyiyor, ışık, açı… (ör. 'gece yağmurlu Kadıköy iskelesinde siyah paltolu bir adam, arkadan sokak lambası, sinematik')"></textarea>
+      <div class="row"><select id="smRatio"><option value="">Oran: otomatik</option><option value="1:1">Kare</option><option value="9:16">Dikey 9:16</option><option value="4:5">Instagram 4:5</option><option value="16:9">Yatay 16:9</option></select><select id="smModel"><option value="">Model yok</option></select></div>
+      <button class="btn" id="smGo">✨ Üret</button><div class="hint" id="smStat">Titus isteğini ayrıntılandırır, üretir, sonra görsele bakıp isteğinle karşılaştırır; eksik varsa düzeltip yeniden üretir.</div><div id="smOut"></div></div></div>`;
+    if (sec === "photo") return `<div class="card"><h3>FOTOĞRAFIMI MONTAJLA</h3><div class="form"><button class="btn ghost" id="mjPick">📷 Fotoğraf seç (1-3)</button><div id="mjPrev" class="hint"></div><select id="mjModel"><option value="">…ya da kayıtlı model kullan</option></select>
+      <textarea id="mjTxt" placeholder="Nerede, nasıl olsun? (ör. 'Paris'te Eyfel önünde, akşamüstü, bej trençkot giymiş, kameraya gülümsüyor')"></textarea><div class="row"><select id="mjRatio"><option value="">Oran: fotoğraf gibi</option><option value="4:5">4:5</option><option value="9:16">9:16</option><option value="1:1">Kare</option><option value="16:9">16:9</option></select></div>
+      <button class="btn" id="mjGo">🪄 Montajla (yüz aynı kalsın)</button><div class="hint" id="smStat">Yüzün, elin, kolun değişmeden başka ortama yerleştirilir. Ücretsiz kimlik koruyan motor: Hugging Face (Ayarlar → Stüdyo'ya ücretsiz HF token ekle; günde birkaç montaj).</div><div id="smOut"></div></div></div>` + base(sec);
+    if (sec === "models") return `<div class="card"><h3>MODELLERİM</h3><div class="hint" style="margin-top:0">Bir kişiyi (kendin, bir oyuncu, bir karakter) 1-3 net fotoğrafla kaydet; Titus sonra onu farklı ortamlarda, kıyafetlerde ve videolarda kullanır. Sohbette: fotoğrafları ekle → “bunu Burak adıyla model olarak kaydet”.</div>
+      <div class="form" style="margin-top:8px"><input id="mdName" placeholder="Model adı (ör. Burak)"><input id="mdNote" placeholder="Not (isteğe bağlı: boy, sakal yok vb.)"><button class="btn" id="mdAdd">📷 Fotoğraf seç ve kaydet</button><button class="btn ghost sm" id="mdSync">☁️ Drive'dan modelleri getir</button></div><div id="mdList" style="margin-top:8px"><div class="empty">Yükleniyor…</div></div></div>`;
+    return base(sec);
+  };
+}
+async function fillModelSelects() {
+  const ms = await modelList();
+  for (const id of ["#smModel", "#mjModel"]) { const el = $(id); if (el) el.insertAdjacentHTML("beforeend", ms.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join("")); }
+  const L = $("#mdList"); if (L) L.innerHTML = ms.map(m => `<div class="item"><img src="data:image/jpeg;base64,${m.imgs[0]}" style="width:54px;height:54px;object-fit:cover;border-radius:10px"><div class="t"><div class="h">${esc(m.name)}</div><div class="meta">${m.imgs.length} fotoğraf · ${esc(m.desc.slice(0, 90))}…</div></div><button class="x" data-mddel="${m.id}">✕</button></div>`).join("") || `<div class="empty">Kayıtlı model yok.</div>`;
+}
+{
+  const baseR = renderSec;
+  renderSec = function (g) { const r = baseR(g); if (g === "studio") setTimeout(fillModelSelects, 0); return r; };
+}
+let MJ_IMGS = [];
+async function pickImgs(n = 3) {
+  return new Promise(res => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true; inp.style.display = "none"; document.body.appendChild(inp);
+    inp.onchange = async () => { const fs = [...(inp.files || [])].slice(0, n); inp.remove(); const out = []; for (const f of fs) { try { out.push(await shrinkImage(f, 1600)); } catch {} } res(out); }; inp.click(); });
+}
+const stat = s => { const e = $("#smStat"); if (e) e.textContent = "⏳ " + s; };
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#smGo,#mjPick,#mjGo,#mdAdd,#mdSync,[data-mddel]"); if (!t) return;
+  try {
+    if (t.id === "smGo") { const istek = $("#smTxt").value.trim(); if (!istek) return toast("Ne istediğini yaz"); t.disabled = true; try { const r = await smartImage({ istek, oran: $("#smRatio").value, modelId: $("#smModel").value || null, onStep: stat }); stat("Bitti"); await showResult(r, istek); } finally { t.disabled = false; } }
+    else if (t.id === "mjPick") { MJ_IMGS = await pickImgs(3); $("#mjPrev").innerHTML = MJ_IMGS.map(d => `<img src="data:image/jpeg;base64,${d}" style="height:60px;border-radius:8px;margin-right:4px">`).join(""); }
+    else if (t.id === "mjGo") { const istek = $("#mjTxt").value.trim(); const mid = $("#mjModel").value; if (!istek) return toast("Nasıl bir ortam istediğini yaz"); if (!MJ_IMGS.length && !mid) return toast("Fotoğraf seç ya da model seç"); t.disabled = true; try { const r = await smartImage({ istek, oran: $("#mjRatio").value, refs: MJ_IMGS, modelId: mid || null, onStep: stat }); stat("Bitti"); await showResult(r, "montaj"); } finally { t.disabled = false; } }
+    else if (t.id === "mdAdd") { const ad = $("#mdName").value.trim(); if (!ad) return toast("Model adı yaz"); const imgs = await pickImgs(3); if (!imgs.length) return; toast("Model inceleniyor…"); const m = await modelSave({ ad, imgs, not: $("#mdNote").value.trim() }); toast(`✓ ${m.name} kaydedildi`); renderSec("studio"); }
+    else if (t.id === "mdSync") { const n = await modelsFromDrive(); toast(n ? `✓ ${n} model geldi` : "Yeni model yok"); renderSec("studio"); }
+    else if (t.dataset.mddel) { await modelDel(t.dataset.mddel); renderSec("studio"); }
+  } catch (er) { const m = er.message === "KIMLIK_YOK" ? "Yüzü koruyan ücretsiz motorlara şu an ulaşılamadı. Ayarlar → Stüdyo'ya ücretsiz Hugging Face token ekle ya da biraz sonra dene." : friendlyErr(er); const s = $("#smStat"); if (s) s.textContent = "✗ " + m; toast("✗ " + m, 6000); }
+});
+
+/* ---------- 6) araçlar ---------- */
+const TOOL_IDX = n => TOOLS.findIndex(t => t.name === n);
+{ const i = TOOL_IDX("gorsel_uret"); if (i >= 0) TOOLS.splice(i, 1); }
+TOOLS.push(
+  T("gorsel_uret", "İsteğe birebir uyan görsel üretir: isteği ayrıntılandırır, üretir, sonucu kontrol edip eksikse düzeltir; galeriye kaydeder. Kayıtlı bir model (kişi) kullanılabilir.", { istek: str("Kullanıcının isteği, TÜM ayrıntılarıyla ve kendi sözleriyle"), oran: str("Oran", ["1:1", "9:16", "4:5", "16:9"]), model: str("Kayıtlı model adı (varsa)") }, ["istek"],
+    async a => { go("studio"); openSec("studio", "image"); const r = await smartImage({ istek: a.istek, oran: a.oran, modelId: a.model ? ((await modelGet(a.model)) || {}).id || a.model : null, onStep: stat }); const s = await showResult(r, a.istek); return { ok: true, yer: s.yer, uyum: r.puan, eksikler: r.eksik, motor: r.motor, not: r.notlar.join(" ") }; }),
+  T("fotograf_montaj", "Burak'ın eklediği fotoğraftaki kişiyi (ya da kayıtlı modeli) yüzü, eli, kolu DEĞİŞMEDEN başka bir ortama/kıyafete/pozla yerleştirir, gerçekçi montaj yapar.", { istek: str("Yeni ortam/kıyafet/poz, kullanıcının sözleriyle"), model: str("Kayıtlı model adı (fotoğraf eklenmediyse)"), oran: str("Oran", ["4:5", "9:16", "1:1", "16:9"]) }, ["istek"],
+    async a => { const m = a.model ? await modelGet(a.model) : null; if (!CUR_IMGS.length && !m) return { hata: "Önce 📎 ile fotoğrafını ekle ya da kayıtlı bir model adı söyle." }; go("studio"); openSec("studio", "photo"); const r = await smartImage({ istek: a.istek, oran: a.oran, refs: m ? [] : CUR_IMGS, modelId: m ? m.id : null, onStep: stat }); const s = await showResult(r, "montaj"); return { ok: true, yer: s.yer, uyum: r.puan, motor: r.motor, not: r.notlar.join(" ") }; }),
+  T("model_kaydet", "Eklenen fotoğraflardaki kişiyi isimle model olarak hafızaya kaydeder (sonra görsel ve videolarda kullanılır).", { ad: str("Model adı"), not: str("Ek not") }, ["ad"],
+    async a => { const m = await modelSave({ ad: a.ad, imgs: CUR_IMGS, not: a.not || "" }); return { ok: true, model: m.name, foto: m.imgs.length, tarif: m.desc.slice(0, 200) }; }),
+  T("modeller", "Kayıtlı modelleri listeler.", {}, [], async () => ({ modeller: (await modelList()).map(m => m.name) })),
+  T("konusan_video", "Gerçekçi konuşan karakter videosu üretir (dudak senkronlu). Kayıtlı model ya da eklenen fotoğraf kullanılır. Ağır iş olduğu için bilgisayardaki Titus yapar.", { metin: str("Karakterin söyleyeceği metin"), model: str("Kayıtlı model adı"), ortam: str("Ortam/kıyafet (isteğe bağlı)") }, ["metin"],
+    async a => {
+      if (!SET.scriptUrl) return { hata: "Bunun için bilgisayardaki Titus gerekli; önce Ayarlar → Bilgisayarı bağla." };
+      const m = a.model ? await modelGet(a.model) : null;
+      if (m) await script("saveFile", { name: `model-${m.id}.json`, mime: "application/json", data: b64utf8(JSON.stringify(m)), folder: "TITUS Modeller", replace: true });
+      const { id } = await script("pcPush", { cmd: { action: "ask", arg: `konusan_video aracını kullan: model="${m ? m.name : ""}", ortam="${a.ortam || ""}", metin="${a.metin}". Bitince sonucu telefona gönder.` } });
+      return { ok: true, not: "Bilgisayardaki Titus'a iletildi; video birkaç dakikada hazır olunca haber verecek (Videolar/Titus klasörü).", id };
+    })
+);
+Object.assign(ACT_TR, { gorsel_uret: "🎨 görsel", fotograf_montaj: "🪄 montaj", model_kaydet: "🧍 model", modeller: "🧍 modeller", konusan_video: "🗣 konuşan video" });
+TOOL_GROUPS.push(
+  [/görsel|resim|çiz|afiş|poster|kapak|logo|illüstrasyon|fotoğraf|foto|montaj|ortam|mekân|yerleştir|arka ?plan/, ["gorsel_uret", "fotograf_montaj"]],
+  [/model|kendim|yüz|kaydet|hafızana al|hatırla bu kişi/, ["model_kaydet", "modeller", "gorsel_uret", "fotograf_montaj"]],
+  [/konuşan|konuşsun|dudak|avatar|söylesin/, ["konusan_video"]]
+);
+{
+  const baseSys = systemPrompt;
+  systemPrompt = function () {
+    return baseSys() + `
+GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF varsa) önce onu dikkatle incele ve somut cevap ver; "göremiyorum" deme. Eklenen fotoğrafla "başka ortamda/kıyafetle yap" derse fotograf_montaj; "bunu model olarak kaydet/hafızana al" derse model_kaydet; "şunu çiz/üret" derse gorsel_uret kullan. İsteği araca KISALTMADAN, tüm ayrıntılarıyla ver. Konuşan karakter videosu istenirse konusan_video.` + (CUR_IMGS.length ? `\nŞU AN ${CUR_IMGS.length} fotoğraf ekli (montaj/model için hazır).` : "");
+  };
+}
+
+/* ---------- 7) ayarlar: Hugging Face ---------- */
+{
+  const base = renderSettings;
+  renderSettings = async function () {
+    await base();
+    const card = [...document.querySelectorAll("#b-set > .card")].find(c => /STÜDYO/.test((c.querySelector("h3") || {}).textContent || ""));
+    const html = `<div class="lbl">Hugging Face token (ücretsiz — yüzü koruyan montaj için)</div><input data-set="hfToken" type="password" value="${esc(SET.hfToken || "")}" placeholder="hf_…"><div class="hint">huggingface.co → ücretsiz hesap → Settings → Access Tokens → New token (Read). Günde birkaç montaj/düzenleme hakkı verir.</div><div class="lbl">Özel HF düzenleme alanı (isteğe bağlı)</div><input data-set="hfSpace" value="${esc(SET.hfSpace || "")}" placeholder="ör. kullanici-flux-1-kontext-dev">`;
+    if (card) { const f = card.querySelector(".form") || card; f.insertAdjacentHTML("beforeend", html); }
+  };
 }
 
 /* ================= açılış ================= */

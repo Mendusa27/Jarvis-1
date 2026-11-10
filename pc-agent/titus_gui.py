@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "2.6"
+GUI_VERSION = "2.7"
 
 
 def open_window():
@@ -133,15 +133,15 @@ def _hook(kind, data):
 J.ON_EVENT = _hook
 
 
-def run_text(text):
-    if J.LIVE_CHAT and J.LIVE_CHAT.send_text(text):
+def run_text(text, files=None):
+    if not files and J.LIVE_CHAT and J.LIVE_CHAT.send_text(text):
         return
     def work():
         with J.BUSY:
-            on_event("sen", text)
+            on_event("sen", text + (f"  📎 {len(files)} dosya" if files else ""))
             on_event("durum", "düşünüyor")
             try:
-                reply = J.think(text)
+                reply = J.think(text, files)
             except Exception as e:
                 J.log("hata", f"cevap verilemedi: {getattr(e, 'status', '')} {getattr(e, 'msg', e)}\n{traceback.format_exc()[-1500:]}")
                 reply = J.friendly(e)
@@ -167,7 +167,7 @@ def masked(v):
 
 def public_cfg():
     c = dict(J.C)
-    for k in ("gemini_key", "groq_key", "token", "cf_token"):
+    for k in ("gemini_key", "groq_key", "token", "cf_token", "hf_token"):
         c[k] = masked(c.get(k, ""))
     c["autostart"] = startup_link().exists()
     c["version"] = J.VERSION
@@ -240,6 +240,10 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"log": [list(x) for x in J.LOG[-300:]]})
         if p.startswith("/api/apps"):
             return self.send(200, {"apps": TX.apps() if TX else []})
+        if p.startswith("/api/models"):
+            import base64 as _b
+            ms = J.MEDIA.models() if J.MEDIA else []
+            return self.send(200, {"modeller": [{"id": m["id"], "name": m["name"], "desc": m.get("desc", "")[:160], "n": len(m["imgs"]), "thumb": _b.b64encode(J.MEDIA.jpeg(m["imgs"][0], 160, 80)).decode() if m["imgs"] else ""} for m in ms]})
         if p.startswith("/api/memory"):
             return self.send(200, {"hafiza": TP.mem_list() if TP else []})
         if p.startswith("/api/tasks"):
@@ -260,12 +264,23 @@ class H(BaseHTTPRequestHandler):
             body = {}
         p = self.path
         if p == "/api/send":
-            t = str(body.get("text", "")).strip()
-            if t:
+            t = str(body.get("text", "")).strip(); files = body.get("files") or None
+            if t or files:
                 if not J.C.get("gemini_key"):
                     return self.send(200, {"hata": "Önce Ayarlar'dan Gemini anahtarını gir."})
-                run_text(t)
+                run_text(t or "Bu dosyayı incele ve ne olduğunu anlat.", files)
             return self.send(200, {"ok": True})
+        if p == "/api/files/clear":
+            J.clear_files(); return self.send(200, {"ok": True})
+        if p == "/api/model/add":
+            import base64 as _b
+            imgs = [_b.b64decode(f["data"]) for f in (body.get("files") or [])][:3]
+            m = J.MEDIA.model_save(str(body.get("name", "Model")).strip() or "Model", imgs, body.get("note", ""))
+            return self.send(200, {"ok": True, "name": m["name"]})
+        if p == "/api/model/del":
+            J.MEDIA.model_del(str(body.get("id", ""))); return self.send(200, {"ok": True})
+        if p == "/api/model/sync":
+            return self.send(200, {"ok": True, "yeni": J.MEDIA.models_sync()})
         if p == "/api/listen":
             if not J.C.get("gemini_key"):
                 return self.send(200, {"hata": "Önce Ayarlar'dan Gemini anahtarını gir."})
@@ -280,7 +295,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/config":
             new = {}
             for k, v in body.items():
-                if k in ("gemini_key", "groq_key", "token", "cf_token") and (not v or str(v).startswith("•")):
+                if k in ("gemini_key", "groq_key", "token", "cf_token", "hf_token") and (not v or str(v).startswith("•")):
                     continue  # değiştirilmemiş gizli alan
                 new[k] = v.strip() if isinstance(v, str) else v
             city = str(new.get("city", "")).strip().lower()
@@ -408,6 +423,11 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 .appgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .app{position:relative;background:rgba(255,59,59,.07);border:1px solid var(--line);border-radius:12px;padding:10px 4px 8px;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;font-family:inherit;cursor:pointer}
 .app:hover{border-color:var(--red)}.app i{font-style:normal;font-size:26px}.app b{font-size:12px;line-height:1.15}.app small{font-size:10px;color:var(--dim);line-height:1.15}.app.off{opacity:.55}.app .x{position:absolute;top:2px;right:6px}
+.att{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px}.att:empty{display:none}
+.att .f{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 8px;font-size:12px;display:flex;align-items:center;gap:6px}
+.att img{height:38px;border-radius:6px}.att .x{font-size:13px}
+#drop{display:none;position:fixed;inset:10px;border:3px dashed var(--red);border-radius:18px;background:rgba(10,2,3,.85);color:var(--txt);font-size:20px;align-items:center;justify-content:center;z-index:9}
+body.dragging #drop{display:flex}
 .welcome{margin:auto;text-align:center;color:var(--dim);padding:20px}.welcome b{color:var(--txt)}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(255,59,59,.25);border-radius:8px}
 </style></head><body class="hazır">
@@ -426,7 +446,10 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 <button class="chip" data-q="Ekranı kilitle.">🔒 Kilitle</button>
 </div>
 <div id="log"></div>
-<div class="bar"><input id="q" placeholder="Titus'a yaz… (Esc: sustur / durdur)" autocomplete="off"><button class="btn" id="send" title="Gönder">➤</button></div>
+<div id="att" class="att"></div>
+<div class="bar"><button class="btn ghost" id="attBtn" title="Dosya / fotoğraf ekle (sürükle-bırak ya da Ctrl+V da olur)" style="min-width:44px;padding:0">📎</button><input id="q" placeholder="Titus'a yaz… (Esc: sustur / durdur)" autocomplete="off"><button class="btn" id="send" title="Gönder">➤</button></div>
+<input type="file" id="attIn" multiple style="display:none">
+<div id="drop">Dosyayı bırak</div>
 </section>
 
 <section class="view" id="v-tasks"><div class="in">
@@ -439,7 +462,10 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 </div></section>
 
 <section class="view" id="v-mem"><div class="in">
-<h2>HAFIZA</h2>
+<h2>MODELLER VE HAFIZA</h2>
+<div class="card"><h3>MODELLERİM</h3><div class="note" style="margin-top:0">Bir kişiyi 1-3 net fotoğrafla kaydet; Titus onu farklı ortamlarda, kıyafetlerde ve konuşan videolarda yüzü aynı kalacak şekilde kullanır. Telefondaki modellerle ortaktır.</div>
+<div class="row" style="margin-top:8px"><input type="text" id="mdName" placeholder="Model adı (ör. Burak)"><button class="btn sm" id="mdAdd" style="flex:none">📷 Fotoğraf seç</button><button class="btn ghost sm" id="mdSync" style="flex:none" title="Telefondaki modelleri getir">☁️</button></div>
+<input type="file" id="mdIn" accept="image/*" multiple style="display:none"><div id="mdList" style="margin-top:6px"></div></div>
 <div class="card"><h3>TITUS SENİN HAKKINDA NE BİLİYOR</h3><div class="note" style="margin-top:0">Sohbette “bunu hatırla: …” dediğinde ya da kendinle ilgili kalıcı bir şey söylediğinde buraya eklenir. İstemediğini sil.</div>
 <div class="row" style="margin-top:8px"><input type="text" id="mText" placeholder="Elle ekle (ör. Kahveyi şekersiz içerim)"><button class="btn sm" id="mAdd">Ekle</button></div>
 <div id="mList" style="margin-top:6px"></div></div>
@@ -469,6 +495,11 @@ nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}na
 <label class="f">Gizli anahtar (TOKEN)</label><input type="password" id="token">
 <label class="f">ntfy konusu (telefona anlık bildirim için, isteğe bağlı)</label><input type="text" id="ntfy" placeholder="ör. titus-burak-4821">
 <div class="note">Telefondaki ntfy uygulamasında aynı konuya abone olursan “telefona gönder” anında bildirim olarak gelir.</div></div>
+<div class="card"><h3>FOTOĞRAF MONTAJI VE KONUŞAN VİDEO</h3>
+<label class="f">Hugging Face token (ücretsiz — yüzü koruyan montaj ve dudak senkronlu video için)</label><input type="password" id="hf_token" placeholder="hf_…">
+<div class="note">huggingface.co → ücretsiz hesap → Settings → Access Tokens → New token (Read). Ücretsiz hesap günde birkaç montaj ve kısa konuşan video hakkı verir.</div>
+<label class="f">Özel montaj alanı (isteğe bağlı)</label><input type="text" id="edit_space" placeholder="ör. black-forest-labs/FLUX.1-Kontext-Dev">
+<label class="f">Özel konuşan-yüz alanı (isteğe bağlı)</label><input type="text" id="talk_space" placeholder="ör. zarroug/MoDA-fast-talking-head"></div>
 <div class="card"><h3>GÖRSEL VE UYGULAMA ADRESLERİ (İSTEĞE BAĞLI)</h3>
 <label class="f">Cloudflare hesap kimliği (Account ID)</label><input type="text" id="cf_account">
 <label class="f">Cloudflare API token (Workers AI)</label><input type="password" id="cf_token">
@@ -506,8 +537,8 @@ const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
-const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet"];
-const TOOL={mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
+const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space"];
+const TOOL={fotograf_montaj:"montaj yapılıyor",model_kaydet:"model kaydediliyor",modeller:"modeller",konusan_video:"konuşan video hazırlanıyor",mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
 function show(v){view=v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
   if(v==="apps")loadApps(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
@@ -524,7 +555,20 @@ async function poll(){try{const r=await api("state?since="+since);
   $("#hk").textContent=busy?"Sohbet açık — konuşmaya devam et. Bitirmek için “görüşürüz” de, küreye tıkla ya da Esc.":"Tıkla"+(cfg.wake?(cfg.wake_strict?", “Hey Titus” de":", “Titus” de"):"")+" ya da "+(cfg.hotkey||"ctrl+alt+j").toUpperCase().replace(/\+/g," + ");
   if(first){first=false; if(!r.hazir){log.insertAdjacentHTML("beforeend",'<div class="welcome"><b>Hoş geldin!</b><br>Başlamak için ⚙ Ayarlar\'dan Gemini anahtarını gir.</div>'); show("set");} else if(!r.olaylar.length) add("t","Merhaba "+(cfg.name||"")+". Bilgisayarda hazırım. Ne yapalım?","TITUS");}
 }catch(e){$("#st").textContent="BAĞLANTI YOK";} setTimeout(poll,350);}
-function send(t){t=(t||$("#q").value).trim();if(!t)return;$("#q").value="";api("send",{text:t}).then(r=>{if(r.hata){add("e",r.hata);if(/anahtar/.test(r.hata))show("set");}});}
+let ATT=[];
+const MAXB=18*1024*1024;
+function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(f);});}
+async function shrink(f){const url=URL.createObjectURL(f);try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});const k=Math.min(1,1600/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext("2d").drawImage(im,0,0,c.width,c.height);return c.toDataURL("image/jpeg",0.9).split(",")[1];}finally{URL.revokeObjectURL(url);}}
+async function addFiles(list){for(const f of [...list].slice(0,8)){if(f.size>MAXB){add("e",f.name+" çok büyük (en fazla 18 MB)");continue;}
+  try{const img=(f.type||"").startsWith("image/");ATT.push({name:f.name||"pano.png",mime:img?"image/jpeg":(f.type||""),data:img?await shrink(f):await readFile(f),img});}catch(e){add("e",f.name+": okunamadı");}}drawAtt();$("#q").focus();}
+function drawAtt(){$("#att").innerHTML=ATT.map((a,i)=>`<span class="f">${a.img?`<img src="data:image/jpeg;base64,${a.data}">`:"📄"} ${esc(a.name.slice(0,26))}<span class="x" data-ai="${i}" title="Kaldır">✕</span></span>`).join("");
+  document.querySelectorAll("[data-ai]").forEach(x=>x.onclick=()=>{ATT.splice(+x.dataset.ai,1);drawAtt();});}
+$("#attBtn").onclick=()=>$("#attIn").click();$("#attIn").onchange=e=>{addFiles(e.target.files);e.target.value="";};
+let dc=0;document.addEventListener("dragenter",e=>{e.preventDefault();dc++;document.body.classList.add("dragging");});document.addEventListener("dragleave",e=>{dc--;if(dc<=0){dc=0;document.body.classList.remove("dragging");}});
+document.addEventListener("dragover",e=>e.preventDefault());document.addEventListener("drop",e=>{e.preventDefault();dc=0;document.body.classList.remove("dragging");if(e.dataTransfer.files.length){show("chat");addFiles(e.dataTransfer.files);}});
+document.addEventListener("paste",e=>{const fs=[...(e.clipboardData||{}).files||[]];if(fs.length){e.preventDefault();show("chat");addFiles(fs);}});
+function send(t){t=(t||$("#q").value).trim();if(!t&&!ATT.length)return;const files=ATT.length?ATT.map(({name,mime,data})=>({name,mime,data})):null;$("#q").value="";ATT=[];drawAtt();
+  api("send",{text:t,files}).then(r=>{if(r.hata){add("e",r.hata);if(/anahtar/.test(r.hata))show("set");}});}
 $("#send").onclick=()=>send();$("#q").onkeydown=e=>{if(e.key==="Enter")send();};
 document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>send(b.dataset.q));
 $("#orb").onclick=()=>api("listen",{}).then(r=>{if(r.hata){add("e",r.hata);show("set");}});
@@ -551,7 +595,13 @@ async function loadApps(){const r=await api("apps");const A=r.apps||[];const cat
 $("#apAdd").onclick=async()=>{const n=$("#apN").value.trim(),u=$("#apU").value.trim();if(!n||!u)return;await api("app/add",{n,u});$("#apN").value="";$("#apU").value="";loadApps();};
 $("#pairGo").onclick=async()=>{const r=await api("pair",{code:$("#pairIn").value.trim()});if(r.hata){$("#pairOut").textContent="✗ "+r.hata;return;}cfg=r.ayar;$("#pairIn").value="";fillSet();$("#pairOut").textContent="✓ Bağlandı: "+(r.gelenler||[]).join(", ");const w=log.querySelector(".welcome");if(w)w.remove();};
 // hafıza
-async function loadMem(){const r=await api("memory");$("#mList").innerHTML=(r.hafiza||[]).map((x,i)=>`<div class="item"><div class="t">${esc(x.t)}<div class="meta">${fmtDue(x.at)}</div></div><button class="x" data-mdel="${i}" title="Sil">✕</button></div>`).reverse().join("")||'<div class="empty">Henüz bir şey kaydedilmedi.</div>';
+async function loadModels(){const r=await api("models");$("#mdList").innerHTML=(r.modeller||[]).map(m=>`<div class="item"><img src="data:image/jpeg;base64,${m.thumb}" style="width:52px;height:52px;object-fit:cover;border-radius:10px"><div class="t">${esc(m.name)}<div class="meta">${m.n} fotoğraf · ${esc(m.desc)}…</div></div><button class="x" data-mdd="${esc(m.id)}" title="Sil">✕</button></div>`).join("")||'<div class="empty">Kayıtlı model yok.</div>';
+  document.querySelectorAll("[data-mdd]").forEach(b=>b.onclick=async()=>{await api("model/del",{id:b.dataset.mdd});loadModels();});}
+$("#mdAdd").onclick=()=>{if(!$("#mdName").value.trim())return alert("Önce model adını yaz");$("#mdIn").click();};
+$("#mdIn").onchange=async e=>{const fs=[...e.target.files].slice(0,3);e.target.value="";if(!fs.length)return;$("#mdList").insertAdjacentHTML("afterbegin",'<div class="empty">Model inceleniyor…</div>');
+  const files=[];for(const f of fs)files.push({name:f.name,data:await shrink(f)});const r=await api("model/add",{name:$("#mdName").value.trim(),files});if(r.hata)alert(r.hata);else $("#mdName").value="";loadModels();};
+$("#mdSync").onclick=async()=>{const r=await api("model/sync",{});if(r.hata)alert(r.hata);else add("a","✓ Telefondan "+r.yeni+" model geldi");loadModels();};
+async function loadMem(){loadModels();const r=await api("memory");$("#mList").innerHTML=(r.hafiza||[]).map((x,i)=>`<div class="item"><div class="t">${esc(x.t)}<div class="meta">${fmtDue(x.at)}</div></div><button class="x" data-mdel="${i}" title="Sil">✕</button></div>`).reverse().join("")||'<div class="empty">Henüz bir şey kaydedilmedi.</div>';
   document.querySelectorAll("[data-mdel]").forEach(b=>b.onclick=async()=>{await api("memory/del",{i:+b.dataset.mdel});loadMem();});}
 $("#mAdd").onclick=async()=>{const t=$("#mText").value.trim();if(!t)return;await api("memory/add",{t});$("#mText").value="";loadMem();};
 // günlük
