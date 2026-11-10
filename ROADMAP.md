@@ -88,3 +88,15 @@ sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recas
 8. Kendi asistanlarını yaratma (özel modlar)
 9. Canlı çeviri (iki kişilik konuşma)
 10. Konuşurken hareket eden Titus yüzü
+
+## Yeni Faz 2 (ücretsiz, henüz yapılmadı)
+1. Her cihazdan Titus (web sürümü, tablet)
+2. Uygulama fabrikası (küçük uygulama/oyun yazıp yayınlama)
+3. Prova ve toplantı kaydedici (yazıya dökme, konuşmacı ayırma, özet, görev)
+4. Bildirimden otomatik iş (banka SMS → harcama, önemli bildirim, cevap taslağı)
+5. İkinci beyin (Gmail, Drive, notlar, sohbetlerde anlamsal arama)
+6. Gece iş kuyruğu (bilgisayar)
+7. İnternetsiz Türkçe ses
+8. Recast tek komut paketleri (KADRO portfolyo, kişiselleştirilmiş toplu taslak)
+9. Geliştirici paneli (GitHub derleme durumu)
+10. Alışkanlıklarını öğrenen Titus
