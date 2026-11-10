@@ -145,3 +145,10 @@ Yaratıcı: 11 Afiş/davetiye · 12 Çizgi roman · 13 Şarkı sözü/şiir orta
 Oyunculuk: 21 Rol araştırma dosyası · 22 Rol hazırlık takvimi · 23 Yönetmen/yapımcı takibi · 24 En iyi deneme seçici · 25 Seçme günü modu · 26 Showreel hatırlatıcı · 27 Sahne analizi · 28 Eğitim fırsatları · 29 Fiziksel karakter koçu · 30 Kişisel marka metinleri
 Recast/iş: 31 Yeni oyuncu karşılama · 32 Ödeme takibi · 33 Sözleşme şablonları · 34 Ekip görev dağıtımı · 35 Toplu fotoğraf düzenleme · 36 Müşteri anketi · 37 Brief arşivi · 38 Toplantı gündemi · 39 Aylık hedef takibi · 40 Belge çevirisi
 Şehir/hayat: 41 Yol durumu uyarısı · 42 Nöbetçi eczane · 43 Yağmur uyarısı · 44 Fatura okuyucu · 45 Kargo takibi · 46 Randevu hatırlatıcı · 47 Hediye fikirleri · 48 Sesli günlük · 49 Kayıp telefon modu · 50 Bilgisayarda not panosu
+
+## Yeni Faz 8 (ücretsiz, henüz yapılmadı)
+Otomasyon: 1 Eğer–o zaman kuralları · 2 Görsel rutin editörü · 3 Zamanlı mesaj · 4 Belge karşılaştırma · 5 Tabloya soru sor · 6 Otomatik etiketleme · 7 Pazar planı · 8 Önceliklendirme koçu · 9 Erteleme önleyici · 10 Titus'a dışarıdan komut
+Medya: 11 Galeri düzenleyici · 12 Videoda arama · 13 Sesli mesaj özetleyici · 14 Eğitim videosu yapıcı · 15 Slayttan video · 16 Canlı kamera çevirisi · 17 Moodboard üretici · 18 Hikâye şablonları · 19 GIF/sticker üretici · 20 Podcast'ten alıntı kartı
+Sahne: 21 Tiyatro takvimi · 22 Oyun metni kütüphanesi · 23 Karakter ilişki haritası · 24 Sahne bloklaması · 25 Kostüm/aksesuar listesi · 26 Prova çizelgesi · 27 Ses ve tempo ölçer · 28 Seyirci geri bildirimi · 29 Dublaj pratiği · 30 Kısa film fikir üretici
+Yazılım/oyun: 31 Oyun tasarım belgesi · 32 Seviye tasarım yardımcısı · 33 Oyun ekonomisi dengeleyici · 34 NPC diyalog üretici · 35 Hata çözücü · 36 Sürüm notu yazıcı · 37 Oyun fragmanı · 38 Kod belgesi üretici · 39 Basit oyun istatistikleri · 40 Erişilebilirlik kontrolü
+Kişisel: 41 Geri sayım · 42 Buluşma planlayıcı · 43 Hesap bölüşme · 44 İzleme/okuma listesi · 45 Bir yıl önce bugün · 46 Hedef panosu · 47 Kilit ekranı kelimesi · 48 Kart/mektup yazarı · 49 Ekran süresi koçu · 50 Gönüllülük bulucu
