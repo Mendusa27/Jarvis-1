@@ -124,3 +124,10 @@ sesle kod yazan/kendini kodlayan JARVIS, otomatik sürüş modu algılama, Recas
 8. Hayat arşivi (zaman çizelgesi)
 9. Sevdiklerinle ortak alan (onaylı paylaşım)
 10. Eğlence modu (sesli yarışma, interaktif hikâye)
+
+## Yeni Faz 5 (ücretsiz, henüz yapılmadı)
+Zekâ: 1 Senin gibi yazan Titus · 2 Karar asistanı · 3 Doğruluk kontrolü · 4 Öğretmen modu · 5 Fikir defteri
+Ses: 6 Ses tonunu fark eden Titus · 7 Gece modu · 8 Çok kişili sohbet · 9 Görüşme notları (onaylı) · 10 Sihirli kelimeler
+Oyunculuk: 11 Aksan/şive koçu · 12 Monolog kütüphanesi · 13 Oyunculuk günlüğü · 14 Storyboard üretici · 15 Telifsiz müzik/efekt
+İş: 16 Kişi/müşteri hafızası · 17 Teklif/fatura taslağı · 18 Görüşme öncesi brifing · 19 Casting trend analizi · 20 Gelen kutusu düzenleyici
+Günlük: 21 Akıllı alışveriş · 22 Belge kasası · 23 Cihaz bakımı · 24 Ekran modu · 25 Yılın özeti
