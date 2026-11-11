@@ -159,3 +159,18 @@ Kolaylık: 11 Büyük yazı/kontrast · 12 Tek elle kullanım · 13 Sesli menü 
 Para/resmî: 21 Vergi hatırlatıcı · 22 Fiş arşivi · 23 E-Devlet rehberi · 24 Dilekçe yazarı · 25 Kira sözleşmesi kontrolü · 26 Borç–alacak defteri · 27 Kur takibi · 28 Destek programları · 29 Senaryo tescil rehberi · 30 Prim günü hatırlatıcı
 Eğlence: 31 Sesli dedektif · 32 Kelime oyunları · 33 Mini senaryo meydan okuması · 34 Hikâye anlatıcı · 35 Film/dizi yarışması · 36 Sesli rol yapma · 37 Sesli satranç/okey · 38 Şarkı koçu · 39 Günlük fotoğraf teması · 40 Skeç partneri
 Altyapı: 41 Eklenti mağazası · 42 Ayar profilleri · 43 Ekip profilleri · 44 Tablet düzeni · 45 Komut geçmişi · 46 Hız ölçer · 47 Kota planlayıcı · 48 Otomatik model seçici · 49 Yedek testi
+
+## Yeni Faz 10 — daha akıllı Titus (ücretsiz, henüz yapılmadı)
+Akıl yürütme: 1 Adım adım düşünme · 2 Kendini düzeltme · 3 Çoklu çözüm · 4 Varsayımları söyleme · 5 Mantık hatası avcısı · 6 Hesabı kodla doğrulama · 7 Neden–sonuç zinciri · 8 Karşı örnek · 9 Benzetmeyle anlatma · 10 Uydurmama
+Hafıza: 11 Kısa/uzun süreli hafıza · 12 Olay hafızası · 13 Kişi kartları · 14 Onaylı tercih öğrenme · 15 Unutma kuralları · 16 Önem puanı · 17 Kaynak gösterme · 18 Bağlantılı hafıza · 19 Proje hafızası · 20 Haftalık hafıza özeti
+Öğrenme: 21 Düzeltmeden öğrenme · 22 Komut istatistiği · 23 Örnekten öğrenme · 24 Telaffuza alışma · 25 Yeni isimleri ekleme · 26 Cevap uzunluğu · 27 Saat düzeni · 28 Beğen/beğenme · 29 Kök neden notu · 30 Gelişim raporu
+Algılama: 31 Birleşik algı · 32 Ortam sesleri · 33 El yazısı · 34 Görseldeki tablo/grafik · 35 Videodaki olaylar · 36 Yüz ifadesi (izinli) · 37 Konuşmacı ayırma · 38 Gürültüde anlama · 39 Karışık dil · 40 Form anlama
+Planlama: 41 Görev ağacı · 42 Yeniden planlama · 43 Paralel alt ajanlar · 44 Kaldığı yerden devam · 45 Onay noktaları · 46 Zaman/kota sınırı · 47 Araç seçimini açıklama · 48 Alternatif yol · 49 İş sonu kontrolü · 50 Proaktif öneri motoru
+Araştırma: 51 Kaynak güvenilirlik puanı · 52 Çelişen kaynaklar · 53 Akademik arama · 54 Türkçe kaynak önceliği · 55 Güncellik kontrolü · 56 Birleşik cevap · 57 Alıntı/sayfa numarası · 58 Konu takibi · 59 Çevrimdışı sözlük · 60 Çevrimdışı ansiklopedi
+İletişim: 61 Kişiye göre üslup · 62 Ton kontrolü · 63 Pazarlık hazırlığı · 64 Resmî dil · 65 Uzun maili 3 madde · 66 Konuşurken not · 67 Yanlış anlaşılma uyarısı · 68 Empatik mod · 69 Özür/teşekkür taslakları · 70 Dinleme modu
+Kişiselleştirme: 71 Kişilik profili · 72 Gün ritmi · 73 Enerjiye göre plan · 74 İlgi alanı haritası · 75 Hedeflere bağlı öneriler · 76 Öncelikler · 77 "Yapma" listesi · 78 Mod hafızası · 79 Başarı ölçütleri · 80 Yıllık gelişim planı
+Güvenilirlik: 81 Uydurma dedektörü · 82 İkinci onay · 83 Geri alma · 84 Eylem günlüğü · 85 İzin sistemi · 86 Talimat tuzağı koruması · 87 Veri maskeleme · 88 Çevrimdışı acil mod · 89 Otomatik test takımı · 90 Açılış kontrolü
+Hız: 91 Akıllı önbellek · 92 İki aşamalı beyin · 93 Önceden hazırlık · 94 Sıkıştırılmış bağlam · 95 Paralel araç kullanımı · 96 Anında konuşmaya başlama · 97 İnternete göre mod · 98 Pil/veri tasarrufu · 99 Kota tahmini · 100 Kendini ölçme
+
+## Öncelikli istek
+- Birden fazla Gmail hesabı bağlama (Burak için önemli)
