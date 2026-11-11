@@ -152,3 +152,10 @@ Medya: 11 Galeri düzenleyici · 12 Videoda arama · 13 Sesli mesaj özetleyici 
 Sahne: 21 Tiyatro takvimi · 22 Oyun metni kütüphanesi · 23 Karakter ilişki haritası · 24 Sahne bloklaması · 25 Kostüm/aksesuar listesi · 26 Prova çizelgesi · 27 Ses ve tempo ölçer · 28 Seyirci geri bildirimi · 29 Dublaj pratiği · 30 Kısa film fikir üretici
 Yazılım/oyun: 31 Oyun tasarım belgesi · 32 Seviye tasarım yardımcısı · 33 Oyun ekonomisi dengeleyici · 34 NPC diyalog üretici · 35 Hata çözücü · 36 Sürüm notu yazıcı · 37 Oyun fragmanı · 38 Kod belgesi üretici · 39 Basit oyun istatistikleri · 40 Erişilebilirlik kontrolü
 Kişisel: 41 Geri sayım · 42 Buluşma planlayıcı · 43 Hesap bölüşme · 44 İzleme/okuma listesi · 45 Bir yıl önce bugün · 46 Hedef panosu · 47 Kilit ekranı kelimesi · 48 Kart/mektup yazarı · 49 Ekran süresi koçu · 50 Gönüllülük bulucu
+
+## Yeni Faz 9 (ücretsiz, henüz yapılmadı; 50. madde çıkarıldı)
+Akıllı YZ: 1 Netleştirici soru · 2 Güven skoru · 3 Çift kontrol · 4 Uzun belge sohbeti · 5 Kamerayla soru · 6 Sesli hesap/birim · 7 Özet seviyeleri · 8 Sohbet haritası · 9 Kişisel sözlük · 10 Anında fikir yakalama
+Kolaylık: 11 Büyük yazı/kontrast · 12 Tek elle kullanım · 13 Sesli menü · 14 Tema seçici · 15 Okuma modu · 16 Ekran okuyucu uyumu · 17 Bildirim çubuğunda Titus · 18 Bilgisayar kısayolları · 19 Yan yana pencere · 20 Okuma dostu yazı tipi
+Para/resmî: 21 Vergi hatırlatıcı · 22 Fiş arşivi · 23 E-Devlet rehberi · 24 Dilekçe yazarı · 25 Kira sözleşmesi kontrolü · 26 Borç–alacak defteri · 27 Kur takibi · 28 Destek programları · 29 Senaryo tescil rehberi · 30 Prim günü hatırlatıcı
+Eğlence: 31 Sesli dedektif · 32 Kelime oyunları · 33 Mini senaryo meydan okuması · 34 Hikâye anlatıcı · 35 Film/dizi yarışması · 36 Sesli rol yapma · 37 Sesli satranç/okey · 38 Şarkı koçu · 39 Günlük fotoğraf teması · 40 Skeç partneri
+Altyapı: 41 Eklenti mağazası · 42 Ayar profilleri · 43 Ekip profilleri · 44 Tablet düzeni · 45 Komut geçmişi · 46 Hız ölçer · 47 Kota planlayıcı · 48 Otomatik model seçici · 49 Yedek testi
