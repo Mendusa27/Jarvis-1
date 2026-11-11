@@ -1,8 +1,6 @@
 name: Titus web sürümü (GitHub Pages)
+# Bir kez: GitHub → Settings → Pages → Source: "GitHub Actions"; sonra Actions → bu iş → Run workflow.
 on:
-  push:
-    branches: [ main ]
-    paths: [ "www/**" ]
   workflow_dispatch: {}
 permissions:
   contents: read
