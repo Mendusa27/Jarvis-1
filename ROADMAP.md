@@ -178,3 +178,19 @@ Hız: 91 Akıllı önbellek · 92 İki aşamalı beyin · 93 Önceden hazırlık
 
 ## ✅ v3.0'da uygulandı
 Faz 1–10'daki 364 madde + çoklu Gmail, tek yetenek kataloğu (www/skills.json) olarak telefona ve bilgisayara eklendi. Her maddenin durumu katalogda: tam / yapay zekâ ile / kısmi / yapılamıyor (gerekçesiyle).
+
+## v3.0 sonrası plan
+
+### Faz 1 — Claude ile Titus arasındaki farkı kapatmak
+- Tam web sayfası okuma (link aç, içeriğin tamamını oku — Google tarafı üzerinden)
+- Hata kaydını GitHub'a otomatik gönderme (sorunlar repo'da birikir, sonraki güncellemede düzeltilir)
+- Claude'un yapıp Titus'un yapamadığı her şey: büyük kod projeleri, kodu çalıştırıp test etme (bilgisayarda), kendi kodunu geliştirme önerisi, uzun çok adımlı işler (kotaya göre bölüp kaldığı yerden devam), büyük belge/klasörle çalışma (parça parça), linkli sayfa yayınlama, Excel/PowerPoint/PDF üretimi
+- (Hariç: zor sorularda Gemini Pro'ya geçiş)
+
+### Faz 2 — Sağlamlık ve düzeltmeler
+- Arka planda otomatik kontrol: kendi kendine neyin çalışıp neyin çalışmadığını test etme
+- Konum: "neredeyim" sorusuna doğru cevap
+- Uygulama içinde arama (uygulamayı açıp içinde aratabilme)
+- Sağlam Türkçe sözlük + aksi söylenene kadar sadece Türkçe konuşma
+- Bazen iki kez konuşma hatası
+- Konuşma başındaki telsiz/robot sesi → akıcı, doğal asistan sesi
