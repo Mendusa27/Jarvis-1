@@ -129,6 +129,50 @@ public class JarvisA11yService extends AccessibilityService {
         return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
     }
 
+
+    /* ---------- uygulama içinde arama (v3.1) ---------- */
+    private static String vid(AccessibilityNodeInfo n) { CharSequence v = n.getViewIdResourceName(); return v == null ? "" : v.toString().toLowerCase(java.util.Locale.ROOT); }
+
+    boolean clickSearch() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        String[] words = { "ara", "arama", "search", "ara…", "ara...", "aramak", "bul" };
+        AccessibilityNodeInfo best = null; int bestScore = 0;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int guard = 0;
+        while (!q.isEmpty() && guard++ < 5000) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n == null) continue;
+            if (n.isVisibleToUser()) {
+                String id = vid(n);
+                String t = n.getText() != null ? JarvisPlugin.norm(n.getText().toString()) : "";
+                String d = n.getContentDescription() != null ? JarvisPlugin.norm(n.getContentDescription().toString()) : "";
+                String h = (Build.VERSION.SDK_INT >= 26 && n.getHintText() != null) ? JarvisPlugin.norm(n.getHintText().toString()) : "";
+                int sc = 0;
+                if (n.isEditable() && (id.contains("search") || h.contains("ara") || h.contains("search"))) sc = 5;
+                else if (id.contains("search")) sc = 4;
+                else for (String w : words) { if (d.equals(w) || t.equals(w)) { sc = 3; break; } if (d.startsWith(w + " ") || h.startsWith(w)) sc = Math.max(sc, 2); }
+                if (sc > bestScore) { bestScore = sc; best = n; }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
+        }
+        if (best == null) return false;
+        if (best.isEditable()) { best.performAction(AccessibilityNodeInfo.ACTION_FOCUS); return best.performAction(AccessibilityNodeInfo.ACTION_CLICK) || true; }
+        return clickNode(best);
+    }
+
+    boolean imeEnter() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        AccessibilityNodeInfo f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (f != null && Build.VERSION.SDK_INT >= 30) {
+            if (f.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) return true;
+        }
+        // yedek: görünür "Ara/Search/Git" düğmesine bas
+        return click("ara|search|git|go|bul", null);
+    }
+
     boolean global(String action) {
         switch (action) {
             case "geri": return performGlobalAction(GLOBAL_ACTION_BACK);

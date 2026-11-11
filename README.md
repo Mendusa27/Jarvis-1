@@ -242,3 +242,13 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - Bilgisayara özel: müzik ve ses efekti üretici, görselden 3D (Hugging Face, ücretsiz kota), ekran kaydıyla eğitim videosu, yapışkan not panosu (Ctrl+Alt+N), hızlı pencere (Ctrl+Alt+T).
 
 **Kurulum (bir kez):** Apps Script'te Code.gs'yi yeni sürümle değiştir → Kaydet → Dağıt → Dağıtımları yönet → Düzenle → Yeni sürüm → Dağıt (Google Form ve tetikleyici izni ister: izin ver). Bilgisayarda yeni zip'i eskinin üstüne çıkar.
+
+## v3.1 — Yeni Faz 1 (Claude ile farkı kapatma) + Yeni Faz 2 (sağlamlık)
+
+- **Ses düzeltmeleri:** ses modeline giden "doğal, sıcak, akıcı söyle" talimatı bazen sesli okunuyordu — kaldırıldı (telefon + bilgisayar). Aynı cümle iki kez söylenmez; araç çağrısı tekrarında eski konuşma kesilir; ses başındaki cızırtı/boşluk kırpılır, yumuşak giriş.
+- **Sadece Türkçe:** aksi söylenene kadar her cevap Türkçe ("İngilizce konuş" / "Türkçe konuş"). Yanlışlıkla yabancı dilde gelen cevap otomatik Türkçeye çevrilir.
+- **TDK sözlük** (`turkce_sozluk`), **konum** (`konumum`: mahalle/ilçe/adres; GPS yoksa ağ konumu, son konum yedeği), **uygulama içinde arama** (`uygulamada_ara`: YouTube, Spotify, Trendyol, Haritalar, Sahibinden… doğrudan; diğerlerinde ekran erişimiyle arama kutusunu bulup yazar ve Enter'a basar).
+- **Arka planda otomatik kontrol** (3 saatte bir; günde bir derin test): beyin, Google hesapları, izinler, ekran erişimi, uyandırma (kapanmışsa yeniden başlatır), konum, ses, belge motorları.
+- **Faz 1:** tam sayfa okuma (`sayfa_oku`), büyük belge/klasör (`buyuk_belge`, bilgisayarda `klasor_oku`), kod yaz-çalıştır-düzelt (`kod_calistir`), Excel/PDF/PowerPoint, linkli sayfa yayınlama (`sayfa_yayinla` — Google üzerinden, ücretsiz), uzun çok adımlı işler (`uzun_is`, kota dolunca kaldığı yerden devam), otomatik hata raporu ve geliştirme önerisi → GitHub.
+
+**Kurulum:** Code.gs'yi yenisiyle değiştir → Dağıt → Dağıtımları yönet → Yeni sürüm. Hata raporlarının GitHub'a gitmesi için Yetenekler → "Otomatik hata raporu"na bir kez GitHub token ekle. Bilgisayarda yeni zip'i çıkarıp 1-KUR.bat'ı bir kez çalıştır (PowerPoint paketi).

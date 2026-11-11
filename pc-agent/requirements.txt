@@ -14,3 +14,4 @@ python-docx
 openpyxl
 imageio-ffmpeg
 gradio_client
+python-pptx

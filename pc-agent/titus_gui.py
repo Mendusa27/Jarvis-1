@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "3.0"
+GUI_VERSION = "3.1"
 
 
 def open_window():
@@ -554,7 +554,7 @@ body.dragging #drop{display:flex}
 <section class="view" id="v-skills"><div class="in">
 <h2>YETENEKLER</h2><div class="note">Faz 1–10'un tamamı. Ara, seç, çalıştır — ya da sohbette “Titus, derin araştırma yap: …” de. Telefona özel olanlar telefondaki Titus'a iletilir.</div>
 <div class="card"><h3>GMAIL HESAPLARI</h3><div id="accList"></div><div class="row" style="margin-top:6px"><input type="text" id="acN" placeholder="Ad (İş)" style="max-width:110px"><input type="text" id="acU" placeholder="Apps Script …/exec"><input type="password" id="acT" placeholder="Şifre" style="max-width:120px"><button class="btn sm" id="acAdd" style="flex:none">Ekle</button></div></div>
-<div class="row" style="margin-top:10px"><input type="text" id="skQ" placeholder="🔎 Yeteneklerde ara…"><select id="skF" style="max-width:150px"><option value="">Tüm fazlar</option><option value="0">Gmail</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></div>
+<div class="row" style="margin-top:10px"><input type="text" id="skQ" placeholder="🔎 Yeteneklerde ara…"><select id="skF" style="max-width:150px"><option value="">Tüm fazlar</option><option value="11">Yeni Faz 1</option><option value="12">Yeni Faz 2</option><option value="0">Gmail</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></div>
 <div id="skSel" class="card" style="display:none"><h3 id="skT"></h3><div class="note" id="skA" style="margin-top:0"></div><textarea id="skIn" placeholder="İsteğin / ayrıntılar (boş bırakabilirsin)" style="margin-top:8px"></textarea><div class="row" style="margin-top:8px"><button class="btn sm" id="skRun">▶ Çalıştır</button></div><div id="skOut" style="margin-top:8px;white-space:pre-wrap;user-select:text"></div></div>
 <div id="skList" class="skgrid"></div>
 </div></section>
@@ -645,7 +645,7 @@ const dz=s=>String(s||"").toLocaleLowerCase("tr-TR").replace(/[çğıöşü]/g,c
 async function loadSkills(){const r=await api("skills");SKL=r.yetenekler||[];$("#accList").innerHTML=(r.hesaplar||[]).map(a=>`<div class="item"><div class="t">✉️ ${esc(a.n)}${a.main?" · ana":""}<div class="meta">${esc(a.e||"")}</div></div>${a.main?"":`<button class="x" data-acd="${esc(a.n)}">✕</button>`}</div>`).join("")||'<div class="empty">Gmail bağlı değil.</div>';
   document.querySelectorAll("[data-acd]").forEach(b=>b.onclick=async()=>{await api("acc/del",{n:b.dataset.acd});loadSkills();});drawSkills();}
 function drawSkills(){const q=dz($("#skQ").value.trim()),f=$("#skF").value;const L=SKL.filter(s=>(f===""||String(s.faz)===f)&&(!q||dz(s.n+" "+s.a).includes(q)));
-  $("#skList").innerHTML=L.map(s=>`<div class="sk" data-sk="${s.id}"><span class="bd">${s.faz?"F"+s.faz:"Gmail"} ${DUR[s.durum]||""}</span><b>${esc(s.n)}</b><small>${esc(s.k==="mode"?(s.on?"● açık mod":"○ kapalı mod"):s.a.slice(0,80))}</small></div>`).join("")||'<div class="empty">Bulunamadı.</div>';
+  $("#skList").innerHTML=L.map(s=>`<div class="sk" data-sk="${s.id}"><span class="bd">${s.faz>10?"Yeni F"+(s.faz-10):s.faz?"F"+s.faz:"Gmail"} ${DUR[s.durum]||""}</span><b>${esc(s.n)}</b><small>${esc(s.k==="mode"?(s.on?"● açık mod":"○ kapalı mod"):s.a.slice(0,80))}</small></div>`).join("")||'<div class="empty">Bulunamadı.</div>';
   document.querySelectorAll("[data-sk]").forEach(d=>d.onclick=()=>{SKC=SKL.find(x=>x.id===d.dataset.sk);$("#skSel").style.display="";$("#skT").textContent=SKC.n+(SKC.k==="mode"?(SKC.on?" (açık)":" (kapalı)"):"");$("#skA").textContent=SKC.a+(SKC.not?" — "+SKC.not:"");$("#skOut").textContent="";$("#skRun").textContent=SKC.k==="mode"?(SKC.on?"Kapat":"Aç"):"▶ Çalıştır";$("#skSel").scrollIntoView({block:"nearest"});});}
 $("#skQ").oninput=drawSkills;$("#skF").onchange=drawSkills;
 $("#skRun").onclick=async()=>{if(!SKC)return;$("#skOut").textContent="⏳ çalışıyor…";const g=SKC.k==="mode"?(SKC.on?"kapat":"aç"):$("#skIn").value;const r=await api("skill/run",{id:SKC.id,girdi:g});

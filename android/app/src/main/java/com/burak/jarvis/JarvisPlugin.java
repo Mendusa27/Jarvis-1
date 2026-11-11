@@ -311,8 +311,13 @@ public class JarvisPlugin extends Plugin {
     @PluginMethod
     public void openUrl(PluginCall call) {
         String url = call.getString("url", "");
+        String pkg = call.getString("pkg", "");
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (pkg != null && !pkg.isEmpty()) {
+            Intent ip = new Intent(i); ip.setPackage(pkg);
+            try { getContext().startActivity(ip); JSObject o = new JSObject(); o.put("uygulamada", true); call.resolve(o); return; } catch (Exception ignored) {}
+        }
         try {
             getContext().startActivity(i);
             call.resolve();
@@ -639,16 +644,47 @@ public class JarvisPlugin extends Plugin {
 
     @SuppressLint("MissingPermission")
     private void doGetLocation(PluginCall call) {
-        LocationServices.getFusedLocationProviderClient(getContext())
-            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            .addOnSuccessListener(loc -> {
-                if (loc == null) { call.reject("Konum alınamadı (GPS açık mı?)"); return; }
+        final boolean wantAddr = call.getBoolean("address", false);
+        com.google.android.gms.location.FusedLocationProviderClient fc = LocationServices.getFusedLocationProviderClient(getContext());
+        com.google.android.gms.tasks.CancellationTokenSource cts = new com.google.android.gms.tasks.CancellationTokenSource();
+        final boolean[] done = { false };
+        java.util.function.Consumer<android.location.Location> finish = loc -> {
+            synchronized (done) { if (done[0]) return; done[0] = true; }
+            if (loc == null) { call.reject("Konum alınamadı (Konum/GPS açık mı?)"); return; }
+            new Thread(() -> {
                 JSObject o = new JSObject();
                 o.put("lat", loc.getLatitude());
                 o.put("lng", loc.getLongitude());
+                o.put("dogruluk", Math.round(loc.getAccuracy()));
+                o.put("yas_sn", Math.max(0, (System.currentTimeMillis() - loc.getTime()) / 1000));
+                if (wantAddr) {
+                    try {
+                        android.location.Geocoder g = new android.location.Geocoder(getContext(), new Locale("tr", "TR"));
+                        List<android.location.Address> as = g.getFromLocation(loc.getLatitude(), loc.getLongitude(), 1);
+                        if (as != null && !as.isEmpty()) {
+                            android.location.Address a = as.get(0);
+                            o.put("adres", a.getMaxAddressLineIndex() >= 0 ? a.getAddressLine(0) : "");
+                            o.put("mahalle", a.getSubLocality() != null ? a.getSubLocality() : "");
+                            o.put("ilce", a.getSubAdminArea() != null ? a.getSubAdminArea() : (a.getLocality() != null ? a.getLocality() : ""));
+                            o.put("il", a.getAdminArea() != null ? a.getAdminArea() : "");
+                            o.put("sokak", a.getThoroughfare() != null ? a.getThoroughfare() : "");
+                        }
+                    } catch (Exception ignored) {}
+                }
                 call.resolve(o);
+            }).start();
+        };
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            fc.getLastLocation().addOnSuccessListener(finish::accept).addOnFailureListener(e -> finish.accept(null));
+        }, 9000);
+        fc.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.getToken())
+            .addOnSuccessListener(loc -> {
+                if (loc != null) { finish.accept(loc); return; }
+                fc.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
+                    .addOnSuccessListener(l2 -> { if (l2 != null) finish.accept(l2); else fc.getLastLocation().addOnSuccessListener(finish::accept).addOnFailureListener(e -> finish.accept(null)); })
+                    .addOnFailureListener(e -> fc.getLastLocation().addOnSuccessListener(finish::accept).addOnFailureListener(e2 -> finish.accept(null)));
             })
-            .addOnFailureListener(e -> call.reject("Konum hatası: " + e.getMessage()));
+            .addOnFailureListener(e -> fc.getLastLocation().addOnSuccessListener(finish::accept).addOnFailureListener(e2 -> finish.accept(null)));
     }
 
     @PluginMethod
@@ -1051,6 +1087,30 @@ public class JarvisPlugin extends Plugin {
             o.put("ok", s.type(text));
             call.resolve(o);
         });
+    }
+
+    @PluginMethod
+    public void a11ySearch(PluginCall call) {
+        JarvisA11yService s = JarvisA11yService.instance;
+        if (s == null) { call.reject("Ekran erişimi kapalı"); return; }
+        final String text = call.getString("text", "");
+        new Thread(() -> {
+            JSObject o = new JSObject();
+            try {
+                boolean opened = false;
+                for (int i = 0; i < 4 && !opened; i++) { opened = s.clickSearch(); if (!opened) Thread.sleep(700); }
+                Thread.sleep(650);
+                boolean typed = s.type(text);
+                if (!typed) { Thread.sleep(600); typed = s.type(text); }
+                Thread.sleep(350);
+                boolean sent = typed && s.imeEnter();
+                o.put("ok", typed);
+                o.put("arama_kutusu", opened);
+                o.put("yazildi", typed);
+                o.put("gonderildi", sent);
+            } catch (Exception e) { o.put("ok", false); o.put("hata", e.getMessage()); }
+            call.resolve(o);
+        }).start();
     }
 
     @PluginMethod

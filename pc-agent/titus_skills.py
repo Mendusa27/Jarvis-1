@@ -518,6 +518,14 @@ PHONE_ONLY_OK = set()
 
 
 def run_skill(name, girdi=""):
+    try:
+        return _run_skill(name, girdi)
+    except Exception as e:
+        J.log("hata", f"yetenek {name}: {e}")
+        return {"hata": J.friendly(e) if hasattr(J, 'friendly') else str(e)}
+
+
+def _run_skill(name, girdi=""):
     if not SKILLS:
         load_skills()
     s, alts = find(name)
@@ -599,3 +607,8 @@ def setup(jd, p, tx=None):
         except Exception:
             pass
     threading.Thread(target=auto_upd, daemon=True).start()
+    try:
+        import titus_v31
+        titus_v31.setup(jd, p, __import__(__name__))
+    except Exception as e:
+        jd.log("hata", f"v3.1 eklentisi yüklenemedi: {e}")

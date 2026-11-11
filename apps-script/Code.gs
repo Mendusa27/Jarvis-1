@@ -11,6 +11,12 @@ const FILE_NAME = "jarvis-veri.json";
 function doGet(e) {
   // v3.0: dışarıdan komut (Tasker, Kısayollar, IFTTT): ?hook=GİZLİ&text=komut
   const p = (e && e.parameter) || {};
+  if (p.p) { // v3.1: yayınlanan sayfa
+    const pages = jget_("pages", {}); const pg = pages[p.p];
+    if (!pg) return HtmlService.createHtmlOutput("<h2 style='font-family:sans-serif'>Bu sayfa yayından kaldırılmış.</h2>");
+    try { const html = DriveApp.getFileById(pg.file).getBlob().getDataAsString("UTF-8"); return HtmlService.createHtmlOutput(html).setTitle(pg.title || "Titus").addMetaTag("viewport", "width=device-width, initial-scale=1").setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); }
+    catch (er) { return HtmlService.createHtmlOutput("Sayfa açılamadı."); }
+  }
   if (p.hook) {
     const sec = props_().getProperty("HOOK");
     if (!sec || p.hook !== sec) return ContentService.createTextOutput("yetkisiz");
@@ -54,6 +60,12 @@ function doPost(e) {
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
+      case "fetchText":    return out({ ok: true, text: pageText_(req.url).slice(0, 400000) });
+      case "tdk":          return out({ ok: true, sonuc: tdk_(req.kelime) });
+      case "bugReport":    return out(Object.assign({ ok: true }, bugReport_(req)));
+      case "ghSet":        return out(Object.assign({ ok: true }, ghSet_(req)));
+      case "publishPage":  return out(Object.assign({ ok: true }, publishPage_(req)));
+      case "unpublishPage": { const pg = jget_("pages", {}); if (pg[req.id]) { try { DriveApp.getFileById(pg[req.id].file).setTrashed(true); } catch (e) {} delete pg[req.id]; jset_("pages", pg); } return out({ ok: true }); }
       case "watchSet":     watchSet(req); return out({ ok: true });
       case "watchRunNow":  return out({ ok: true, sonuc: watchRun(true) });
       case "tgSetup":      return out(Object.assign({ ok: true }, tgSetup(req)));
@@ -612,4 +624,52 @@ function urlToDrive(req) {
   if (r.getResponseCode() >= 300) throw new Error("İndirilemedi: HTTP " + r.getResponseCode());
   const f = folder_(req.folder || "Titus").createFile(r.getBlob().setName(req.name || "dosya"));
   return { name: f.getName(), id: f.getId() };
+}
+
+
+/* =====================================================================
+   v3.1 — sayfa okuma, TDK sözlük, hata raporu → GitHub, sayfa yayınlama
+   ===================================================================== */
+function tdk_(w) {
+  const r = UrlFetchApp.fetch("https://sozluk.gov.tr/gts?ara=" + encodeURIComponent(String(w || "")), { muteHttpExceptions: true, headers: { "User-Agent": "Mozilla/5.0" } });
+  try { return JSON.parse(r.getContentText()); } catch (e) { return { error: "bulunamadı" }; }
+}
+function ghSet_(req) {
+  const tok = String(req.token || ""); const repo = String(req.repo || "Mendusa27/Jarvis-1");
+  const r = UrlFetchApp.fetch("https://api.github.com/repos/" + repo, { headers: { Authorization: "Bearer " + tok, Accept: "application/vnd.github+json" }, muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error("GitHub token bu depoya erişemiyor (HTTP " + r.getResponseCode() + ")");
+  props_().setProperty("GH_TOKEN", tok); props_().setProperty("GH_REPO", repo);
+  try { bugFlushGh_(); } catch (e) {}
+  return { repo: repo };
+}
+function bugReport_(req) {
+  const all = jget_("bugs", []);
+  (req.items || []).forEach(it => all.push({ at: it.at, ver: it.ver, type: it.type, detail: String(it.detail || "").slice(0, 500), device: req.device || "?", oneri: !!req.oneri, sent: false }));
+  jset_("bugs", all.slice(-500));
+  let gh = false; try { gh = bugFlushGh_(); } catch (e) {}
+  return { github: gh, toplam: all.length };
+}
+function bugFlushGh_() {
+  const tok = props_().getProperty("GH_TOKEN"); if (!tok) return false;
+  const repo = props_().getProperty("GH_REPO") || "Mendusa27/Jarvis-1";
+  const all = jget_("bugs", []); const pend = all.filter(b => !b.sent); if (!pend.length) return true;
+  const H = { Authorization: "Bearer " + tok, Accept: "application/vnd.github+json" };
+  const groups = {};
+  pend.forEach(b => { const key = (b.oneri ? "Öneri: " : "Hata: ") + (b.oneri ? b.detail.split(" — ")[0] : (b.type + " — " + b.detail.replace(/\d+/g, "#").slice(0, 70))); (groups[key] = groups[key] || []).push(b); });
+  const open = JSON.parse(UrlFetchApp.fetch("https://api.github.com/repos/" + repo + "/issues?state=open&labels=titus-otomatik&per_page=100", { headers: H, muteHttpExceptions: true }).getContentText() || "[]");
+  Object.keys(groups).slice(0, 15).forEach(title => {
+    const list = groups[title]; const body = list.map(b => "- " + b.at + " · " + b.device + " · v" + b.ver + " · " + b.type + ": " + b.detail).join("\n");
+    const ex = Array.isArray(open) && open.find(i => i.title === title);
+    if (ex) UrlFetchApp.fetch(ex.url + "/comments", { method: "post", contentType: "application/json", headers: H, payload: JSON.stringify({ body: "Tekrar görüldü (" + list.length + "):\n" + body }), muteHttpExceptions: true });
+    else UrlFetchApp.fetch("https://api.github.com/repos/" + repo + "/issues", { method: "post", contentType: "application/json", headers: H, payload: JSON.stringify({ title: title, body: "Titus otomatik raporu\n\n" + body, labels: ["titus-otomatik", list[0].oneri ? "öneri" : "hata"] }), muteHttpExceptions: true });
+    list.forEach(b => b.sent = true);
+  });
+  jset_("bugs", all);
+  return true;
+}
+function publishPage_(req) {
+  const id = Utilities.getUuid().slice(0, 8);
+  const f = folder_("Titus Yayınlar").createFile(Utilities.newBlob(String(req.html || ""), "text/html", id + ".html"));
+  const pages = jget_("pages", {}); pages[id] = { file: f.getId(), title: String(req.title || "Titus"), at: fmt_(new Date()) }; jset_("pages", pages);
+  return { id: id, url: ScriptApp.getService().getUrl() + "?p=" + id };
 }

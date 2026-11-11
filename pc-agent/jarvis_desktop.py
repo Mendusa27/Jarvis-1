@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
-VERSION = "3.0"
+VERSION = "3.1"
 CFG = Path.home() / ".jarvis_desktop.json"
 DATA = Path.home() / ".titus"
 DATA.mkdir(exist_ok=True)
@@ -330,7 +330,7 @@ def _tts(text):
     for m in [x for i, x in enumerate(order) if x and x not in order[:i]]:
         try:
             j = post_json(_gem_url(m), {
-                "contents": [{"role": "user", "parts": [{"text": "Sakin, sıcak, kendinden emin ve doğal bir Türkçeyle söyle: " + text[:900]}]}],
+                "contents": [{"role": "user", "parts": [{"text": text[:900]}]}],
                 "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": C.get("voice", "Charon")}}}}}, timeout=40)
             part = next(p for p in j["candidates"][0]["content"]["parts"] if p.get("inlineData"))
             TTS_OK["m"] = m
