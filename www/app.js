@@ -917,7 +917,7 @@ async function renderSettings() {
     <form class="form" data-add-mem><div class="row"><input name="text" placeholder="Elle ekle"><button class="btn">+</button></div></form></div>
 
   <div class="card"><h3>VERİ</h3><div class="row"><button class="btn ghost sm" id="exportBtn">Yedeği kopyala</button><button class="btn ghost sm" id="importBtn">Yedeği yükle</button><button class="btn ghost sm" id="clearChat">Sohbeti sil</button></div>
-    <div class="hint">Titus v2.7 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
+    <div class="hint">Titus v3.0 · ${NATIVE ? "Android" : "Web"} · Tüm veriler cihazında.</div></div>`;
   if (Jarvis) nat(() => Jarvis.wakeStatus()).then(r => r && showWake(r));
 }
 function showWake(r) {
@@ -3879,6 +3879,1411 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
     if (card) { const f = card.querySelector(".form") || card; f.insertAdjacentHTML("beforeend", html); }
   };
 }
+
+/* =====================================================================
+   v3.0 — BÜYÜK GÜNCELLEME: Faz 1–10 (364 yetenek) + çoklu Gmail
+   Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
+   ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
+   ===================================================================== */
+const APP_VER = "3.0", APP_RUN = "__RUN__";
+const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
+const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
+const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
+const toks = s => deacc(s).replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w.length >= 3);
+const fence = t => String(t || "").replace(/^\s*```[a-z]*\s*/i, "").replace(/```\s*$/i, "").trim();
+const today = () => ymd(new Date());
+
+/* ---------- katalog ---------- */
+let SKILLS = [];
+const SKILLS_READY = (async () => {
+  try { const r = await fetch("skills.json"); SKILLS = await r.json(); } catch (e) { console.warn("skills.json", e); SKILLS = []; }
+})();
+const allSkills = () => [...SKILLS, ...XL("userSkills").map(u => ({ id: "u-" + u.id, faz: 99, n: u.n, k: "ask", w: !!u.w, f: false, d: false, no: false, on: false, durum: "tam", a: u.a, not: "Kendi eklediğin yetenek", user: true }))];
+const modeOn = s => s.k === "mode" && ((SET.modes || {})[s.id] ?? s.on);
+function skillScore(s, q) {
+  const qt = toks(q); if (!qt.length) return 0;
+  const nt = toks(s.n), at = toks(s.a);
+  let sc = 0;
+  for (const w of qt) {
+    const p = w.slice(0, Math.min(5, w.length));
+    if (nt.some(x => x.startsWith(p) || p.startsWith(x.slice(0, 5)))) sc += 3;
+    else if (at.some(x => x.startsWith(p))) sc += 1;
+  }
+  if (deacc(s.n) === deacc(q)) sc += 20;
+  return sc / Math.sqrt(qt.length + 1);
+}
+function findSkill(q) {
+  const all = allSkills(); const nq = deacc(q || "");
+  const exact = all.find(s => s.id === q || deacc(s.n) === nq); if (exact) return { s: exact, alts: [] };
+  const sc = all.map(s => ({ s, v: skillScore(s, q) })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  return { s: sc.length && sc[0].v >= 1.2 ? sc[0].s : null, alts: sc.slice(0, 5).map(x => x.s.n) };
+}
+
+/* ---------- eklenen dosyalar (yetenekler ekranı için) ---------- */
+let SK_ATT = [];
+function attParts() {
+  const items = SK_ATT.length ? SK_ATT : pendingAttach.length ? pendingAttach : (CTX_ATT ? CTX_ATT.items : []);
+  return items.map(a => ({ inlineData: { mimeType: a.mime, data: a.data } }));
+}
+async function pickAttach(accept) {
+  const fs = await pickFiles(accept || "image/*,application/pdf,.pdf,.docx,.xlsx,.csv,.txt,.md,audio/*,video/*", true);
+  const out = []; for (const f of fs.slice(0, 5)) { try { out.push(await fileToAttach(f)); } catch (e) { toast("✗ " + e.message, 4000); } }
+  return out;
+}
+const camShot = () => new Promise(res => { const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.capture = "environment"; i.style.display = "none"; document.body.appendChild(i); i.onchange = async () => { const f = i.files && i.files[0]; i.remove(); if (!f) return res(null); try { res(await shrinkImage(f, 1600)); } catch { res(null); } }; i.click(); });
+
+/* ---------- internet aramalı Gemini (kaynak linkleriyle) ---------- */
+async function grounded(prompt, max = 1800) {
+  if (!SET.geminiKey) throw new Error("NOKEY");
+  const models = [SET.geminiModel, ...GEMINI_FALLBACK].filter((m, i, a) => m && a.indexOf(m) === i);
+  let last;
+  for (const m of models) {
+    try {
+      const gc = { temperature: 0.4, maxOutputTokens: max }; const th = thinkCfg(m, "low"); if (th) gc.thinkingConfig = th;
+      const j = await httpJson(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(SET.geminiKey)}`, { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: gc });
+      const c = j.candidates && j.candidates[0];
+      const text = ((c && c.content && c.content.parts) || []).filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
+      const src = ((c && c.groundingMetadata && c.groundingMetadata.groundingChunks) || []).filter(g => g.web).map(g => ({ title: g.web.title || "", uri: g.web.uri || "" }));
+      return { text, src };
+    } catch (e) { last = e; if (e.status === 400 && /thinking/i.test(e.message)) { NO_THINK.add(m); continue; } if ([404, 429, 400, 503, 500].includes(e.status)) continue; throw e; }
+  }
+  throw last || new Error("Arama yapılamadı");
+}
+
+/* ---------- metinden Word belgesi ---------- */
+async function docFromText(title, text, extra = []) {
+  await loadLib("lib/docx.js");
+  const D = window.docx; const ch = [new D.Paragraph({ heading: D.HeadingLevel.TITLE, children: [new D.TextRun({ text: title, bold: true })] })];
+  for (const raw of String(text).split("\n")) {
+    const l = raw.replace(/\*\*/g, "").trimEnd(); if (!l.trim()) continue;
+    const h = l.match(/^(#{1,3})\s+(.*)/);
+    if (h) ch.push(new D.Paragraph({ heading: h[1].length === 1 ? D.HeadingLevel.HEADING_1 : D.HeadingLevel.HEADING_2, children: [new D.TextRun(h[2])] }));
+    else if (/^\s*([-*•]|\d+[.)])\s+/.test(l)) ch.push(new D.Paragraph({ text: l.replace(/^\s*([-*•]|\d+[.)])\s+/, ""), bullet: { level: 0 } }));
+    else ch.push(new D.Paragraph({ children: [new D.TextRun(l)], spacing: { after: 120 } }));
+  }
+  for (const e of extra) ch.push(new D.Paragraph({ children: [new D.TextRun({ text: e, size: 18 })] }));
+  const doc = new D.Document({ creator: SET.name, title, sections: [{ children: ch }] });
+  const blob = await D.Packer.toBlob(doc); const name = fname(title, "docx");
+  const r = await saveFile(new Blob([blob], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), name);
+  S.docs = [{ id: uid(), type: "rapor", title, name, at: localISO(new Date()) }, ...(S.docs || [])].slice(0, 40); save();
+  return { dosya: name, yer: r.yer };
+}
+
+/* ---------- genel bağlam ---------- */
+function userCtx() {
+  const mem = (S.memory || []).slice(0, 25).map(m => m.text).join("; ");
+  return `Kullanıcı: ${SET.name}. İstanbul'da yaşayan oyuncu; Recast Talent House casting ajansında çalışıyor; Kadıköy'de barda gece vardiyaları var; kendi uygulama ve oyunlarını geliştiriyor. Şu an: ${DAYS[new Date().getDay()]} ${localISO(new Date())}.${mem ? "\nBildiklerin: " + mem : ""}`;
+}
+
+/* ---------- yetenek çalıştırıcı ---------- */
+const FN = {};
+async function askSkill(s, girdi, opt = {}) {
+  const prompt = `GÖREV — ${s.n}: ${s.a}\n\n${userCtx()}\n\nKULLANICININ İSTEĞİ / GİRDİSİ: ${girdi || "(ek girdi yok; görevi kullanıcıya göre genel olarak uygula)"}\n\nTürkçe yaz (görev başka dil istemiyorsa). Ekranda okunacak; gerekirse kısa başlıklar ve maddeler kullan. Bilmediğin bilgiyi uydurma. Telifli metinleri (şarkı sözü, oyun metni) uzun alıntılama.`;
+  const parts = s.f || opt.files ? attParts() : [];
+  let text, src = [];
+  if (s.w && !parts.length) { const g = await grounded(prompt, 3000); text = g.text; src = g.src; }
+  else text = await plainGemini(prompt, parts, s.w ? [{ google_search: {} }] : null, { max: 3500, temperature: 0.6 });
+  const out = { metin: text };
+  if (src.length) out.kaynaklar = src.slice(0, 8);
+  if (s.d) { try { const d = await docFromText(s.n + (girdi ? " — " + girdi.slice(0, 40) : ""), text, src.map((x, i) => `[${i + 1}] ${x.title} ${x.uri}`)); out.belge = d.dosya; out.yer = d.yer; } catch (e) { out.belge_hata = e.message; } }
+  if (s.no) { A.addNote({ text: `${s.n}: ${text.slice(0, 1500)}`, project: "Titus" }); out.not = "Not olarak kaydedildi"; }
+  return out;
+}
+async function runSkill(s, girdi = "", ctx = {}) {
+  girdi = String(girdi || "").trim();
+  logUse("yetenek:" + s.n);
+  if (s.k === "mode") {
+    const l = trLower(girdi); const off = /kapat|kapa\b|iptal|istemiyorum|durdur|pasif/.test(l); const tog = /değiştir|tersine|toggle/.test(l); const on = tog ? !modeOn(s) : !off;
+    SET.modes = { ...(SET.modes || {}), [s.id]: on }; saveSet();
+    return { ok: true, mod: s.n, durum: on ? "açık" : "kapalı", kural: s.a };
+  }
+  if (s.k.startsWith("tool:")) {
+    const [, tool, arg] = s.k.split(":");
+    const t = TOOLS.find(t => t.name === tool); if (!t) return askSkill(s, girdi);
+    const imgs = (SK_ATT.length ? SK_ATT : pendingAttach).filter(a => a.kind === "image"); if (imgs.length) CUR_IMGS = imgs.map(a => a.data);
+    const args = {}; const first = arg || t.required[0] || Object.keys(t.props)[0]; if (first) args[first] = girdi || s.a;
+    if (tool === "koc_baslat") args.tur = "partner";
+    return runTool(tool, args);
+  }
+  if (s.k.startsWith("fn:")) {
+    const h = FN[s.k.slice(3)];
+    if (!h) return askSkill(s, girdi);
+    if (!h.run) { if (ctx.fromChat) { go("skills"); showSkill(s.id); return { ok: true, not: s.n + " ekranı açıldı; ayarı oradan yapabilir." }; } return { ok: true }; }
+    let r = await h.run(girdi, s, ctx);
+    if (typeof r === "string") r = { metin: r };
+    if (r && r.talimat && !ctx.fromChat) { go("home"); await send(r.talimat, false, null, "🧠 " + s.n + (girdi ? ": " + girdi : "")); return { ok: true, metin: "Sohbette yürütüldü." }; }
+    return r;
+  }
+  return askSkill(s, girdi);
+}
+
+/* ---------- kullanım günlüğü (alışkanlık öğrenme, hız) ---------- */
+function logUse(k) { try { const d = new Date(); META.use = [...(META.use || []), { k, h: d.getHours(), g: d.getDay(), t: Date.now() }].slice(-400); saveMeta(); } catch {} }
+
+/* ---------- sohbetten yetenek kullanımı ---------- */
+let LAST_USER = "";
+TOOLS.push(
+  T("yetenek_calistir", "Titus'un 360+ yeteneğinden birini çalıştırır (ör. 'Derin araştırma modu', 'Monolog kütüphanesi', 'Dolandırıcılık dedektörü', 'Uygulama fabrikası', 'Hesap, tablo ve grafik çalışma alanı', 'Ev arama ajanı'...). Sistem mesajındaki İLGİLİ YETENEKLER listesine bak. Davranış modlarını açıp kapatmak için de kullanılır.", { ad: str("Yeteneğin adı (yaklaşık olabilir)"), girdi: str("Yeteneğe verilecek istek/ayrıntılar, kullanıcının sözleriyle") }, ["ad"],
+    async a => { await SKILLS_READY; const f = findSkill(a.ad); if (!f.s) return { hata: "Bu adla yetenek bulamadım", benzerler: f.alts }; const r = await runSkill(f.s, a.girdi || "", { fromChat: true }); return { yetenek: f.s.n, ...(r || {}) }; }),
+  T("yetenek_ara", "Titus'un yeteneklerinde arar (hangi yetenekler var, hangisi işe yarar).", { arama: str("Ne aranıyor") }, ["arama"],
+    async a => { await SKILLS_READY; return { yetenekler: allSkills().map(s => ({ s, v: skillScore(s, a.arama) })).filter(x => x.v > 0).sort((x, y) => y.v - x.v).slice(0, 8).map(x => `${x.s.n} (Faz ${x.s.faz}, ${x.s.durum}): ${x.s.a}`) }; }),
+  T("yetenekleri_ac", "Yetenekler ekranını açar (istenirse belirli bir yetenekte).", { ad: str("Yetenek adı (ops.)") }, [],
+    async a => { await SKILLS_READY; go("skills"); if (a.ad) { const f = findSkill(a.ad); if (f.s) showSkill(f.s.id); } return { ok: true }; })
+);
+TOOL_CORE.push("yetenek_calistir", "yetenek_ara");
+Object.assign(ACT_TR, { yetenek_calistir: "🧠 yetenek", yetenek_ara: "🔎 yetenekler", yetenekleri_ac: "🧠 yetenekler" });
+{
+  const basePick = pickTools;
+  pickTools = function (history) { const h = history.filter(m => m.role === "user").slice(-1)[0]; LAST_USER = h ? h.content : ""; return basePick(history); };
+}
+
+/* ---------- sistem mesajına: açık modlar, kişiselleştirme, ilgili yetenekler ---------- */
+{
+  const baseSys = systemPrompt;
+  systemPrompt = function () {
+    if (SET.guest) return guestPrompt();
+    let s = baseSys();
+    const modes = allSkills().filter(modeOn);
+    if (modes.length) s += "\n\nDAVRANIŞ KURALLARIN (her cevapta uygula):\n" + modes.map(m => "- " + m.a).join("\n");
+    const P = SET.pers || {};
+    if (P.ciddiyet || P.espri || P.uzunluk) s += `\nKİŞİLİK AYARI: ciddiyet ${P.ciddiyet ?? 5}/10, espri ${P.espri ?? 5}/10, cevap uzunluğu ${["çok kısa", "kısa", "orta", "uzun"][P.uzunluk ?? 1]}.`;
+    if (SET.hitap) s += `\nHİTAP: Kullanıcıya "${SET.hitap}" diye hitap et.`;
+    if (SET.nightMode || nightNow()) s += "\nGECE MODU: Fısıltı gibi sakin, çok kısa cevap ver.";
+    const vals = XL("values"), donts = XL("donts"), gl = XL("glossary"), ints = XL("interests");
+    if (vals.length) s += "\nÖNCELİKLERİ VE BAŞARI ÖLÇÜTLERİ: " + vals.map(v => v.metin || v.deger || JSON.stringify(v)).join("; ");
+    if (donts.length) s += "\nKESİNLİKLE YAPMA: " + donts.map(v => v.metin || JSON.stringify(v)).join("; ");
+    if (gl.length) s += "\nKİŞİSEL SÖZLÜK: " + gl.map(g => `${g.terim}: ${g.anlam}`).join("; ");
+    if (ints.length) s += "\nİLGİ ALANLARI: " + ints.map(g => g.alan || g.metin).join(", ");
+    if (SET.styleProfile) s += "\nBURAK ADINA YAZARKEN (mail, mesaj, gönderi) ŞU YAZIM TARZINI KULLAN: " + SET.styleProfile;
+    const asst = XL("assistants").find(a => a.id === SET.activeAsst);
+    if (asst) s += `\n\nÖZEL ASİSTAN MODU — "${asst.name}": ${asst.prompt}`;
+    const pm = XL("projectmem"); const lu = deacc(LAST_USER);
+    const hit = pm.filter(p => p.proje && lu.includes(deacc(p.proje).split(" ")[0]));
+    if (hit.length) s += "\nPROJE HAFIZASI: " + hit.map(p => `${p.proje}: ${p.bilgi}`).join(" | ");
+    const bad = XL("fb").filter(f => f.v < 0).slice(-3);
+    if (bad.length) s += "\nBEĞENİLMEYEN CEVAPLARIN (bunlara benzeme): " + bad.map(b => b.t.slice(0, 120)).join(" | ");
+    if (LAST_USER && SKILLS.length) {
+      const top = allSkills().filter(x => x.k !== "mode").map(x => ({ x, v: skillScore(x, LAST_USER) })).filter(o => o.v >= 1.5).sort((a, b) => b.v - a.v).slice(0, 5);
+      if (top.length) s += "\nİLGİLİ YETENEKLER (gerekirse yetenek_calistir ile kullan): " + top.map(o => `${o.x.n} — ${o.x.a.slice(0, 90)}`).join(" | ");
+    }
+    s += "\nYETENEK SİSTEMİ: 360'tan fazla yeteneğin var (araştırma, belge, çeviri, koçluk, oyun, finans, oyunculuk...). Kullanıcı bir yeteneğin adını söylerse ya da istek bir yeteneğe uyuyorsa yetenek_calistir kullan; emin değilsen yetenek_ara.";
+    return s;
+  };
+}
+function guestPrompt() {
+  return `Sen Titus'sun, kibar ve yardımsever bir asistansın. MİSAFİR MODU AÇIK: Şu an telefonu sahibi değil bir misafir kullanıyor. Sahibinin kişisel bilgilerini (hafıza, takvim, mail, notlar, kişiler, finans, konum) ASLA paylaşma, bu bilgilere erişen araçları kullanma. Genel sorulara, hava durumuna, internette aramaya, hesap ve zamanlayıcıya yardım edebilirsin. Türkçe ve kısa konuş. Şu an: ${localISO(new Date())}.`;
+}
+const nightNow = () => SET.nightAuto && (new Date().getHours() >= 23 || new Date().getHours() < 6);
+{
+  const basePick2 = pickTools;
+  pickTools = function (history) {
+    let l = basePick2(history);
+    if (SET.guest) l = l.filter(t => ["hava_durumu", "internette_ara", "zamanlayici_kur", "alarm_kur", "yetenek_ara"].includes(t.name));
+    const off = new Set(SET.toolOff || []); return l.filter(t => !off.has(t.name));
+  };
+}
+
+/* ---------- araç güvenliği: izinler, sesli parola, geri alma, eylem günlüğü ---------- */
+const CRITICAL = new Set(["mail_taslagi", "whatsapp_mesaj", "sms_hazirla", "ara", "ekranda_dokun", "ekrana_yaz", "bilgisayar", "bilgisayara_soyle", "audition_duzenle", "audition_ekle", "recast_teklif_maili", "akilli_ev"]);
+const READONLY = /^(takvim_listele|mail_ozeti|hava_durumu|internette_ara|bildirimleri_oku|kadro_sorgula|radar_kontrol|ekrani_gor|bilgi_ara|yetenek_ara|yol_suresi|harcama_ozeti|modeller|audition_oku|audition_yapi)$/;
+let UNDO = [];
+{
+  const baseRun = runTool;
+  runTool = async function (name, args) {
+    if ((SET.toolOff || []).includes(name)) return { hata: "Bu araç İzin sistemi'nden kapatılmış (Yetenekler → İzin sistemi)." };
+    if (SET.passphrase && CRITICAL.has(name)) {
+      const p = await prompt2("Sesli parola / ikinci onay: parolanı yaz (" + (ACT_TR[name] || name) + ")");
+      if (!p || trLower(p.trim()) !== trLower(SET.passphrase.trim())) return { ok: false, iptal: true, not: "Parola doğrulanmadı; işlem yapılmadı." };
+    }
+    const mut = !READONLY.test(name) && name !== "yetenek_calistir";
+    if (mut) { UNDO.push({ at: Date.now(), name, snap: JSON.stringify(S) }); UNDO = UNDO.slice(-6); }
+    const t0 = Date.now(); const res = await baseRun(name, args);
+    try { const L = XL("actlog"); L.unshift({ at: localISO(new Date()), name, args: JSON.stringify(args || {}).slice(0, 160), ok: !(res && (res.hata || res.iptal)), ms: Date.now() - t0 }); X().actlog = L.slice(0, 150); } catch {}
+    if (res && res.hata) { try { logIssue("araç", `${name}: ${res.hata}`); } catch {} }
+    return res;
+  };
+}
+function undoLast() {
+  const u = UNDO.pop(); if (!u) return { hata: "Geri alınacak işlem yok." };
+  const keepLog = X().actlog; S = Object.assign(EMPTY(), JSON.parse(u.snap)); X().actlog = keepLog; save();
+  const ext = /mail|whatsapp|sms|ara$|bilgisayar|audition|recast|akilli/.test(u.name);
+  return { ok: true, geri_alindi: ACT_TR[u.name] || u.name, not: ext ? "Titus içindeki kayıt geri alındı; ama dışarıda yapılan iş (taslak, mesaj ekranı, tablo) varsa onu elle kontrol et." : "Geri alındı." };
+}
+TOOLS.push(T("geri_al", "Titus'un yaptığı son işlemi geri alır (hatırlatıcı, görev, not, harcama vb.).", {}, [], () => undoLast()));
+Object.assign(ACT_TR, { geri_al: "↩️ geri al" });
+TOOL_GROUPS.push([/geri al|iptal et|vazgeç|yanlış oldu|sil onu/, ["geri_al"]]);
+
+/* ---------- ağ: veri maskeleme + kota sayacı ---------- */
+const MASKS = [[/\bTR\d{2}(?:\s?\d{4}){5}\s?\d{2}\b/gi, "[IBAN]"], [/\b(?:\d[ -]?){15}\d\b/g, "[KART]"], [/\b[1-9]\d{10}\b/g, "[TCKN]"]];
+const maskText = t => MASKS.reduce((s, [r, v]) => s.replace(r, v), String(t));
+{
+  const baseHttp = httpJson;
+  httpJson = async function (url, body, headers) {
+    if (/generativelanguage\.googleapis/.test(url)) {
+      const k = today(); META.q = META.q && META.q.d === k ? META.q : { d: k, n: 0, err: 0 }; META.q.n++; saveMeta();
+      if (SET.mask !== false && body && body.contents) {
+        for (const c of body.contents) for (const p of c.parts || []) if (typeof p.text === "string") p.text = maskText(p.text);
+      }
+      try { return await baseHttp(url, body, headers); } catch (e) { if (e.status === 429) { META.q.err++; saveMeta(); } throw e; }
+    }
+    return baseHttp(url, body, headers);
+  };
+}
+
+/* ---------- akıllı önbellek: aynı soruya hızlı cevap ---------- */
+const GCACHE = new Map();
+{
+  const basePG = plainGemini;
+  plainGemini = async function (prompt, parts = [], tools = null, opt = {}) {
+    const cacheable = SET.cache !== false && (!parts || !parts.length) && String(prompt).length < 4000 && !opt.nocache;
+    const key = cacheable ? JSON.stringify([prompt, tools, opt.json, opt.model]) : null;
+    if (key && GCACHE.has(key)) { const c = GCACHE.get(key); if (Date.now() - c.t < (tools ? 30 : 10) * 6e4) return c.v; GCACHE.delete(key); }
+    const v = await basePG(prompt, parts, tools, opt);
+    if (key && v) { GCACHE.set(key, { t: Date.now(), v }); if (GCACHE.size > 60) GCACHE.delete(GCACHE.keys().next().value); }
+    return v;
+  };
+}
+
+/* ---------- internete göre mod: zayıf bağlantıda hafif model ---------- */
+const slowNet = () => { const c = navigator.connection; return SET.netMode === "hafif" || (SET.netMode !== "normal" && c && /(^|-)2g|3g/.test(c.effectiveType || "")) || batSave(); };
+{
+  const baseAsk = askGemini;
+  askGemini = async function (history, onAct, attach) {
+    if (!slowNet()) return baseAsk(history, onAct, attach);
+    const m = SET.geminiModel, sp = SET.speed; SET.geminiModel = "gemini-3.5-flash-lite"; SET.speed = "hizli";
+    try { return await baseAsk(history, onAct, attach); } finally { if (SET.geminiModel === "gemini-3.5-flash-lite") SET.geminiModel = m; SET.speed = sp; }
+  };
+}
+
+/* ---------- pil dostu mod ---------- */
+let BAT = { level: 1, charging: true };
+try { navigator.getBattery && navigator.getBattery().then(b => { const u = () => { BAT = { level: b.level, charging: b.charging }; }; u(); b.onlevelchange = u; b.onchargingchange = u; }); } catch {}
+const batSave = () => SET.battery === "acik" || (SET.battery !== "kapali" && !BAT.charging && BAT.level < 0.2);
+let PULL_N = 0;
+{
+  const baseScript = script;
+  script = async function (action, data = {}) {
+    if (action === "phPull" && batSave() && (PULL_N++ % 4)) return { ok: true, cmds: [] };
+    const r = await baseScript(action, data);
+    if (action === "phPull" && r && Array.isArray(r.cmds)) {
+      const ring = r.cmds.filter(c => c.kind === "ring"); r.cmds = r.cmds.filter(c => c.kind !== "ring");
+      if (ring.length) ringPhone();
+    }
+    return r;
+  };
+}
+function ringPhone() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)(); const g = ac.createGain(); g.gain.value = 0.9; g.connect(ac.destination);
+    for (let i = 0; i < 24; i++) { const o = ac.createOscillator(); o.type = "square"; o.frequency.value = i % 2 ? 880 : 1320; o.connect(g); o.start(ac.currentTime + i * 0.5); o.stop(ac.currentTime + i * 0.5 + 0.35); }
+    setTimeout(() => ac.close(), 13000);
+  } catch {}
+  try { navigator.vibrate && navigator.vibrate([600, 300, 600, 300, 600, 300, 600]); } catch {}
+  toast("📱 Bilgisayardan telefon çaldırıldı — buradayım!", 8000);
+}
+
+/* ---------- telaffuz sözlüğü (konuşurken) ---------- */
+{
+  const baseSpeak = speak;
+  speak = function (text, force) {
+    let t = String(text || "");
+    for (const p of XL("pronounce").filter(p => p.tur !== "duzelt" && p.yazi && p.okunus)) t = t.replace(new RegExp(p.yazi.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), p.okunus);
+    if (SET.hitap) t = t.replace(/\befendim\b/g, SET.hitap);
+    return baseSpeak(t, force);
+  };
+}
+
+/* ---------- sohbet katmanı: dinleme modu, sesli menü, internetsiz kuyruk, düzeltmeler, geçmiş, hız ---------- */
+const LISTEN = { on: false, buf: [] };
+const VOICE_NAV = [[/^(ayarlar(ı)? aç|ayarlara git)$/, "set"], [/^(plan(a|'a)? git|planı aç)$/, "plan"], [/^(hayat(a|'a)? git|hayatı aç)$/, "life"], [/^(kariyer(e|'e)? git|kariyeri aç)$/, "work"], [/^(stüdyo(ya|'ya)? git|stüdyoyu aç)$/, "studio"], [/^(yetenekler(i)? aç|yeteneklere git)$/, "skills"], [/^(ana ?sayfa(ya)? (git|dön)|sohbete dön)$/, "home"]];
+{
+  const baseSend = send;
+  send = async function (text, byVoice = false, attach = null, label = null) {
+    let t = String(text || "").trim(); if (!t) return;
+    if (byVoice) for (const p of XL("pronounce").filter(p => p.tur === "duzelt" && p.yazi && p.okunus)) t = t.replace(new RegExp("\\b" + p.yazi.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "gi"), p.okunus);
+    const low = trLower(t).replace(/[.!?]+$/, "");
+    for (const [rx, v] of VOICE_NAV) if (rx.test(low)) { go(v); if (v === "skills") renderSkills(); toast("→ " + v); return; }
+    if (/^geri al$/.test(low)) { const r = undoLast(); bubble("assistant", r.hata || ("↩️ " + r.geri_alindi + " geri alındı. " + (r.not || ""))); return; }
+    if (LISTEN.on && !t.startsWith("__")) {
+      if (/^(bitti|tamam bu kadar|özetle|dinlemeyi bitir)$/.test(low)) { LISTEN.on = false; const all = LISTEN.buf.join("\n"); LISTEN.buf = []; return baseSend(`Ben konuşurken araya girmeden dinledin. Şimdi söylediklerimin hepsini özetle: ana fikirler, kararlar, yapılacaklar. Yapılacakları istersem eklemek için sor.\n\nSÖYLEDİKLERİM:\n${all}`, byVoice, null, "👂 Dinleme özeti"); }
+      LISTEN.buf.push(t); bubble("user", t); bubble("sys", "👂 dinliyorum… (bitince 'bitti' de)"); return;
+    }
+    if (!navigator.onLine && !attach && !t.startsWith("__")) {
+      let q = null; try { q = await quickCommand(t); } catch {}
+      if (!q) { META.offq = [...(META.offq || []), { t, at: Date.now() }].slice(-30); saveMeta(); bubble("user", t); bubble("assistant", "İnternet yok; bunu sıraya aldım, bağlantı gelince hemen yapacağım."); return; }
+    }
+    if (!t.startsWith("__")) { META.hist = [t, ...(META.hist || []).filter(x => x !== t)].slice(0, 80); saveMeta(); logUse("sohbet"); }
+    const t0 = Date.now(); let ok = true;
+    try { return await baseSend(t, byVoice, attach, label); }
+    catch (e) { ok = false; throw e; }
+    finally {
+      try { META.perf = [...(META.perf || []), { at: Date.now(), ms: Date.now() - t0, ok, q: t.slice(0, 50) }].slice(-200); saveMeta(); } catch {}
+      if (SET.liveNotes) liveNoteTick();
+    }
+  };
+}
+window.addEventListener("online", async () => {
+  const q = META.offq || []; if (!q.length) return; META.offq = []; saveMeta();
+  bubble("sys", `🌐 Bağlantı geldi; sıradaki ${q.length} işi yapıyorum`);
+  for (const x of q) { while (busy) await sleep(800); try { await send(x.t); } catch {} }
+});
+let LN_N = 0;
+async function liveNoteTick() {
+  if (++LN_N % 6) return;
+  try { const conv = CHAT.slice(-12).map(m => (m.role === "user" ? "Burak: " : "Titus: ") + m.content).join("\n"); const t = await plainGemini("Bu konuşmadan kalıcı olarak not edilmeye değer önemli noktaları (karar, tarih, isim, yapılacak) en fazla 4 kısa madde olarak çıkar. Önemli bir şey yoksa sadece YOK yaz.\n\n" + conv, [], null, { max: 300, temperature: 0.2, nocache: true }); if (t && !/^\s*YOK/i.test(t)) A.addNote({ text: "🗒 Sohbet notu: " + t, project: "Sohbet notları" }); } catch {}
+}
+
+/* ---------- beğen / beğenme ---------- */
+{
+  const baseBubble = bubble;
+  bubble = function (role, text) {
+    const s = baseBubble(role, text);
+    if (role === "assistant" && SET.feedback !== false && text && text.length > 20) {
+      const box = document.createElement("span"); box.className = "fbk"; box.innerHTML = `<button data-fb="1">👍</button><button data-fb="-1">👎</button>`;
+      box.dataset.t = String(text).slice(0, 300); s.parentElement.appendChild(box);
+    }
+    return s;
+  };
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-fb]"); if (!b) return;
+  const box = b.parentElement; const v = +b.dataset.fb; XL("fb").push({ at: localISO(new Date()), v, t: box.dataset.t }); X().fb = XL("fb").slice(-80); save();
+  if (v < 0) { try { logIssue("beğenilmedi", box.dataset.t.slice(0, 120)); } catch {} }
+  box.innerHTML = v > 0 ? "👍 teşekkürler" : "👎 not ettim, düzelteceğim"; box.classList.add("done");
+});
+
+/* ---------- genel kayıt listeleri (Gemini ile doğal dilde yönetilir) ---------- */
+const COLS = {
+  books: ["Kitaplar", "ad, yazar, durum (okunacak/okunuyor/bitti), kaldigi_yer, ozet"],
+  items: ["Eşyalar", "esya, yer"],
+  subs: ["Abonelikler", "ad, tutar, yenilenme (YYYY-MM-DD), periyot (aylık/yıllık)"],
+  payments: ["Alınacak ödemeler", "kimden, tutar, is, son_tarih (YYYY-MM-DD), durum (bekliyor/alındı)"],
+  watchlist: ["İzleme/okuma listesi", "ad, tur (film/dizi/kitap), durum (izlenecek/izlendi), puan, not"],
+  ideas: ["Fikir defteri", "fikir, kategori, oncelik (1-5)"],
+  journal: ["Günlük", "tarih, tur (oyunculuk/genel), metin"],
+  lesson: ["Günün dersleri", "tarih, ders"],
+  glossary: ["Kişisel sözlük", "terim, anlam"],
+  pronounce: ["Telaffuz ve düzeltme listesi", "yazi, okunus, tur (okunus=Titus böyle okusun / duzelt=yanlış duyulan kelime yazi, doğrusu okunus)"],
+  donts: ["Yapma listesi", "metin"],
+  values: ["Öncelikler ve başarı ölçütleri", "metin"],
+  interests: ["İlgi alanları", "alan"],
+  appointments: ["Düzenli randevular", "ne, tarih (YYYY-MM-DDTHH:mm), tekrar (none/weekly/monthly)"],
+  chores: ["Ev işleri", "is, gun (Pazartesi..Pazar), sorumlu"],
+  countdown: ["Geri sayımlar", "ne, tarih (YYYY-MM-DD)"],
+  split: ["Borç–alacak", "kisi, tutar (pozitif=bana borçlu, negatif=ben borçluyum), aciklama, tarih"],
+  savings: ["Birikim hedefleri", "hedef, tutar, biriken, son_tarih, meydan_okuma"],
+  vault: ["Belge kasası", "belge, tur (garanti/sözleşme/fiş/fatura), tarih, bitis (YYYY-MM-DD), dosya, not — KİMLİK/KART NUMARASI SAKLAMA"],
+  tax: ["Vergi ve beyan hatırlatmaları", "ne, tarih (YYYY-MM-DD), not"],
+  premium: ["Prim günleri", "ne, gun (ayın günü), not"],
+  teamtasks: ["Ekip görevleri", "kisi, is, son_tarih, durum (açık/bitti)"],
+  briefarchive: ["Brief arşivi", "proje, musteri, tarih, rol_tipleri, ozet"],
+  decisions: ["Kararlar", "karar, secenekler, gerekce, tarih, sonuc (sonradan)"],
+  crm: ["Kişi kartları", "ad, iliski (müşteri/arkadaş/aile/iş), son_konusma, notlar, takip (YYYY-MM-DD)"],
+  projectmem: ["Proje hafızası", "proje, bilgi"],
+  voices: ["Karakter ses bankası", "karakter, ses (Charon/Kore/Puck/Fenrir/Aoede/Leda/Orus/Zephyr), not"],
+  reels: ["Showreel listesi", "sahne, proje, tarih, eklendi (evet/hayır)"],
+  appts: ["Randevular", "ne, tarih"]
+};
+async function colRun(key, g, opt = {}) {
+  const [title, fields] = COLS[key]; const L = XL(key);
+  if (!g) return { liste: title, kayitlar: L.slice(0, 40) };
+  const j = await geminiJSON(`"${title}" listesini yönetiyorsun. Alanlar: ${fields}.\nMevcut kayıtlar: ${JSON.stringify(L.slice(0, 80))}\nŞu an: ${localISO(new Date())}.\nKullanıcı dedi ki: "${g}"\nNe yapılmalı? JSON: {"islem":"ekle|guncelle|sil|cevap","kayit":{alanlar},"id":"guncelle/sil için kaydın id'si","cevap":"kullanıcıya kısa Türkçe cevap (listeden soru sorduysa cevabı burada ver)","hatirlat":"YYYY-MM-DDTHH:mm ya da boş","hatirlat_metin":"","tekrar":"none|daily|weekly|monthly"}`);
+  let rec = null;
+  if (j.islem === "ekle" && j.kayit) { rec = { id: uid(), ...j.kayit, at: localISO(new Date()) }; L.unshift(rec); }
+  else if (j.islem === "guncelle") { rec = L.find(x => x.id === j.id); if (rec) Object.assign(rec, j.kayit || {}); }
+  else if (j.islem === "sil") { const i = L.findIndex(x => x.id === j.id); if (i >= 0) L.splice(i, 1); }
+  if (j.hatirlat && parseDate(j.hatirlat)) A.addReminder({ text: j.hatirlat_metin || `${title}: ${g}`, due: j.hatirlat.length === 10 ? j.hatirlat + "T10:00" : j.hatirlat, repeat: REP[j.tekrar] !== undefined ? j.tekrar : "none" });
+  X()[key] = L.slice(0, 300); save();
+  if (opt.after && rec) await opt.after(rec);
+  return { ok: true, islem: j.islem, cevap: j.cevap || "Tamam.", kayit: rec || undefined };
+}
+const recLine = r => Object.entries(r).filter(([k]) => !["id", "at"].includes(k)).map(([k, v]) => `<b>${esc(k)}</b>: ${esc(typeof v === "object" ? JSON.stringify(v) : v)}`).join(" · ");
+function colUI(key) {
+  const [title] = COLS[key]; const L = XL(key);
+  let extra = "";
+  if (key === "split") { const by = {}; L.forEach(r => { by[r.kisi] = (by[r.kisi] || 0) + (Number(r.tutar) || 0); }); extra = Object.entries(by).map(([k, v]) => `<div class="hint">${esc(k)}: ${v >= 0 ? "sana " + money(v) + " borçlu" : "sen " + money(-v) + " borçlusun"}</div>`).join(""); }
+  if (key === "countdown") extra = L.map(r => { const d = Math.ceil((parseDate(r.tarih) - new Date()) / 864e5); return `<div class="hint">⏳ ${esc(r.ne)}: ${isNaN(d) ? "?" : d >= 0 ? d + " gün kaldı" : "geçti"}</div>`; }).join("");
+  if (key === "savings") extra = L.map(r => { const p = Math.min(100, Math.round((Number(r.biriken) || 0) / (Number(r.tutar) || 1) * 100)); return `<div class="hint">💰 ${esc(r.hedef)}: %${p}</div>`; }).join("");
+  return `${extra}<div class="sklist">${L.length ? L.slice(0, 60).map(r => `<div class="item"><div class="t"><div class="meta" style="color:var(--fg)">${recLine(r)}</div></div><button class="x" data-coldel="${key}:${r.id}">✕</button></div>`).join("") : `<div class="empty">${esc(title)}: henüz kayıt yok. Aşağıya yaz ya da Titus'a söyle.</div>`}</div>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-coldel]"); if (!b) return;
+  const [k, id] = b.dataset.coldel.split(":"); X()[k] = XL(k).filter(r => r.id !== id); save(); refreshSkill();
+});
+const colFn = (key, opt) => ({ ui: () => colUI(key), run: g => colRun(key, g, opt), input: "Ekle, güncelle ya da sor (ör. doğal dille)" });
+Object.assign(FN, {
+  books: colFn("books"), items: colFn("items"), subs: colFn("subs"), payments: colFn("payments"), watchlist: colFn("watchlist"), ideas: colFn("ideas"),
+  journal: colFn("journal"), glossary: colFn("glossary"), pronounce: colFn("pronounce"), donts: colFn("donts"), values: colFn("values"),
+  appointments: colFn("appointments"), chores: colFn("chores"), countdown: colFn("countdown"), split: colFn("split"), savings: colFn("savings"),
+  tax: colFn("tax"), premium: colFn("premium"), teamtasks: colFn("teamtasks"), briefarchive: colFn("briefarchive"), crm: colFn("crm"), projectmem: colFn("projectmem"), voices: colFn("voices")
+});
+FN.lesson = { ...colFn("lesson"), run: async g => { if (!META.lessonRem) { A.addReminder({ text: "📘 Günün dersi ne oldu? Titus'a söyle.", due: today() + "T22:30", repeat: "daily" }); META.lessonRem = 1; saveMeta(); } return colRun("lesson", g); } };
+FN.decision = { ...colFn("decisions"), run: async g => {
+  if (!g) return colRun("decisions", "");
+  const an = await plainGemini(`Karar asistanısın. ${userCtx()}\nKarar: ${g}\nSeçenekleri karşılaştır: artılar/eksiler tablosu (metin olarak), riskler, kullanıcının hedeflerine uygunluk, net bir öneri ve neden. Kısa ve net.`, [], null, { max: 1600 });
+  const r = await colRun("decisions", "ekle: karar=" + g.slice(0, 120) + "; gerekce=" + an.slice(0, 300));
+  A.addReminder({ text: "🧭 Karar takibi: \"" + g.slice(0, 60) + "\" nasıl sonuçlandı?", due: ymd(new Date(Date.now() + 30 * 864e5)) + "T19:00" });
+  return { metin: an, kayit: r.cevap, not: "30 gün sonra sonucunu soracağım." };
+} };
+FN.vault = { ...colFn("vault"), input: "Belge hakkında yaz ya da 📎 fotoğraf ekle (kimlik/kart numarası saklanmaz)", run: async (g, s) => {
+  const parts = attParts();
+  if (parts.length) {
+    const j = await geminiJSON(`Bu bir belge/fiş/fatura/garanti fotoğrafı. Bilgileri çıkar. KİMLİK, KART, HESAP NUMARALARINI ASLA YAZMA. JSON: {"belge":"","tur":"garanti|sözleşme|fiş|fatura|diğer","tarih":"YYYY-MM-DD","bitis":"YYYY-MM-DD ya da boş","tutar":"","not":""}`, parts);
+    let dosya = ""; try { const a = SK_ATT[0] || (CTX_ATT && CTX_ATT.items[0]); if (a && a.kind === "image") { const r = await saveFile(await (await fetch("data:image/jpeg;base64," + a.data)).blob(), fname("belge-" + (j.belge || "kasa"), "jpg"), "pictures"); dosya = r.yer; } } catch {}
+    const rec = { id: uid(), ...j, dosya, at: localISO(new Date()) }; XL("vault").unshift(rec); save();
+    if (j.bitis && parseDate(j.bitis)) A.addReminder({ text: `📁 ${j.belge} bitiyor (${j.bitis})`, due: ymd(new Date(parseDate(j.bitis) - 14 * 864e5)) + "T10:00" });
+    return { ok: true, kaydedildi: rec, not: j.bitis ? "Bitişten 2 hafta önce hatırlatacağım." : "" };
+  }
+  return colRun("vault", maskText(g));
+} };
+FN.archive = { ui: () => timelineHTML(), input: "Ne zaman ne oldu? diye sor", run: async g => {
+  const tl = timeline().slice(0, 250).map(e => `${e.d} ${e.k}: ${e.t}`).join("\n");
+  return { metin: await plainGemini(`Kullanıcının hayat arşivi (zaman çizelgesi):\n${tl}\n\nSoru: ${g || "Son ayların kısa özetini çıkar"}\nSadece bu kayıtlara dayanarak Türkçe cevap ver; kayıtta yoksa söyle.`, [], null, { max: 1200 }) };
+} };
+function timeline() {
+  const ev = [];
+  (S.auditions || []).forEach(a => ev.push({ d: (a.date || "").slice(0, 10), k: "🎭 " + a.type, t: a.title }));
+  (S.applications || []).forEach(a => ev.push({ d: a.date || "", k: "📨 başvuru", t: `${a.project} ${a.role || ""} (${a.status})` }));
+  (S.notes || []).forEach(n => ev.push({ d: (n.created || "").slice(0, 10), k: "📝 not", t: n.text.slice(0, 90) }));
+  (S.goals || []).forEach(g => ev.push({ d: g.week || "", k: "🎯 hedef", t: g.text }));
+  (S.dates || []).forEach(g => ev.push({ d: g.md || "", k: "🎂 " + g.kind, t: g.name }));
+  XL("journal").forEach(j => ev.push({ d: j.tarih || (j.at || "").slice(0, 10), k: "📔 günlük", t: (j.metin || "").slice(0, 90) }));
+  XL("decisions").forEach(j => ev.push({ d: (j.at || "").slice(0, 10), k: "🧭 karar", t: j.karar }));
+  (S.memory || []).forEach(m => m.at && ev.push({ d: m.at.slice(0, 10), k: "🧠 hafıza", t: m.text }));
+  return ev.filter(e => e.d).sort((a, b) => b.d.localeCompare(a.d));
+}
+const timelineHTML = () => `<div class="sklist">${timeline().slice(0, 80).map(e => `<div class="item"><div class="t"><div class="h">${esc(e.k)} · ${esc(e.t)}</div><div class="meta">${esc(e.d)}</div></div></div>`).join("") || '<div class="empty">Henüz kayıt yok.</div>'}</div>`;
+
+/* ---------- ayar tipi yetenekler ---------- */
+function setFn(key, label, type, opts, after) {
+  return {
+    ui: () => {
+      const v = SET[key];
+      if (type === "bool") return `<label class="tg"><input type="checkbox" data-sk="${key}" ${v ? "checked" : ""}> ${esc(label)}</label>`;
+      if (type === "choice") return `<div class="lbl">${esc(label)}</div><select data-sk="${key}">${opts.map(o => `<option value="${o[0]}" ${String(v ?? opts[0][0]) === o[0] ? "selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`;
+      return `<div class="lbl">${esc(label)}</div><input data-sk="${key}" value="${esc(v || "")}" placeholder="${esc(opts || "")}">`;
+    },
+    run: async g => {
+      const l = trLower(g);
+      if (type === "bool") SET[key] = !/kapat|kapa|iptal|istemiyorum|durdur/.test(l);
+      else if (type === "choice") {
+        const offv = o => /^(kapali|0|normal|kirmizi|otomatik|600)$/.test(o[0]);
+        let o = opts.find(o => l.includes(trLower(o[1]).split(" ")[0]) || l.split(/\s+/).includes(o[0])) || opts.find(o => /\d/.test(o[0]) && l.match(/\d+/) && o[0] === l.match(/\d+/)[0]);
+        if (!o && /kapat|kapa\b|iptal|normale/.test(l)) o = opts.find(offv);
+        if (!o && (!l || /aç|etkin|başlat|evet|aktif/.test(l))) o = opts.find(x => !offv(x)) || opts[1];
+        if (o) SET[key] = o[0]; else return { hata: "Seçenekler: " + opts.map(o => o[1]).join(", ") };
+      }
+      else { SET[key] = g.replace(/^(.*?)(olsun|yap|ayarla)$/i, "$1").trim(); }
+      saveSet(); if (after) after(); applyLook();
+      return { ok: true, ayar: label, deger: type === "bool" ? (SET[key] ? "açık" : "kapalı") : SET[key] };
+    }
+  };
+}
+document.addEventListener("change", e => {
+  const el = e.target.closest("[data-sk]"); if (!el) return;
+  const k = el.dataset.sk; SET[k] = el.type === "checkbox" ? el.checked : el.type === "range" || el.type === "number" ? Number(el.value) : el.value; saveSet(); applyLook();
+  if (k === "face") drawFace(); if (k === "breaks") setupBreaks(); toast("✓ Kaydedildi");
+});
+Object.assign(FN, {
+  nightmode: setFn("nightMode", "Gece modu (fısıltı ses, karanlık ekran, kısa cevap)", "bool"),
+  bigtext: setFn("bigText", "Büyük yazı ve yüksek kontrast", "bool"),
+  onehand: setFn("oneHand", "Tek elle kullanım (içerik ekranın altına)", "bool"),
+  theme: setFn("theme", "Tema rengi", "choice", [["kirmizi", "Kırmızı"], ["mavi", "Mavi"], ["yesil", "Yeşil"], ["mor", "Mor"], ["altin", "Altın"]]),
+  dysfont: setFn("dysFont", "Okuma dostu yazı tipi (geniş aralık)", "bool"),
+  guest: setFn("guest", "Misafir modu (kişisel bilgi vermez)", "bool"),
+  battery: setFn("battery", "Pil dostu mod", "choice", [["otomatik", "Otomatik (%20 altında)"], ["acik", "Hep açık"], ["kapali", "Kapalı"]]),
+  netmode: setFn("netMode", "İnternete göre mod", "choice", [["otomatik", "Otomatik"], ["hafif", "Hep hafif"], ["normal", "Hep normal"]]),
+  readmode: setFn("speakReplies", "Cevapları sesli oku (okuma modu)", "bool"),
+  noise: setFn("noiseMode", "Gürültülü ortam modu (daha güçlü ses tanıma, daha uzun sessizlik payı)", "bool", null, () => { SET.liveSilence = SET.noiseMode ? 900 : 600; if (SET.noiseMode && SET.groqKey) SET.stt = "groq"; saveSet(); }),
+  interrupt: setFn("liveSilence", "Söz kesme hassasiyeti (canlı sohbette susunca kaç ms sonra cevap versin)", "choice", [["400", "Çok hızlı (400 ms)"], ["600", "Normal (600 ms)"], ["900", "Sabırlı (900 ms)"], ["1300", "Çok sabırlı (1300 ms)"]]),
+  address: setFn("hitap", "Hitap (ör. Burak, patron, efendim)", "text", "Burak"),
+  passphrase: setFn("passphrase", "Kritik işlemlerden önce sorulacak parola (boş = kapalı)", "text", "ör. kırmızı kartal"),
+  mask: setFn("mask", "Buluta giderken IBAN/kart/TC numaralarını gizle", "bool"),
+  feedback: setFn("feedback", "Cevaplarda 👍/👎 düğmeleri", "bool"),
+  livenotes: setFn("liveNotes", "Sohbetten otomatik not çıkar", "bool"),
+  shake: setFn("shake", "Telefonu sallayınca sıradaki hatırlatıcıyı oku", "bool"),
+  headset: setFn("headset", "Kulaklık düğmesiyle Titus'u dinlet", "bool"),
+  face: setFn("face", "Konuşan Titus yüzü", "bool"),
+  rain: setFn("rainAlert", "Yağmur başlamadan haber ver", "bool"),
+  breaks: setFn("breaks", "Mola hatırlatıcı (dakika, 0 = kapalı)", "choice", [["0", "Kapalı"], ["30", "30 dk"], ["45", "45 dk"], ["60", "60 dk"], ["90", "90 dk"]]),
+  dailyword: setFn("dailyWord", "Her gün bir kelime (İngilizce/oyunculuk terimi) bildirimi", "bool"),
+  notifauto: { ...setFn("notifAuto", "Banka bildirimlerinden otomatik harcama ekle", "bool"), run: async () => notifAutoRun(true) },
+  reelremind: { ...setFn("reelRemind", "Yeni çekim bitince showreel güncelleme hatırlat", "bool"), run: async () => { SET.reelRemind = true; saveSet(); return reelScan(); } },
+  volume: { ui: () => `<div class="lbl">Ses yüksekliği ${Math.round((SET.ttsVol ?? 1) * 100)}%</div><input type="range" min="0.2" max="1" step="0.05" value="${SET.ttsVol ?? 1}" data-sk="ttsVol"><label class="tg"><input type="checkbox" data-sk="autoVol" ${SET.autoVol ? "checked" : ""}> Ortama göre ayarla (gece kısık)</label>`, run: async g => { const n = Number((g.match(/\d+/) || [])[0]); if (n) SET.ttsVol = Math.min(1, Math.max(0.2, n / 100)); else SET.autoVol = true; saveSet(); return { ok: true, ses: SET.ttsVol, otomatik: !!SET.autoVol }; } },
+  personality: { ui: () => { const P = SET.pers || {}; const r = (k, l, mx, d) => `<div class="lbl">${l}: <span>${P[k] ?? d}</span></div><input type="range" min="0" max="${mx}" value="${P[k] ?? d}" data-pers="${k}">`; return r("ciddiyet", "Ciddiyet", 10, 5) + r("espri", "Espri", 10, 5) + r("uzunluk", "Cevap uzunluğu (0 çok kısa – 3 uzun)", 3, 1); },
+    run: async g => { const j = await geminiJSON(`Kullanıcı asistanın kişiliğini ayarlıyor: "${g}". Mevcut: ${JSON.stringify(SET.pers || {})}. JSON: {"ciddiyet":0-10,"espri":0-10,"uzunluk":0-3}`); SET.pers = { ...(SET.pers || {}), ...j }; saveSet(); return { ok: true, kisilik: SET.pers }; } },
+  profiles: { ui: () => `<div class="sklist">${XL("profiles").map(p => `<div class="item"><div class="t"><div class="h">${esc(p.name)}</div></div><button class="btn ghost" data-prof="${p.id}">Uygula</button><button class="x" data-coldel="profiles:${p.id}">✕</button></div>`).join("") || '<div class="empty">Kayıtlı profil yok.</div>'}</div><div class="row"><input id="profName" placeholder="Profil adı (ör. İş, Ev)"><button class="btn" id="profSave">Şu anki ayarları kaydet</button></div>`,
+    run: async g => { const p = XL("profiles").find(p => deacc(g).includes(deacc(p.name))); if (!p) return { hata: "Profil bulunamadı", profiller: XL("profiles").map(p => p.name) }; applyProfile(p); return { ok: true, profil: p.name }; } },
+  permissions: { ui: () => `<div class="hint">İşaretini kaldırdığın araçları Titus kullanamaz.</div><div class="permgrid">${TOOLS.map(t => `<label class="tg"><input type="checkbox" data-perm="${t.name}" ${(SET.toolOff || []).includes(t.name) ? "" : "checked"}> ${esc(ACT_TR[t.name] || t.name)}</label>`).join("")}</div>` },
+  a11y: { run: async () => { a11yPass(); return { ok: true, not: "Tüm düğmelere ekran okuyucu etiketleri eklendi." }; } },
+  tablet: { ui: () => `<div class="hint">Geniş ekranda (tablet/katlanır/yatay) bölümler otomatik iki sütun olur.</div>` },
+  notifbar: { ui: () => `<div class="hint">Uyandırma kelimesi açıkken Titus kalıcı bildirimde durur; bildirime dokununca açılır. Ayarlar → Uyandırma.</div>` },
+  widget: { run: async () => { try { updateWidget(); } catch {} return { ok: true, not: "Ana ekran widget'ı güncellendi (ana ekranda boş yere uzun bas → Widget'lar → Titus)." }; } },
+  voicemenu: { ui: () => `<div class="hint">Söyleyebileceklerin: "ayarları aç", "plan'a git", "hayata git", "kariyere git", "stüdyoya git", "yetenekleri aç", "ana sayfaya dön", "geri al".</div>` },
+  listenmode: { run: async () => { LISTEN.on = true; LISTEN.buf = []; go("home"); return { ok: true, not: "Dinleme modu açık: araya girmeden dinleyeceğim; bitince 'bitti' de, özetleyeyim." }; } }
+});
+document.addEventListener("input", e => {
+  const el = e.target.closest("[data-pers]"); if (!el) return;
+  SET.pers = { ...(SET.pers || {}), [el.dataset.pers]: Number(el.value) }; saveSet(); const sp = el.previousElementSibling && el.previousElementSibling.querySelector("span"); if (sp) sp.textContent = el.value;
+});
+document.addEventListener("change", e => {
+  const el = e.target.closest("[data-perm]"); if (!el) return;
+  const off = new Set(SET.toolOff || []); el.checked ? off.delete(el.dataset.perm) : off.add(el.dataset.perm); SET.toolOff = [...off]; saveSet();
+});
+const PROF_KEYS = ["personality", "pers", "speakReplies", "theme", "nightMode", "modes", "hitap", "battery", "netMode", "activeAsst", "bigText", "feedback", "liveNotes"];
+function applyProfile(p) { for (const k of PROF_KEYS) if (k in p.set) SET[k] = p.set[k]; saveSet(); applyLook(); toast("✓ Profil: " + p.name); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("#profSave,[data-prof]"); if (!t) return;
+  if (t.id === "profSave") { const n = $("#profName").value.trim(); if (!n) return toast("Profil adı yaz"); const set = {}; PROF_KEYS.forEach(k => { if (SET[k] !== undefined) set[k] = JSON.parse(JSON.stringify(SET[k])); }); XL("profiles").push({ id: uid(), name: n, set }); save(); refreshSkill(); }
+  else { const p = XL("profiles").find(p => p.id === t.dataset.prof); if (p) applyProfile(p); }
+});
+
+/* ---------- görünüm ---------- */
+const THEMES = { kirmizi: ["#ff2a3d", "255,42,61"], mavi: ["#2ab3ff", "42,179,255"], yesil: ["#29e07a", "41,224,122"], mor: ["#a46bff", "164,107,255"], altin: ["#ffb52a", "255,181,42"] };
+function applyLook() {
+  const b = document.body; if (!b) return;
+  b.classList.toggle("big", !!SET.bigText); b.classList.toggle("onehand", !!SET.oneHand); b.classList.toggle("dys", !!SET.dysFont);
+  b.classList.toggle("night", !!SET.nightMode || nightNow()); b.classList.toggle("guest", !!SET.guest);
+  const th = THEMES[SET.theme]; const R = document.documentElement;
+  if (th && SET.theme !== "kirmizi") { R.style.setProperty("--cyan", th[0]); R.style.setProperty("--cyan2", `rgba(${th[1]},.75)`); R.style.setProperty("--line", `rgba(${th[1]},.22)`); R.style.setProperty("--acc", th[0]); R.style.setProperty("--accrgb", th[1]); b.dataset.theme = SET.theme; }
+  else { ["--cyan", "--cyan2", "--line", "--acc", "--accrgb"].forEach(v => R.style.removeProperty(v)); delete b.dataset.theme; }
+}
+function a11yPass() {
+  document.querySelectorAll("button:not([aria-label])").forEach(b => { const t = (b.textContent || "").trim(); if (t) b.setAttribute("aria-label", t.replace(/\s+/g, " ").slice(0, 60)); });
+  document.querySelectorAll("input:not([aria-label]),textarea:not([aria-label]),select:not([aria-label])").forEach(i => { const p = i.getAttribute("placeholder"); if (p) i.setAttribute("aria-label", p); });
+  const log = $("#log"); if (log) log.setAttribute("aria-live", "polite");
+}
+
+/* =================== ÇOKLU GMAIL =================== */
+async function scriptAt(acc, action, data = {}) {
+  if (!acc || acc.main) return script(action, data);
+  const r = await fetch(acc.url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ token: acc.token, action, ...data }) });
+  let txt = await r.text(); const mv = !txt.trim().startsWith("{") && txt.match(/HREF="([^"]+)"/i);
+  if (mv) txt = await (await fetch(mv[1].replace(/&amp;/g, "&"))).text();
+  let j; try { j = JSON.parse(txt); } catch { throw new Error(`${acc.name}: Google yanıtı okunamadı (dağıtım "Herkes" erişimli mi?)`); }
+  if (!j.ok) throw new Error(`${acc.name}: ${j.error || "hata"}`); return j;
+}
+const accounts = () => [...(SET.scriptUrl ? [{ id: "main", name: SET.mainAccName || "Ana hesap", email: SET.mainEmail || "", url: SET.scriptUrl, token: SET.scriptToken, main: true }] : []), ...(SET.accounts || [])];
+function pickAccounts(h) {
+  const all = accounts(); if (!h || /tüm|hepsi|bütün|all/.test(trLower(h))) return all;
+  const n = deacc(h); const f = all.filter(a => deacc(a.name).includes(n) || n.includes(deacc(a.name)) || deacc(a.email || "").includes(n) || (n.includes("ana") && a.main));
+  return f.length ? f : all;
+}
+{
+  const i1 = TOOL_IDX("mail_ozeti"); if (i1 >= 0) TOOLS.splice(i1, 1);
+  const i2 = TOOL_IDX("mail_taslagi"); if (i2 >= 0) TOOLS.splice(i2, 1);
+}
+TOOLS.push(
+  T("mail_ozeti", "Gmail'deki son/okunmamış mailleri getirir; BİRDEN FAZLA GMAIL HESABI bağlı olabilir. hesap: hesap adı/e-postası ya da 'tümü' (varsayılan tümü). query Gmail arama ifadesi (ör. 'is:unread', 'from:recasttalent').", { query: str("Gmail arama"), max: num("Hesap başına en fazla, varsayılan 8"), hesap: str("Hangi hesap (ad/e-posta) ya da 'tümü'") }, [],
+    async a => {
+      const accs = pickAccounts(a.hesap); if (!accs.length) return { hata: "Google/Gmail bağlantısı yok (Ayarlar → Google ya da Yetenekler → Birden fazla Gmail hesabı)." };
+      const res = await Promise.all(accs.map(acc => scriptAt(acc, "gmail", { query: a.query || "is:unread in:inbox", max: a.max || 8 }).then(j => ({ hesap: acc.name + (acc.email ? " <" + acc.email + ">" : ""), mailler: j.mailler })).catch(e => ({ hesap: acc.name, hata: e.message }))));
+      return accs.length === 1 ? { hesap: res[0].hesap, ...(res[0].hata ? { hata: res[0].hata } : { mailler: res[0].mailler }) } : { hesaplar: res };
+    }),
+  T("mail_taslagi", "Gmail'de taslak mail oluşturur (göndermez). Birden fazla hesap varsa hesap ile hangi hesaptan yazılacağını seç (varsayılan ana hesap).", { to: str("Alıcı e-posta"), subject: str("Konu"), body: str("Metin"), hesap: str("Hangi hesaptan (ad/e-posta)") }, ["subject", "body"],
+    async a => {
+      const acc = a.hesap ? pickAccounts(a.hesap)[0] : accounts()[0]; if (!acc) return { hata: "Gmail bağlı değil." };
+      if (!(await confirmBox(`Gmail taslağı (${acc.name}) oluşturulsun mu?\n${a.to || "(alıcı yok)"} · ${a.subject}`, "Oluştur"))) return { ok: false, iptal: true };
+      const { hesap, ...rest } = a; const j = await scriptAt(acc, "gmailDraft", rest); return { ...j, hesap: acc.name };
+    }),
+  T("gmail_hesaplari", "Bağlı Gmail hesaplarını listeler.", {}, [], async () => ({ hesaplar: accounts().map(a => `${a.name}${a.email ? " <" + a.email + ">" : ""}${a.main ? " (ana)" : ""}`) }))
+);
+Object.assign(ACT_TR, { mail_ozeti: "✉️ mail", mail_taslagi: "✉️ taslak", gmail_hesaplari: "✉️ hesaplar" });
+TOOL_GROUPS.push([/mail|gmail|hesap|e-?posta/, ["gmail_hesaplari"]]);
+FN.accounts = {
+  ui: () => `<div class="hint">Her Gmail hesabı için: o hesapla script.google.com'a gir → yeni proje → Code.gs'yi yapıştır (TOKEN'ı değiştir) → Dağıt → Web uygulaması (Ben olarak çalıştır, Herkes erişebilir) → linki ve şifreyi buraya ekle.</div>
+    <div class="sklist">${accounts().map(a => `<div class="item"><div class="ic">✉️</div><div class="t"><div class="h">${esc(a.name)}${a.main ? " · ana" : ""}</div><div class="meta">${esc(a.email || "e-posta: test et")}</div></div><button class="btn ghost" data-acctest="${a.id}">Test</button>${a.main ? "" : `<button class="x" data-accdel="${a.id}">✕</button>`}</div>`).join("") || '<div class="empty">Henüz hesap yok. Önce Ayarlar → Google bağlantısı kur.</div>'}</div>
+    <div class="form"><input id="acName" placeholder="Hesap adı (ör. İş, Kişisel, Recast)"><input id="acUrl" placeholder="Apps Script linki (https://script.google.com/macros/s/…/exec)"><input id="acTok" type="password" placeholder="O hesabın gizli şifresi (TOKEN)"><button class="btn" id="acAdd">+ Hesap ekle ve test et</button></div>`
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#acAdd,[data-acctest],[data-accdel]"); if (!t) return;
+  try {
+    if (t.id === "acAdd") {
+      const name = $("#acName").value.trim(), url = $("#acUrl").value.trim(), token = $("#acTok").value.trim();
+      if (!name || !/^https:\/\/script\.google\.com\//.test(url) || !token) return toast("Ad, geçerli Apps Script linki ve şifre gerekli");
+      const acc = { id: uid(), name, url, token }; t.disabled = true; toast("Test ediliyor…");
+      const j = await scriptAt(acc, "ping"); acc.email = j.email || ""; SET.accounts = [...(SET.accounts || []), acc]; saveSet(); toast("✓ " + name + " bağlandı " + (acc.email || "")); refreshSkill();
+    } else if (t.dataset.acctest) {
+      const acc = accounts().find(a => a.id === t.dataset.acctest); const j = await scriptAt(acc, "ping");
+      if (acc.main) { SET.mainEmail = j.email || ""; } else { acc.email = j.email || ""; } saveSet(); toast("✓ Çalışıyor " + (j.email || "")); refreshSkill();
+    } else if (t.dataset.accdel) { if (!(await confirmBox("Hesap kaldırılsın mı?", "Kaldır"))) return; SET.accounts = (SET.accounts || []).filter(a => a.id !== t.dataset.accdel); saveSet(); refreshSkill(); }
+  } catch (er) { toast("✗ " + er.message, 6000); t.disabled = false; }
+});
+{ // eşleştirme kodu: ek hesaplar bilgisayara da gitsin
+  const basePair = pairCode;
+  pairCode = function () { const c = basePair(); try { const o = JSON.parse(decodeURIComponent(escape(atob(c.slice(7))))); o.acc = (SET.accounts || []).map(a => ({ n: a.name, u: a.url, t: a.token, e: a.email || "" })); o.tg = SET.tgOn ? 1 : 0; return "TITUS1." + b64utf8(JSON.stringify(o)); } catch { return c; } };
+}
+
+/* =================== OTOMATİK GÜNCELLEME =================== */
+const REPO = "Mendusa27/Jarvis-1";
+async function checkUpdate(manual) {
+  if (!NATIVE && !manual) return { yeni: false };
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!r.ok) throw new Error("GitHub'a ulaşılamadı (" + r.status + ")");
+    const j = await r.json(); const tag = j.tag_name || ""; const m = tag.match(/^v([\d.]+)-(\d+)/);
+    const apk = (j.assets || []).find(a => /\.apk$/i.test(a.name));
+    const newer = m && (cmpVer(m[1], APP_VER) > 0 || (m[1] === APP_VER && /^\d+$/.test(APP_RUN) && Number(m[2]) > Number(APP_RUN)));
+    META.updChk = today(); saveMeta();
+    if (newer && apk) {
+      META.updUrl = apk.browser_download_url; META.updTag = tag; saveMeta();
+      const sp = bubble("sys", `⬆️ Yeni Titus sürümü hazır: ${tag}. `); const b = document.createElement("button"); b.className = "btn"; b.textContent = "İndir ve kur"; b.dataset.upd = "1"; sp.parentElement.appendChild(b);
+      return { yeni: true, surum: tag, link: apk.browser_download_url };
+    }
+    if (manual) toast("✓ Titus güncel (" + APP_VER + (/^\d+$/.test(APP_RUN) ? "-" + APP_RUN : "") + ")");
+    return { yeni: false, surum: APP_VER, son: tag };
+  } catch (e) { if (manual) toast("✗ " + e.message); return { hata: e.message }; }
+}
+const cmpVer = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; } return 0; };
+document.addEventListener("click", e => { if (e.target.closest("[data-upd]")) { openUrl(META.updUrl); toast("İndirme başladı; bitince dosyaya dokunup 'Güncelle' de.", 6000); } });
+FN.update = { ui: () => `<div class="hint">Kurulu: v${APP_VER}${/^\d+$/.test(APP_RUN) ? "-" + APP_RUN : ""} · son kontrol: ${META.updChk || "hiç"}</div><button class="btn" data-skrun="1">Güncellemeyi kontrol et</button>`, run: async () => checkUpdate(true) };
+
+/* =================== TAKİPLER (sayfa / fiyat / konu) =================== */
+FN.watch = {
+  ui: () => `<div class="hint">Takipleri Google tarafı saatte bir kontrol eder (telefon kapalıyken bile). Değişiklik olunca burada, bildirimde (ntfy) ve Telegram'da haber verir.</div>
+    <div class="sklist">${XL("watch").map(w => `<div class="item"><div class="ic">${w.tur === "konu" ? "📰" : "👁"}</div><div class="t"><div class="h">${esc(w.ad)}</div><div class="meta">${esc(w.tur === "konu" ? "konu: " + w.konu : w.url)}${w.kosul ? " · koşul: " + esc(w.kosul) : ""}${w.son ? " · son: " + esc(w.son) : ""}</div></div><button class="x" data-wdel="${w.id}">✕</button></div>`).join("") || '<div class="empty">Takip yok. Aşağıya doğal dille yaz: "şu linkteki fiyat 3000 altına düşünce haber ver".</div>'}</div>
+    <button class="btn ghost" id="wCheck">Şimdi kontrol et</button>`,
+  input: "Ne takip edilsin? (link + koşul ya da konu)",
+  run: async g => {
+    if (!g) return watchCheckNow();
+    const j = await geminiJSON(`Kullanıcı bir takip kurmak istiyor: "${g}". JSON: {"tur":"sayfa|konu","ad":"kısa ad","url":"sayfa ise tam link","konu":"konu ise arama konusu","anahtar":"sayfada aranacak kelimeler, virgülle (ops.)","kosul":"haber verme koşulu, doğal dille (ops.)"}`);
+    if (j.tur !== "konu" && !/^https?:\/\//.test(j.url || "")) return { hata: "Sayfa takibi için tam link gerekli (https://…)." };
+    const w = { id: uid(), tur: j.tur === "konu" ? "konu" : "sayfa", ad: j.ad || g.slice(0, 40), url: j.url || "", konu: j.konu || "", anahtar: j.anahtar || "", kosul: j.kosul || "" };
+    XL("watch").push(w); save(); const r = await watchSync();
+    return { ok: true, takip: w.ad, not: r.hata ? "Kaydedildi ama Google'a gönderilemedi: " + r.hata : "Saatte bir kontrol edeceğim." };
+  }
+};
+FN.research_watch = FN.watch;
+async function watchSync() { try { if (!SET.scriptUrl) return { hata: "Google bağlı değil" }; await script("watchSet", { list: XL("watch"), ntfy: SET.ntfyTopic || "", gkey: SET.geminiKey }); return { ok: true }; } catch (e) { return { hata: e.message }; } }
+async function watchCheckNow() { if (!SET.scriptUrl) return { hata: "Google bağlı değil" }; await watchSync(); const r = await script("watchRunNow"); const res = r.sonuc || []; res.forEach(x => { const w = XL("watch").find(w => w.id === x.id); if (w) w.son = x.durum; }); save(); refreshSkill(); return { ok: true, sonuc: res }; }
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-wdel],#wCheck"); if (!t) return;
+  try { if (t.id === "wCheck") { toast("Kontrol ediliyor…"); const r = await watchCheckNow(); toast(r.hata ? "✗ " + r.hata : "✓ " + (r.sonuc || []).map(x => x.ad + ": " + x.durum).join(" · "), 7000); } else { X().watch = XL("watch").filter(w => w.id !== t.dataset.wdel); save(); await watchSync(); refreshSkill(); } } catch (er) { toast("✗ " + er.message, 5000); }
+});
+
+/* =================== DERİN ARAŞTIRMA (+ kaynak puanı, çelişkiler, kaldığı yerden devam) =================== */
+async function deepResearch(q, onStep = () => {}) {
+  const job = { id: uid(), kind: "research", arg: q, at: Date.now(), done: [], plan: null };
+  const prev = (META.jobs || []).find(j => j.kind === "research" && j.arg === q && !j.fin); const J = prev || job;
+  if (!prev) { META.jobs = [...(META.jobs || []), J].slice(-10); saveMeta(); }
+  if (!J.plan) { onStep("Plan çıkarılıyor"); const p = await geminiJSON(`Araştırma konusu: "${q}". ${userCtx()}\nBu konuyu derinlemesine araştırmak için 4-6 farklı açıdan alt soru üret. Türkçe kaynakları da düşün. JSON: {"baslik":"","alt":["..."]}`); J.plan = p; saveMeta(); }
+  const subs = J.plan.alt || [q];
+  const pending = subs.filter(s => !J.done.find(d => d.q === s));
+  onStep(`${pending.length} alt soru paralel araştırılıyor`);
+  const got = await Promise.all(pending.map(s => grounded(`Şunu internette araştır ve Türkçe, bilgi yoğun cevap ver (rakam, tarih, isim): ${s}\nAna konu: ${q}`, 1800).then(r => ({ q: s, ...r })).catch(e => ({ q: s, text: "(araştırılamadı: " + e.message + ")", src: [] }))));
+  J.done.push(...got); saveMeta();
+  const srcs = []; const add = x => { let i = srcs.findIndex(s => s.uri === x.uri); if (i < 0) { srcs.push(x); i = srcs.length - 1; } return i + 1; };
+  const notes = J.done.map(d => `### ${d.q}\n${d.text}\nKaynaklar: ${d.src.map(s => "[" + add(s) + "] " + s.title).join(", ")}`).join("\n\n");
+  onStep("Rapor yazılıyor");
+  const report = await plainGemini(`Sen titiz bir araştırmacısın. Aşağıdaki bulgulardan "${J.plan.baslik || q}" hakkında kapsamlı Türkçe rapor yaz.
+Bölümler: # Özet (5-6 cümle) / # Bulgular (alt başlıklarla, her iddiadan sonra [n] kaynak numarası) / # Çelişen bilgiler (kaynaklar farklı şey söylüyorsa ikisini de numarasıyla göster; yoksa "belirgin çelişki yok") / # Kaynak güvenilirliği (her kaynağa 1-5 puan ve tek cümle neden: resmî, akademik, köklü haber, blog, forum) / # Sonuç ve öneriler.
+Uydurma bilgi ekleme; bulgularda olmayanı yazma.\n\nBULGULAR:\n${notes}\n\nKAYNAK LİSTESİ:\n${srcs.map((s, i) => `[${i + 1}] ${s.title}`).join("\n")}`, [], null, { max: 6000, temperature: 0.3, nocache: true });
+  J.fin = true; saveMeta();
+  const d = await docFromText("Araştırma — " + (J.plan.baslik || q), report, ["", "KAYNAKLAR", ...srcs.map((s, i) => `[${i + 1}] ${s.title} — ${s.uri}`)]);
+  return { metin: report, kaynaklar: srcs.slice(0, 12), belge: d.dosya, yer: d.yer };
+}
+FN.research = { input: "Neyi araştırayım?", run: (g, s, ctx) => g ? deepResearch(g, x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; }) : { hata: "Konu yaz." } };
+
+/* =================== TELEGRAM =================== */
+FN.telegram = {
+  ui: () => `<div class="hint">1) Telegram'da @BotFather → /newbot → bota ad ver → verdiği token'ı buraya yapıştır. 2) "Bağla"ya bas. 3) Kendi botuna Telegram'dan "merhaba" yaz — ilk yazan sen olduğun için bot sadece sana cevap verir. "telefon: …" ile telefondaki Titus'a, "bilgisayar: …" ile bilgisayardakine iş gönderirsin.</div>
+    <input id="tgTok" type="password" placeholder="Bot token (123456:ABC…)" value="${esc(SET.tgToken || "")}"><div class="row"><button class="btn" id="tgGo">Bağla</button><button class="btn ghost" id="tgTest">Test mesajı</button><button class="btn ghost" id="tgOff">Kapat</button></div><div class="hint">Durum: ${SET.tgOn ? "bağlı" : "kapalı"}</div>`,
+  run: async g => { if (!SET.tgOn) return { hata: "Telegram bağlı değil: Yetenekler → Telegram'dan Titus." }; await script("tgSend", { text: g || "Titus'tan selam 👋" }); return { ok: true, gonderildi: true }; }
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#tgGo,#tgTest,#tgOff"); if (!t) return;
+  try {
+    if (t.id === "tgGo") { const tok = $("#tgTok").value.trim(); if (!/^\d+:[\w-]{20,}$/.test(tok)) return toast("Geçerli bot token'ı yapıştır"); const r = await script("tgSetup", { botToken: tok, gkey: SET.geminiKey }); SET.tgToken = tok; SET.tgOn = true; saveSet(); toast("✓ Bağlandı: @" + (r.bot || "bot") + " — şimdi bota Telegram'dan yaz", 7000); refreshSkill(); }
+    else if (t.id === "tgTest") { await script("tgSend", { text: "✅ Titus test mesajı" }); toast("Gönderildi (önce bota bir kez yazmış olman gerekir)"); }
+    else { await script("tgSetup", { off: true }); SET.tgOn = false; saveSet(); refreshSkill(); }
+  } catch (er) { toast("✗ " + er.message, 6000); }
+});
+
+/* =================== DIŞARIDAN KOMUT (webhook) =================== */
+FN.webhook = {
+  ui: () => { const sec = SET.hookSecret || ""; const u = SET.scriptUrl && sec ? `${SET.scriptUrl}?hook=${sec}&text=` : ""; return `<div class="hint">Tasker, Kısayollar, IFTTT gibi uygulamalar bu adrese istek atınca Titus komutu yapar (telefon açıkken ~45 sn içinde).</div>${u ? `<input readonly value="${esc(u)}MESAJ"><button class="btn ghost" id="hkCopy">Kopyala</button>` : ""}<button class="btn" id="hkMake">${sec ? "Yeni adres üret" : "Adres oluştur"}</button>`; }
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#hkMake,#hkCopy"); if (!t) return;
+  try { if (t.id === "hkMake") { const s = uid() + uid(); await script("hookSet", { secret: s }); SET.hookSecret = s; saveSet(); refreshSkill(); toast("✓ Adres hazır"); } else { await navigator.clipboard.writeText(`${SET.scriptUrl}?hook=${SET.hookSecret}&text=`); toast("Kopyalandı"); } } catch (er) { toast("✗ " + er.message, 5000); }
+});
+
+/* =================== HESAP / TABLO / GRAFİK =================== */
+function runSandbox(code, ms = 6000) {
+  return new Promise(res => {
+    const src = `onmessage=()=>{try{const r=(function(){"use strict";\n${code}\n})();postMessage({ok:1,r:JSON.parse(JSON.stringify(r===undefined?null:r))})}catch(e){postMessage({ok:0,e:String(e&&e.message||e)})}}`;
+    let w; try { w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))); } catch (e) { return res({ ok: 0, e: "Çalışma alanı açılamadı: " + e.message }); }
+    const to = setTimeout(() => { w.terminate(); res({ ok: 0, e: "Süre aşıldı (sonsuz döngü?)" }); }, ms);
+    w.onmessage = m => { clearTimeout(to); w.terminate(); res(m.data); }; w.onerror = er => { clearTimeout(to); w.terminate(); res({ ok: 0, e: er.message }); }; w.postMessage(1);
+  });
+}
+async function calcRun(g) {
+  let err = "", code = "";
+  for (let i = 0; i < 3; i++) {
+    code = fence(await plainGemini(`Şu isteği JavaScript ile HESAPLA (tahmin etme, kodla hesapla): "${g}"\n${err ? "Önceki kodun hata verdi: " + err + "\nKod:\n" + code + "\nDüzelt.\n" : ""}Sadece bir fonksiyon GÖVDESİ yaz (en sonda return ile). Dönüş nesnesi: {"cevap":"Türkçe kısa sonuç cümlesi","tablo":[["Başlık1","Başlık2"],["değer","değer"]] (isteğe bağlı),"grafik":{"tur":"bar|line","baslik":"","etiketler":["..."],"degerler":[sayılar]} (isteğe bağlı)}. fetch, DOM, import kullanma. Para birimini ₺ ile yaz. Açıklama yazma, sadece kod.`, [], null, { temperature: 0, max: 2500, nocache: i > 0 }));
+    const r = await runSandbox(code);
+    if (r.ok && r.r) return { ...r.r, kod: code };
+    err = r.e || "boş sonuç";
+  }
+  return { hata: "Hesaplanamadı: " + err };
+}
+function chartSVG(g) {
+  const v = (g.degerler || []).map(Number).filter(n => !isNaN(n)); if (!v.length) return "";
+  const W = 320, H = 170, max = Math.max(...v, 0), min = Math.min(...v, 0), rng = max - min || 1, bw = W / v.length;
+  const y = n => H - 20 - (n - min) / rng * (H - 40);
+  const bars = g.tur === "line" ? `<polyline fill="none" stroke="var(--acc,#ff2a3d)" stroke-width="2.5" points="${v.map((n, i) => `${i * bw + bw / 2},${y(n)}`).join(" ")}"/>` + v.map((n, i) => `<circle cx="${i * bw + bw / 2}" cy="${y(n)}" r="3" fill="var(--acc,#ff2a3d)"/>`).join("")
+    : v.map((n, i) => `<rect x="${i * bw + 4}" y="${Math.min(y(n), y(0))}" width="${Math.max(2, bw - 8)}" height="${Math.abs(y(n) - y(0))}" rx="3" fill="var(--acc,#ff2a3d)"/>`).join("");
+  const lab = (g.etiketler || []).map((l, i) => `<text x="${i * bw + bw / 2}" y="${H - 4}" font-size="9" fill="#aaa" text-anchor="middle">${esc(String(l).slice(0, 8))}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;background:#111;border-radius:10px;margin-top:8px">${bars}${lab}<text x="6" y="12" font-size="10" fill="#ddd">${esc(g.baslik || "")}</text></svg>`;
+}
+const tableHTML = t => Array.isArray(t) && t.length ? `<div style="overflow:auto"><table class="sktab">${t.map((r, i) => `<tr>${(r || []).map(c => i ? `<td>${esc(c)}</td>` : `<th>${esc(c)}</th>`).join("")}</tr>`).join("")}</table></div>` : "";
+FN.calc = { input: "Ne hesaplanacak? (ör. 'aylık 18.500 maaşla %30 birikim 1 yılda', 'kredi 200 bin, %3.2 aylık, 24 ay taksit tablosu')", run: async g => { if (!g) return { hata: "Hesap yaz." }; const r = await calcRun(g); if (r.hata) return r; return { metin: r.cevap, tablo: r.tablo, grafik: r.grafik, html: tableHTML(r.tablo) + (r.grafik ? chartSVG(r.grafik) : "") }; } };
+
+/* =================== HAFIZA YÖNETİMİ =================== */
+function memPurge() {
+  const now = Date.now(); const keep = [], gone = [];
+  for (const m of S.memory || []) (m.exp && parseDate(m.exp) < now ? gone : keep).push(m);
+  if (gone.length) { S.memory = keep; X().memArchive = [...gone, ...XL("memArchive")].slice(0, 200); save(); }
+  S.memory.sort((a, b) => (b.imp || 0) - (a.imp || 0));
+}
+FN.memory = {
+  ui: () => `<div class="hint">★ önemli · ⏳ kısa süreli (7 gün sonra arşive gider) · ✎ düzelt · ✕ sil</div><div class="sklist">${(S.memory || []).map(m => `<div class="item"><div class="t"><div class="h" contenteditable="true" data-memedit="${m.id}">${esc(m.text)}</div><div class="meta">${m.at ? esc(m.at.slice(0, 10)) : ""}${m.exp ? " · ⏳ " + esc(m.exp.slice(0, 10)) : ""}</div></div><button class="x ${m.imp ? "on" : ""}" data-memimp="${m.id}">★</button><button class="x" data-memexp="${m.id}">⏳</button><button class="x" data-memdel="${m.id}">✕</button></div>`).join("") || '<div class="empty">Hafıza boş.</div>'}</div><button class="btn ghost" id="memConf">Çelişkileri ve eskiyenleri bul</button><div class="hint">Arşiv: ${XL("memArchive").length} bilgi</div>`,
+  input: "Hafızaya sor ya da düzelt (ör. 'adresim değişti: …')",
+  run: async g => {
+    if (!g) return memConflicts();
+    const j = await geminiJSON(`Kullanıcının kalıcı hafızası: ${JSON.stringify((S.memory || []).map(m => ({ id: m.id, text: m.text })))}\nKullanıcı: "${g}"\nJSON: {"islem":"ekle|guncelle|sil|cevap","id":"","text":"yeni/güncel bilgi tek cümle","kisa":true/false (geçici bilgi mi),"onemli":true/false,"cevap":"kısa Türkçe cevap"}`);
+    if (j.islem === "ekle" && j.text) S.memory.unshift({ id: uid(), text: j.text, at: localISO(new Date()), imp: j.onemli ? 1 : 0, exp: j.kisa ? localISO(new Date(Date.now() + 7 * 864e5)) : undefined });
+    else if (j.islem === "guncelle") { const m = S.memory.find(m => m.id === j.id); if (m) { m.text = j.text || m.text; m.at = localISO(new Date()); } }
+    else if (j.islem === "sil") S.memory = S.memory.filter(m => m.id !== j.id);
+    save(); return { ok: true, cevap: j.cevap };
+  }
+};
+async function memConflicts() {
+  const t = await plainGemini(`Kullanıcının hafızasındaki bilgiler:\n${(S.memory || []).map(m => `[${m.id}] (${(m.at || "").slice(0, 10)}) ${m.text}`).join("\n")}\n\nBugün: ${today()}. Birbiriyle ÇELİŞEN, TEKRARLANAN ya da ESKİMİŞ olabilecek bilgileri bul. Her biri için id'leri ve önerini (birleştir/sil/güncelle) yaz. Yoksa "Sorun yok" de. Kısa.`, [], null, { max: 1200, nocache: true });
+  return { metin: t };
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-memimp],[data-memexp],[data-memdel],#memConf"); if (!t) return;
+  if (t.id === "memConf") { runFromUI("memory", ""); return; }
+  const id = t.dataset.memimp || t.dataset.memexp || t.dataset.memdel; const m = S.memory.find(m => m.id === id); if (!m) return;
+  if (t.dataset.memimp) m.imp = m.imp ? 0 : 1; else if (t.dataset.memexp) m.exp = m.exp ? undefined : localISO(new Date(Date.now() + 7 * 864e5)); else S.memory = S.memory.filter(x => x.id !== id);
+  save(); refreshSkill();
+});
+document.addEventListener("focusout", e => { const el = e.target.closest && e.target.closest("[data-memedit]"); if (!el) return; const m = S.memory.find(m => m.id === el.dataset.memedit); if (m && el.textContent.trim() && el.textContent.trim() !== m.text) { m.text = el.textContent.trim(); m.at = localISO(new Date()); save(); toast("✓ Düzeltildi"); } });
+FN.memweekly = { run: async () => { const wk = Date.now() - 7 * 864e5; const m = (S.memory || []).filter(x => x.at && parseDate(x.at) > wk).map(x => x.text); const n = (S.notes || []).filter(x => parseDate(x.created) > wk).map(x => x.text.slice(0, 150)); if (!m.length && !n.length) return { metin: "Bu hafta yeni bir şey öğrenmedim." }; return { metin: await plainGemini(`Bu hafta kullanıcı hakkında öğrenilenler:\n${m.join("\n")}\nBu haftaki notlar:\n${n.join("\n")}\n\n"Bu hafta öğrendiklerim" başlıklı 5-8 maddelik kısa bir özet yaz; yanlış olabilecekleri "doğru mu?" diye işaretle.`, [], null, { max: 900 }) }; } };
+
+/* =================== ÖZEL ASİSTANLAR =================== */
+FN.assistants = {
+  ui: () => `<div class="sklist">${XL("assistants").map(a => `<div class="item ${SET.activeAsst === a.id ? "late" : ""}"><div class="ic">🤖</div><div class="t"><div class="h">${esc(a.name)}${SET.activeAsst === a.id ? " · AÇIK" : ""}</div><div class="meta">${esc(a.prompt.slice(0, 120))}</div></div><button class="btn ghost" data-asst="${a.id}">${SET.activeAsst === a.id ? "Kapat" : "Aç"}</button><button class="x" data-coldel="assistants:${a.id}">✕</button></div>`).join("") || '<div class="empty">Henüz özel asistan yok.</div>'}</div><div class="form"><input id="asN" placeholder="Asistan adı (ör. Senaryo Doktoru)"><textarea id="asP" placeholder="Talimatları (nasıl davransın, neyi bilsin, nasıl konuşsun)"></textarea><button class="btn" id="asAdd">+ Oluştur</button></div>`,
+  input: "Asistan aç/kapat ya da tarif et (ör. 'İngilizce mülakat hocası yap')",
+  run: async g => {
+    const l = trLower(g); const hit = XL("assistants").find(a => l.includes(trLower(a.name)));
+    if (/kapat|normale dön/.test(l)) { SET.activeAsst = ""; saveSet(); return { ok: true, not: "Özel asistan kapatıldı." }; }
+    if (hit) { SET.activeAsst = hit.id; saveSet(); return { ok: true, acik: hit.name }; }
+    if (!g) return { asistanlar: XL("assistants").map(a => a.name) };
+    const j = await geminiJSON(`Kullanıcı özel bir yapay zekâ asistanı istiyor: "${g}". Ona ad ve ayrıntılı Türkçe sistem talimatı yaz. JSON: {"name":"","prompt":""}`);
+    const a = { id: uid(), name: j.name || g.slice(0, 30), prompt: j.prompt || g }; XL("assistants").push(a); SET.activeAsst = a.id; save(); saveSet();
+    return { ok: true, olusturuldu: a.name, acik: true, talimat: undefined };
+  }
+};
+document.addEventListener("click", e => {
+  const t = e.target.closest("#asAdd,[data-asst]"); if (!t) return;
+  if (t.id === "asAdd") { const n = $("#asN").value.trim(), p = $("#asP").value.trim(); if (!n || !p) return toast("Ad ve talimat yaz"); XL("assistants").push({ id: uid(), name: n, prompt: p }); save(); }
+  else { SET.activeAsst = SET.activeAsst === t.dataset.asst ? "" : t.dataset.asst; saveSet(); }
+  refreshSkill();
+});
+
+/* =================== CANLI ÇEVİRİ, YÖNETMEN =================== */
+COACH.ceviri = "Sen canlı tercümansın. Türkçe duyduğunu doğal İngilizceye, İngilizce (ya da başka dil) duyduğunu Türkçeye çevir. Sadece çeviriyi söyle, yorum ekleme. İki kişi arasında köprü ol.";
+COACH.yonetmen = "Sen deneyimli bir self-tape yönetmenisin. Kamera açıkken kadraja bak: ışık (yüz aydınlık mı, gölge), kadraj (göz hizası, baş boşluğu), arka plan, ses; çekim sırasında oyuncuya kısa yönlendirmeler ver (tempo, duraklama, göz çizgisi, enerji). Her çekimden sonra tek somut not ver.";
+FN.translate = { input: "Hangi diller? (varsayılan Türkçe ↔ İngilizce)", run: async g => { const r = await startCoach("ceviri", g ? "\nDiller: " + g : ""); return r.ok ? { ok: true, not: "Canlı çeviri başladı; konuşun." } : { hata: "Canlı mod açılamadı." }; } };
+FN.director = { run: async g => { const r = await startCoach("yonetmen", g ? "\nSahne/rol: " + g : ""); if (r.ok) setTimeout(() => toast("📷 Kamera düğmesine basarak beni kameraya bağla", 6000), 1500); return r.ok ? { ok: true, not: "Yönetmen modu açık; kamera düğmesiyle görüntüyü paylaş." } : { hata: "Canlı mod açılamadı." }; } };
+
+/* =================== HAREKETLİ TİTUS YÜZÜ =================== */
+function drawFace() {
+  let f = $("#tface"); const r = $("#reactor");
+  if (!SET.face) { if (f) f.remove(); if (r) r.style.display = ""; return; }
+  if (!f && r) {
+    f = document.createElement("div"); f.id = "tface"; f.innerHTML = `<svg viewBox="0 0 120 120"><defs><radialGradient id="tfg"><stop offset="0" stop-color="rgba(var(--accrgb,255,42,61),.35)"/><stop offset="1" stop-color="transparent"/></radialGradient></defs><circle cx="60" cy="60" r="58" fill="url(#tfg)"/><circle cx="60" cy="60" r="44" fill="none" stroke="var(--acc,#ff2a3d)" stroke-width="2" opacity=".7"/><ellipse class="eye" cx="44" cy="52" rx="6" ry="6" fill="var(--acc,#ff2a3d)"/><ellipse class="eye" cx="76" cy="52" rx="6" ry="6" fill="var(--acc,#ff2a3d)"/><ellipse id="tmouth" cx="60" cy="80" rx="14" ry="2" fill="var(--acc,#ff2a3d)"/></svg>`;
+    f.onclick = () => r.click(); r.parentElement.insertBefore(f, r); r.style.display = "none";
+  }
+  let t = 0, blink = 0;
+  cancelAnimationFrame(drawFace._raf);
+  const loop = () => {
+    const m = $("#tmouth"); if (!m) return; t++;
+    const talk = speaking || (typeof LIVE !== "undefined" && LIVE && LIVE.speaking);
+    m.setAttribute("ry", talk ? (3 + Math.abs(Math.sin(t / 3.1)) * 9 + Math.random() * 2).toFixed(1) : "2");
+    if (++blink > 180) blink = 0; document.querySelectorAll("#tface .eye").forEach(e => e.setAttribute("ry", blink < 6 ? "1" : "6"));
+    drawFace._raf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+/* =================== UYGULAMA FABRİKASI + KENDİNİ GENİŞLETEN TİTUS / EKLENTİLER =================== */
+function openHtml(html, title) {
+  let o = $("#htmlView"); if (o) o.remove();
+  o = document.createElement("div"); o.id = "htmlView"; o.innerHTML = `<div class="hvbar"><b>${esc(title || "Uygulama")}</b><button class="btn ghost" id="hvClose">✕ Kapat</button></div><iframe sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>`;
+  document.body.appendChild(o); o.querySelector("iframe").srcdoc = html; $("#hvClose").onclick = () => o.remove();
+}
+async function appFactory(g) {
+  const html = fence(await plainGemini(`Tek dosyalık, tamamen bağımsız, mobil uyumlu bir HTML uygulaması/oyunu yaz.\nİSTEK: ${g}\nKurallar: CSS ve JavaScript aynı dosyada; dış bağlantı yok (gerekirse sadece https://cdn.jsdelivr.net); Türkçe arayüz; koyu tema, kırmızı vurgu; dokunmatik uyumlu; veriyi localStorage'da sakla (try/catch ile); hatasız çalışsın. Sadece <!DOCTYPE html> ile başlayan kodu döndür, açıklama yazma.`, [], null, { max: 16000, temperature: 0.4, nocache: true }));
+  if (!/<html|<!doctype/i.test(html)) throw new Error("Uygulama kodu üretilemedi, tekrar dene.");
+  const name = (await plainGemini(`Bu uygulama için 2-3 kelimelik Türkçe ad: ${g}. Sadece adı yaz.`, [], null, { max: 20 })).replace(/["\n]/g, "").slice(0, 30) || "Uygulamam";
+  const r = await saveFile(new Blob([html], { type: "text/html" }), fname(name, "html"));
+  const a = { id: uid(), n: name, html: html.length < 250000 ? html : "", yer: r.yer, at: localISO(new Date()), istek: g };
+  X().apps = [a, ...XL("apps")].slice(0, 30); save(); openHtml(html, name);
+  return { ok: true, uygulama: name, yer: r.yer, not: "Uygulamalarım'a eklendi; istediğin zaman açabilirsin." };
+}
+FN.appfactory = { input: "Ne yapayım? (ör. 'seçme günü için geri sayım ve kontrol listesi', 'basit hafıza oyunu')", ui: () => `<div class="sklist">${XL("apps").map(a => `<div class="item"><div class="ic">🧩</div><div class="t"><div class="h">${esc(a.n)}</div><div class="meta">${esc(a.at.slice(0, 10))} · ${esc(a.yer || "")}</div></div><button class="btn ghost" data-tapp="${a.id}">Aç</button><button class="x" data-coldel="apps:${a.id}">✕</button></div>`).join("")}</div>`, run: g => g ? appFactory(g) : { hata: "Ne yapayım?" } };
+FN.extend = {
+  ui: () => `<div class="hint">Kendi yeteneğini ekle: ad + ne yapacağını yaz. Titus onu da yetenek listesine katar ve sohbette kullanır. Uygulama fabrikasında yaptıkların da Uygulamalarım'da.</div><div class="sklist">${XL("userSkills").map(u => `<div class="item"><div class="ic">➕</div><div class="t"><div class="h">${esc(u.n)}</div><div class="meta">${esc(u.a.slice(0, 120))}</div></div><button class="x" data-coldel="userSkills:${u.id}">✕</button></div>`).join("") || '<div class="empty">Eklediğin yetenek yok.</div>'}</div><div class="form"><input id="usN" placeholder="Yetenek adı"><textarea id="usA" placeholder="Ne yapsın? (Gemini'ye talimat)"></textarea><label class="tg"><input type="checkbox" id="usW"> İnternette arasın</label><button class="btn" id="usAdd">+ Ekle</button></div>`,
+  run: async g => { if (!g) return { yetenekler: XL("userSkills").map(u => u.n) }; const j = await geminiJSON(`Kullanıcı Titus'a yeni bir yetenek eklemek istiyor: "${g}". JSON: {"n":"kısa ad","a":"Gemini'ye ayrıntılı görev talimatı","w":true/false internet araması gerekir mi}`); XL("userSkills").push({ id: uid(), n: j.n, a: j.a, w: !!j.w }); save(); return { ok: true, eklendi: j.n }; }
+};
+document.addEventListener("click", e => {
+  const t = e.target.closest("#usAdd,[data-tapp]"); if (!t) return;
+  if (t.id === "usAdd") { const n = $("#usN").value.trim(), a = $("#usA").value.trim(); if (!n || !a) return toast("Ad ve talimat yaz"); XL("userSkills").push({ id: uid(), n, a, w: $("#usW").checked }); save(); refreshSkill(); toast("✓ Yetenek eklendi"); }
+  else { const a = XL("apps").find(x => x.id === t.dataset.tapp); if (a && a.html) openHtml(a.html, a.n); else toast("Dosya: " + (a && a.yer)); }
+});
+{
+  const baseApps = appsHTML;
+  appsHTML = function () { const L = XL("apps"); return baseApps() + (L.length ? `<div class="card"><h3>TİTUS'UN YAPTIKLARI</h3><div class="appgrid">${L.map(a => `<button class="app" data-tapp="${a.id}"><i>🧩</i><b>${esc(a.n)}</b><small>${esc(a.at.slice(0, 10))}</small></button>`).join("")}</div></div>` : ""); };
+}
+
+/* =================== SİSTEM: test, durum, hız, önbellek, taşıma, gizlilik... =================== */
+async function selfTest(onStep = () => {}) {
+  await SKILLS_READY; const all = allSkills(); const rep = { toplam: all.length, kontrol: [], sorun: [] };
+  const by = {}; all.forEach(s => { by[s.durum] = (by[s.durum] || 0) + 1; });
+  for (const s of all) {
+    if (s.k.startsWith("fn:") && !FN[s.k.slice(3)]) rep.sorun.push(s.n + ": işleyici yok (yapay zekâ göreviyle çalışır)");
+    if (s.k.startsWith("tool:") && !TOOLS.find(t => t.name === s.k.split(":")[1])) rep.sorun.push(s.n + ": araç yok");
+  }
+  const chk = async (ad, f) => { onStep(ad); const t0 = Date.now(); try { const r = await f(); rep.kontrol.push(`✓ ${ad} (${Date.now() - t0} ms)${r ? " · " + r : ""}`); } catch (e) { rep.kontrol.push(`✗ ${ad}: ${e.message === "NOKEY" ? "anahtar yok" : e.message}`); } };
+  await chk("Gemini beyni", async () => { const t = await plainGemini("Sadece 'tamam' yaz.", [], null, { max: 10, nocache: true }); if (!t) throw new Error("boş cevap"); });
+  await chk("İnternet araması", async () => { const g = await grounded("Bugün İstanbul'da hava nasıl? Tek cümle.", 200); return g.src.length + " kaynak"; });
+  await chk("Hesap çalışma alanı", async () => { const r = await runSandbox("return 6*7"); if (!r.ok || r.r !== 42) throw new Error(r.e || "yanlış sonuç"); });
+  await chk("Hava durumu", async () => { await weather(); });
+  for (const a of accounts()) await chk("Google: " + a.name, async () => { const j = await scriptAt(a, "ping"); return j.email || ""; });
+  if (SET.groqKey) await chk("Groq yedek beyin", async () => { const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: "Bearer " + SET.groqKey } }); if (!r.ok) throw new Error("HTTP " + r.status); });
+  await chk("Word belgesi kütüphanesi", async () => { await loadLib("lib/docx.js"); if (!window.docx) throw new Error("yüklenmedi"); });
+  await chk("Güncelleme sunucusu", async () => { const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`); if (!r.ok) throw new Error("HTTP " + r.status); });
+  const ok = rep.kontrol.filter(x => x.startsWith("✓")).length;
+  rep.ozet = `${all.length} yetenek kayıtlı (tam: ${by.tam || 0}, yapay zekâ ile: ${by.yz || 0}, kısmi: ${by["kısmi"] || 0}, yapılamayan: ${by.yok || 0}). Canlı kontroller: ${ok}/${rep.kontrol.length} başarılı.${rep.sorun.length ? " Yapısal uyarı: " + rep.sorun.length : " Yapısal sorun yok."}`;
+  META.lastTest = { at: localISO(new Date()), ozet: rep.ozet }; saveMeta();
+  return { metin: rep.ozet + "\n\n" + rep.kontrol.join("\n") + (rep.sorun.length ? "\n\n" + rep.sorun.join("\n") : ""), ...rep };
+}
+FN.selftest = { run: (g, s, ctx) => selfTest(x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; }) };
+function statusText() {
+  const q = META.q && META.q.d === today() ? META.q : { n: 0, err: 0 };
+  const perf = (META.perf || []).slice(-30); const avg = perf.length ? Math.round(perf.reduce((a, b) => a + b.ms, 0) / perf.length) : 0;
+  const hours = new Date().getHours() + new Date().getMinutes() / 60; const rate = hours > 0.5 ? q.n / hours : 0;
+  return [`İnternet: ${navigator.onLine ? "var" : "YOK"}${navigator.connection ? " (" + navigator.connection.effectiveType + ")" : ""}`, `Beyin: ${SET.geminiKey ? SET.geminiModel : "Gemini anahtarı yok"}${SET.groqKey ? " · yedek Groq" : ""}`,
+    `Google hesapları: ${accounts().length}`, `Telegram: ${SET.tgOn ? "bağlı" : "kapalı"}`, `Bugün Gemini isteği: ${q.n}${q.err ? " (kota hatası " + q.err + ")" : ""}`,
+    `Kota tahmini: ${rate ? `saatte ~${rate.toFixed(0)} istek; bu hızla gün sonunda ~${Math.round(q.n + rate * (24 - hours))}` : "yeterli veri yok"} (ücretsiz katmanda modele göre günlük ~250–1000)`,
+    `Ortalama cevap süresi: ${avg ? (avg / 1000).toFixed(1) + " sn" : "-"}`, `Pil: %${Math.round(BAT.level * 100)}${BAT.charging ? " şarjda" : ""}${batSave() ? " · tasarruf AÇIK" : ""}`,
+    `Akışlı sesli cevap: açık (cevap gelirken konuşmaya başlar)`, `İnternetsiz kuyruk: ${(META.offq || []).length} iş`, `Son test: ${META.lastTest ? META.lastTest.at + " · " + META.lastTest.ozet : "hiç"}`].join("\n");
+}
+FN.status = { ui: () => `<pre class="skpre">${esc(statusText())}</pre>`, run: async () => ({ metin: statusText() }) };
+FN.speed = { ui: () => speedHTML(), run: async () => { const p = (META.perf || []); if (p.length < 3) return { metin: "Henüz yeterli kullanım verisi yok." }; const slow = [...p].sort((a, b) => b.ms - a.ms).slice(0, 5); const ok = p.filter(x => x.ok).length; const al = XL("actlog"); const fail = al.filter(a => !a.ok); return { metin: `Son ${p.length} istek: ortalama ${(p.reduce((a, b) => a + b.ms, 0) / p.length / 1000).toFixed(1)} sn, başarı %${Math.round(ok / p.length * 100)}.\nEn yavaşlar: ${slow.map(s => `"${s.q}" ${(s.ms / 1000).toFixed(1)} sn`).join("; ")}\nAraç kullanımı: ${al.length} (başarısız ${fail.length}${fail.length ? ": " + [...new Set(fail.map(f => f.name))].join(", ") : ""}).\nÖneri: ${p.reduce((a, b) => a + b.ms, 0) / p.length > 6000 ? "Ayarlar → hız 'hızlı' yap ya da İnternete göre mod'u 'hafif' seç." : "Hız iyi görünüyor."}` }; } };
+function speedHTML() { const p = (META.perf || []).slice(-24); if (!p.length) return '<div class="empty">Veri yok.</div>'; const mx = Math.max(...p.map(x => x.ms)); return `<div class="bars">${p.map(x => `<span title="${esc(x.q)}" style="height:${Math.max(4, x.ms / mx * 60)}px;background:${x.ok ? "var(--acc,#ff2a3d)" : "#666"}"></span>`).join("")}</div>`; }
+FN.cache = { ui: () => `<label class="tg"><input type="checkbox" data-sk="cache" ${SET.cache !== false ? "checked" : ""}> Akıllı önbellek (aynı soruya 10 dk içinde anında cevap)</label><div class="hint">Önbellekte: ${GCACHE.size} cevap</div>`, run: async () => { GCACHE.clear(); return { ok: true, not: "Önbellek temizlendi." }; } };
+FN.compress = { run: async () => { if (CHAT.length < 10) return { metin: "Sohbet zaten kısa." }; const old = CHAT.slice(0, -8); const sum = await plainGemini("Bu konuşmanın kalıcı önemi olan kısmını 4-6 cümlede özetle (kararlar, istekler, bilgiler):\n" + old.map(m => (m.role === "user" ? "Burak: " : "Titus: ") + m.content).join("\n").slice(-12000), [], null, { max: 500, nocache: true }); S.journal = [...(S.journal || []), { week: weekKey(), text: "Sohbet özeti: " + sum }].slice(-60); CHAT = CHAT.slice(-8); saveChat(); save(); drawChat(); return { ok: true, metin: "Sohbet sıkıştırıldı: " + sum }; } };
+FN.prewarm = { run: async () => { const out = []; try { await script("briefData"); out.push("brifing verisi hazır"); } catch (e) { out.push("brifing: " + e.message); } try { await weather(); out.push("hava hazır"); } catch {} return { ok: true, metin: out.join(", ") }; } };
+async function bootCheck(manual) {
+  const p = [];
+  if (!SET.geminiKey) p.push("Gemini anahtarı yok (Ayarlar → Beyin)");
+  if (!navigator.onLine) p.push("İnternet yok — internetsiz komutlar ve kuyruk çalışıyor");
+  if (SET.scriptUrl) { try { await script("ping"); } catch (e) { p.push("Google bağlantısı: " + e.message); } }
+  try { await loadLib("lib/docx.js"); } catch { p.push("Belge kütüphanesi yüklenemedi"); }
+  if (!SKILLS.length) p.push("Yetenek kataloğu yüklenemedi");
+  if (p.length && (manual || !META.bootWarn || META.bootWarn !== p.join("|"))) { META.bootWarn = p.join("|"); saveMeta(); bubble("sys", "⚠️ Açılış kontrolü: " + p.join(" · ")); }
+  return { ok: !p.length, sorunlar: p };
+}
+FN.bootcheck = { run: () => bootCheck(true) };
+FN.backuptest = { run: async () => {
+  if (!SET.scriptUrl) return { hata: "Google bağlı değil." };
+  const r = [];
+  try { const j = await script("load"); const d = j.data || {}; r.push(`✓ Drive senkron dosyası okunuyor: ${(d.reminders || []).length} hatırlatıcı, ${(d.tasks || []).length} görev, ${(d.notes || []).length} not, ${(d.memory || []).length} hafıza (${d.updatedAt ? new Date(d.updatedAt).toLocaleString("tr-TR") : "?"})`); } catch (e) { r.push("✗ Senkron dosyası: " + e.message); }
+  try { const b = await script("getBackup", {}); r.push(b.data ? `✓ Şifreli yedek bulundu: ${b.name} (${Math.round(b.data.length * 0.75 / 1024)} KB) — geri yükleme Ayarlar → Yedek'ten şifreyle yapılır` : "• Şifreli yedek yok (Ayarlar → Yedek ile oluştur)"); } catch (e) { r.push("✗ Yedek: " + e.message); }
+  return { metin: r.join("\n") };
+} };
+FN.migrate = {
+  ui: () => `<div class="hint">Yeni telefona geçerken: buradan "Taşıma dosyası" kaydet (anahtarların da içinde — kimseyle paylaşma), yeni telefonda Titus'u kur ve "Taşıma dosyasını yükle"ye bas.</div><div class="row"><button class="btn" id="mgOut">💾 Taşıma dosyası kaydet</button><button class="btn ghost" id="mgIn">📂 Taşıma dosyasını yükle</button></div>`,
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#mgOut,#mgIn"); if (!t) return;
+  try {
+    if (t.id === "mgOut") { const r = await saveFile(new Blob([JSON.stringify({ titus: 3, SET, S, META, CHAT })], { type: "application/json" }), "titus-tasima-" + today() + ".json"); toast("✓ " + r.yer, 5000); }
+    else { const [f] = await pickFiles(".json,application/json"); if (!f) return; const o = JSON.parse(await f.text()); if (!o.titus || !o.SET) throw new Error("Bu bir Titus taşıma dosyası değil"); if (!(await confirmBox("Bu cihazdaki Titus verileri dosyadakilerle değiştirilsin mi?", "Değiştir"))) return; SET = Object.assign({ ...DEF_SET }, o.SET); S = Object.assign(EMPTY(), o.S || {}); CHAT = o.CHAT || []; Object.assign(META, o.META || {}); await saveSet(); save(); saveChat(); saveMeta(); toast("✓ Taşındı; uygulama yenileniyor"); setTimeout(() => location.reload(), 1200); }
+  } catch (er) { toast("✗ " + er.message, 5000); }
+});
+FN.privacy = {
+  ui: () => { const cats = [["Sohbet geçmişi", CHAT.length, "chat"], ["Kalıcı hafıza", (S.memory || []).length, "memory"], ["Notlar", (S.notes || []).length, "notes"], ["Harcamalar", (S.expenses || []).length, "expenses"], ["Kişiler", (S.people || []).length, "people"], ["Eylem günlüğü", XL("actlog").length, "actlog"], ["Kullanım istatistiği", (META.use || []).length + (META.perf || []).length, "use"], ["Kayıtlı dosya listesi", (S.files || []).length, "files"], ["Komut geçmişi", (META.hist || []).length, "hist"]];
+    return `<div class="hint">Titus'un sakladığı her şey cihazında ve (bağlıysa) kendi Google Drive'ında durur. Hiçbir yere satılmaz/paylaşılmaz; yapay zekâ cevabı için sadece o anki istek Google Gemini'ye gider.</div><div class="sklist">${cats.map(c => `<div class="item"><div class="t"><div class="h">${c[0]}</div><div class="meta">${c[1]} kayıt</div></div><button class="x" data-pvdel="${c[2]}">Sil</button></div>`).join("")}</div>`; }
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-pvdel]"); if (!t) return; const k = t.dataset.pvdel;
+  if (!(await confirmBox("Bu veriler kalıcı olarak silinsin mi?", "Sil"))) return;
+  if (k === "chat") { CHAT = []; saveChat(); drawChat(); } else if (k === "use") { META.use = []; META.perf = []; saveMeta(); } else if (k === "hist") { META.hist = []; saveMeta(); } else if (k === "actlog") { X().actlog = []; save(); } else { S[k] = []; save(); }
+  refreshSkill(); toast("✓ Silindi");
+});
+FN.offlineq = { ui: () => `<div class="hint">İnternet yokken verdiğin işler sıraya girer, bağlantı gelince yapılır. Sırada: ${(META.offq || []).length}</div>${(META.offq || []).map(q => `<div class="hint">• ${esc(q.t)}</div>`).join("")}` };
+FN.offline = { ui: () => `<div class="hint">İnternetsiz çalışanlar: "10 dakika sonra … hatırlat", "yarın 9'da … hatırlat", "not al: …", "görev ekle: …", "alarm kur 7:30", "zamanlayıcı 5 dakika", "fener aç", "saat kaç". Cevaplar telefonun kendi sesiyle okunur. Diğer istekler internet gelince yapılmak üzere sıraya girer. Ses tanıma internetsizken telefonun kendi Türkçe tanıyıcısıyla (Ayarlar → Ses tanıma: cihaz) çalışır; tam ansiklopedi/yapay zekâ cevabı internetsiz yapılamaz.</div>` };
+FN.history = { ui: () => `<div class="sklist">${(META.hist || []).slice(0, 40).map((h, i) => `<div class="item"><div class="t"><div class="h">${esc(h)}</div></div><button class="btn ghost" data-hist="${i}">↻</button></div>`).join("") || '<div class="empty">Geçmiş yok.</div>'}</div>` };
+document.addEventListener("click", e => { const t = e.target.closest("[data-hist]"); if (t) { const h = (META.hist || [])[+t.dataset.hist]; if (h) { go("home"); send(h); } } });
+FN.actionlog = { ui: () => `<div class="sklist">${XL("actlog").slice(0, 60).map(a => `<div class="item ${a.ok ? "" : "late"}"><div class="t"><div class="h">${esc(ACT_TR[a.name] || a.name)} ${a.ok ? "✓" : "✗"}</div><div class="meta">${esc(a.at.replace("T", " "))} · ${esc(a.args)} · ${a.ms} ms</div></div></div>`).join("") || '<div class="empty">Henüz işlem yok.</div>'}</div>` };
+FN.undo = { run: async () => undoLast() };
+FN.resume = { ui: () => { const j = (META.jobs || []).filter(x => !x.fin); return j.length ? j.map(x => `<div class="item"><div class="t"><div class="h">${esc(x.kind)}: ${esc(x.arg)}</div><div class="meta">${x.done.length} adım bitti</div></div><button class="btn ghost" data-resume="${x.id}">Devam</button></div>`).join("") : '<div class="empty">Yarım kalan iş yok.</div>'; } };
+document.addEventListener("click", e => { const t = e.target.closest("[data-resume]"); if (!t) return; const j = (META.jobs || []).find(x => x.id === t.dataset.resume); if (j) { go("skills"); showSkill("f1-3"); runFromUI("research", j.arg); } });
+
+/* =================== OTOMASYON: kurallar, zamanlı mesaj, rutin editörü, sihirli kelime =================== */
+FN.rules = {
+  ui: () => `<div class="hint">Örnekler: "her gün 08:00'de brifing ver", "pil %20'nin altına düşünce pil tasarrufunu aç", "bildirimde 'kargo' geçerse bana söyle", "uygulama açılınca bugünün görevlerini oku". Titus açıkken (uyandırma açıksa arka planda) çalışır.</div><div class="sklist">${XL("rules").map(r => `<div class="item"><div class="ic">⚡</div><div class="t"><div class="h">EĞER ${esc(r.tur)} ${esc(r.deger)}</div><div class="meta">O ZAMAN: ${esc(r.eylem)}${r.son ? " · son: " + esc(r.son) : ""}</div></div><button class="x" data-coldel="rules:${r.id}">✕</button></div>`).join("") || '<div class="empty">Kural yok.</div>'}</div>`,
+  input: "Kuralı doğal dille yaz",
+  run: async g => { if (!g) return { kurallar: XL("rules").map(r => `${r.tur} ${r.deger} → ${r.eylem}`) }; const j = await geminiJSON(`Kullanıcı bir otomasyon kuralı yazdı: "${g}". JSON: {"tur":"saat|pil|bildirim|acilis","deger":"saat ise HH:MM; pil ise yüzde sayısı; bildirim ise aranacak kelime; acilis ise boş","eylem":"koşul olunca Titus'a verilecek komut (Türkçe, tam cümle)"}`); if (!["saat", "pil", "bildirim", "acilis"].includes(j.tur)) return { hata: "Bu kuralı anlayamadım; saat, pil, bildirim ya da açılış koşulu kullan." }; const r = { id: uid(), ...j }; XL("rules").push(r); save(); return { ok: true, kural: `${r.tur} ${r.deger} → ${r.eylem}` }; }
+};
+let RULE_BUSY = false;
+async function ruleTick(boot) {
+  if (RULE_BUSY || busy) return; RULE_BUSY = true;
+  try {
+    const now = new Date(), hm = pad(now.getHours()) + ":" + pad(now.getMinutes()), d = today();
+    for (const r of XL("rules")) {
+      let fire = false;
+      if (r.tur === "saat" && r.deger === hm && r.son !== d + hm) { fire = true; r.son = d + hm; }
+      else if (r.tur === "pil" && !BAT.charging && BAT.level * 100 < Number(r.deger) && r.son !== d) { fire = true; r.son = d; }
+      else if (r.tur === "acilis" && boot) fire = true;
+      else if (r.tur === "bildirim" && Jarvis && now.getMinutes() % 5 === 0 && r.chk !== hm) { r.chk = hm; const n = await runTool("bildirimleri_oku", { limit: 15 }); const hit = JSON.stringify(n || {}); if (trLower(hit).includes(trLower(r.deger)) && r.son !== hash(hit)) { r.son = hash(hit); fire = true; } }
+      if (fire) { save(); bubble("sys", "⚡ Kural: " + r.eylem); await send(r.eylem); }
+    }
+    for (const m of XL("sched")) if (!m.done && parseDate(m.at) <= now) { m.done = true; save(); if (await confirmBox(`Zamanlı mesaj zamanı geldi:\n${m.kim}: ${m.mesaj}`, "Gönder")) await runTool("whatsapp_mesaj", { kim: m.kim, mesaj: m.mesaj }); }
+    if (SET.safetyDue && Date.now() > SET.safetyDue) { SET.safetyDue = 0; saveSet(); if (!(await confirmBox("Eve vardın mı? (Hayır dersen konumunu " + (SET.partnerName || "yakınına") + " gönderiyorum)", "Vardım", "Hayır, gönder"))) await safetyAlert("Eve dönüşte henüz varmadım, haberin olsun."); }
+  } catch (e) { console.warn("rule", e); } finally { RULE_BUSY = false; }
+}
+setInterval(() => ruleTick(false), 30000); setTimeout(() => ruleTick(true), 9000);
+FN.schedmsg = { ui: () => `<div class="sklist">${XL("sched").filter(m => !m.done).map(m => `<div class="item"><div class="t"><div class="h">${esc(m.kim)}: ${esc(m.mesaj)}</div><div class="meta">${esc(fmtWhen(m.at))}</div></div><button class="x" data-coldel="sched:${m.id}">✕</button></div>`).join("") || '<div class="empty">Zamanlı mesaj yok.</div>'}</div>`, input: "Kime, ne, ne zaman? (ör. 'yarın 10'da Kübra'ya iyi ki doğdun yaz')",
+  run: async g => { const j = await geminiJSON(`Şu an ${localISO(new Date())}. Kullanıcı zamanlı mesaj istiyor: "${g}". JSON: {"kim":"","mesaj":"","at":"YYYY-MM-DDTHH:mm"}`); if (!j.kim || !j.mesaj || !parseDate(j.at)) return { hata: "Kime, ne ve ne zaman olduğunu anlayamadım." }; const m = { id: uid(), ...j }; XL("sched").push(m); save(); A.addReminder({ text: `📨 Zamanlı mesaj: ${j.kim} — ${j.mesaj.slice(0, 60)}`, due: j.at }); return { ok: true, not: `${fmtWhen(j.at)} için hazır; zamanı gelince bildirim gelir, tek dokunuşla WhatsApp'ta gönderirsin.` }; } };
+FN.routineedit = {
+  ui: () => `<div class="hint">Her rutinin adımlarını düzenleyebilirsin. Adım türleri: dnd, torch, speak, reminder, shiftEnd, whatsapp, app, url, focus, brief, plan, sleep, webhook.</div>${(S.routines || []).map((r, i) => `<div class="card"><b>${esc(r.name)}</b>${r.trigger ? ` · tetik: ${esc(r.trigger)}` : ""}<textarea data-rtn="${i}" style="min-height:90px;font-family:monospace;font-size:12px">${esc(JSON.stringify(r.steps || [], null, 1))}</textarea><div class="row"><button class="btn ghost" data-rtnsave="${i}">Kaydet</button><button class="btn ghost" data-rtnrun="${esc(r.name)}">Çalıştır</button><button class="x" data-rtndel="${i}">✕</button></div></div>`).join("") || '<div class="empty">Rutin yok. "Sihirli kelimeler" ile oluştur.</div>'}`
+};
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-rtnsave],[data-rtnrun],[data-rtndel]"); if (!t) return;
+  if (t.dataset.rtnsave !== undefined) { const i = +t.dataset.rtnsave; try { const steps = JSON.parse($(`[data-rtn="${i}"]`).value); if (!Array.isArray(steps)) throw new Error("Liste olmalı"); S.routines[i].steps = steps; save(); toast("✓ Rutin kaydedildi"); } catch (er) { toast("✗ Biçim hatalı: " + er.message, 5000); } }
+  else if (t.dataset.rtnrun) { go("home"); send("Rutini çalıştır: " + t.dataset.rtnrun); }
+  else { if (await confirmBox("Rutin silinsin mi?", "Sil")) { S.routines.splice(+t.dataset.rtndel, 1); save(); refreshSkill(); } }
+});
+FN.magic = { input: "Sihirli kelime ve ne yapacağı (ör. 'Gösteri zamanı: telefonu sessize al, feneri kapat, sahne notlarımı oku')", run: g => g ? { talimat: `rutin_olustur aracıyla şu sihirli kelime rutinini oluştur (rutinin adı sihirli kelime olsun): ${g}. Sonra oluşturduğunu tek cümleyle söyle.` } : { hata: "Kelime ve işleri yaz." } };
+
+/* =================== AJANLAR =================== */
+async function agentTeam(g, onStep = () => {}) {
+  onStep("Araştırmacı çalışıyor");
+  const subs = (await geminiJSON(`Görev: "${g}". ${userCtx()}\nBu iş için araştırılması gereken 2-4 alt konu. JSON: {"alt":["..."]}`)).alt || [g];
+  const found = await Promise.all(subs.map(s => grounded("Araştır, Türkçe ve bilgi yoğun cevap ver: " + s + " (ana görev: " + g + ")", 1400).catch(() => ({ text: "", src: [] }))));
+  const notes = found.map((f, i) => `## ${subs[i]}\n${f.text}`).join("\n\n"); const src = found.flatMap(f => f.src);
+  onStep("Yazar taslağı yazıyor");
+  const draft = await plainGemini(`Sen yazarsın. Görev: ${g}\n${userCtx()}\nAraştırma notları:\n${notes}\n\nGörevi eksiksiz yerine getiren çıktıyı Türkçe yaz (başlıklar, maddeler).`, [], null, { max: 5000, nocache: true });
+  onStep("Denetçi kontrol ediyor");
+  const fin = await plainGemini(`Sen titiz bir denetçi/editörsün. Görev: ${g}\nTaslak:\n${draft}\n\nAraştırma notları (doğruluk için):\n${notes.slice(0, 8000)}\n\nTaslağı kontrol et: hatalı/uydurma bilgi, eksik, çelişki, gereksiz uzunluk. Düzeltilmiş SON METNİ yaz; en sona "Denetçi notu:" ile 2-3 maddede neyi düzelttiğini ekle.`, [], null, { max: 6000, nocache: true });
+  const d = await docFromText("Ekip çalışması — " + g.slice(0, 50), fin, ["", "KAYNAKLAR", ...src.slice(0, 15).map((s, i) => `[${i + 1}] ${s.title} — ${s.uri}`)]);
+  return { metin: fin, belge: d.dosya, yer: d.yer };
+}
+FN.team = { input: "Büyük iş ne? (ör. 'Recast için 2026 sektör raporu', 'kısa film yatırım dosyası')", run: (g, s, ctx) => g ? agentTeam(g, x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; }) : { hata: "İşi yaz." } };
+const T_ = s => ({ run: g => ({ talimat: s.replace("{g}", g || "") }) });
+Object.assign(FN, {
+  recastpack: T_("Recast tek komut paketi: {g}. Önce kadro_sorgula ile uygun oyuncuları bul; seçilenler için belge_hazirla ile portfolyo belgesi hazırla; her oyuncu/ilgili kişi için mail_taslagi ile kişiselleştirilmiş taslak oluştur (göndermeden). Sonunda ne yaptığını madde madde söyle."),
+  shiftplan: T_("Vardiyalarımı, seçme/çekimlerimi, takvimimi ve görevlerimi birlikte değerlendir (takvim_listele kullan). Önümüzdeki 7 günde çakışmaları ve sıkışık günleri bul, çözüm öner; onaylarsam hatırlatıcı/görev ekle. {g}"),
+  sundayplan: T_("Pazar akşamı haftalık planlama yap: takvim_listele ile gelecek haftaya bak; açık görevler, seçmeler, vardiyalar ve hedeflerle günlere yayılmış bir plan çıkar; en önemli 3 hedefi belirle; onaylarsam görev ve hatırlatıcı ekle. {g}"),
+  prioritize: T_("Açık görevlerimi Eisenhower matrisine göre (acil-önemli / önemli-acil değil / acil-önemli değil / ikisi de değil) sırala; bugün yapmam gereken ilk 3 işi söyle. {g}"),
+  procrastinate: T_("Erteleme önleyici: '{g}' işini 5-10 dakikalık küçük adımlara böl, adımları gorev_ekle ile ekle, ilk adım için 10 dakikalık odak_baslat başlat ve beni nazikçe motive et."),
+  tasktree: T_("Görev ağacı: '{g}' hedefini ana adımlara ve alt görevlere böl (ağaç şeklinde göster); tarihleriyle gorev_ekle ile ekle."),
+  rolecal: T_("Rol hazırlık takvimi: '{g}'. Çekim/seçme tarihine kadar günlük rol çalışma planı çıkar (metin ezberi, karakter analizi, fiziksel çalışma, prova); her günü gorev_ekle ile tarihli ekle ve önemli günlere hatırlatıcı kur."),
+  auditionday: T_("Seçme günü modu: {g}. Seçmenin saatini ve adresini kayıtlardan bul; yol_suresi ile ne zaman çıkmam gerektiğini hesapla ve hatırlatıcı kur; hava durumuna bak; son tekrar için kısa bir plan ver; motive edici tek cümleyle bitir."),
+  agenda: T_("Haftalık ekip toplantısı gündemi hazırla: açık ekip görevleri, son brief'ler, başvuru durumları ve takvimden derle; madde madde gündem çıkar ve istersem not_al ile kaydet. {g}"),
+  weekly: T_("Ajans haftalık raporu: audition_oku ve kadro_sorgula araçlarıyla bu haftaki brief, gönderim ve dönüş sayılarını çıkar; kısa bir rapor yaz ve not_al ile kaydet. {g}"),
+  rehearsal: T_("Prova çizelgesi: {g}. Ekibin uygun saatlerini değerlendir, çakışmasız prova planı öner; onaylarsam takvim_ekle ile takvime ekle."),
+  nightq: { input: "Gece yapılacak iş (bilgisayardaki Titus yapar)", run: async g => { if (!g) return { hata: "İşi yaz." }; if (!SET.scriptUrl) return { hata: "Bilgisayar bağlantısı için Google bağlantısı gerekli." }; const { id } = await script("pcPush", { cmd: { action: "ask", arg: "GECE İŞİ (acele etme, bitince sonucu telefona not olarak gönder): " + g, night: true } }); XL("nightq").push({ id, g, at: localISO(new Date()) }); save(); return { ok: true, not: "Bilgisayardaki Titus'un kuyruğuna eklendi; bilgisayar açıkken yapıp sonucu sabah telefona gönderecek." }; } },
+  pconly: { run: async (g, s) => { if (!SET.scriptUrl) return { hata: "Bu yetenek bilgisayardaki Titus'ta çalışır; önce bilgisayarı bağla (Ayarlar → Bilgisayar)." }; const { id } = await script("pcPush", { cmd: { action: "ask", arg: `yetenek_calistir aracını kullan: ad="${s.n}", girdi="${g}". Bitince sonucu telefona bildir.` } }); return { ok: true, not: `"${s.n}" bilgisayardaki Titus'a iletildi.`, id }; } },
+  findphone: { ui: () => `<div class="hint">Telefonunu bulamazsan bilgisayardaki Titus'a "telefonumu çaldır" de: telefon (Titus açıkken / arka planda) yüksek sesle öter ve titrer.</div><button class="btn ghost" id="ringTest">Şimdi dene</button>` },
+  screentime: { ui: () => `<div class="hint">Android'in ekran süresi istatistiğini okumak ayrı bir sistem izni ve yeni yerel kod gerektiriyor; bu sürümde yok. Yerine: Kurallar'a "her gün 23:00'te telefonu bırakmamı hatırlat" ekleyebilirsin. Telefonun kendi Dijital Denge ekranını açayım mı?</div><button class="btn ghost" id="dwOpen">Dijital Dengeyi aç</button>` },
+  ambientsound: { ui: () => `<div class="hint">Kapı zili/alarm gibi ortam seslerini sürekli dinleyip tanımak ücretsiz ve pil dostu şekilde yapılamıyor; bu yetenek eklenmedi. Android'in kendi "Ses bildirimleri" özelliği (Erişilebilirlik) bunu yapıyor.</div>` }
+});
+document.addEventListener("click", e => { if (e.target.closest("#ringTest")) ringPhone(); if (e.target.closest("#dwOpen")) runTool("uygulama_ac", { ad: "Dijital Denge" }); });
+
+/* =================== VERİYE DAYALI YAPAY ZEKÂ YETENEKLERİ =================== */
+FN.brain = { input: "Ne arıyorsun? (notlarda, hafızada, belgelerde, maillerde)", run: async g => {
+  if (!g) return { hata: "Ne arayayım?" };
+  const nt = toks(g); const hit = arr => arr.filter(x => toks(JSON.stringify(x)).some(w => nt.some(q => w.startsWith(q.slice(0, 5))))).slice(0, 12);
+  let kb = []; try { kb = await kbSearch(g, 5); } catch {}
+  let mails = []; try { const r = await runTool("mail_ozeti", { query: g, max: 5 }); mails = r.hesaplar ? r.hesaplar.flatMap(h => (h.mailler || []).map(m => ({ ...m, hesap: h.hesap }))) : (r.mailler || []); } catch {}
+  const ctx = { notlar: hit(S.notes || []).map(n => n.text), hafiza: hit(S.memory || []).map(m => m.text), belgeler: kb, mailler: mails.slice(0, 8), gunluk: hit(XL("journal")), kisiler: hit(XL("crm")), kararlar: hit(XL("decisions")) };
+  const a = await plainGemini(`İkinci beyin araması. Soru: "${g}"\nKullanıcının kendi kayıtları:\n${JSON.stringify(ctx).slice(0, 20000)}\n\nSadece bu kayıtlara dayanarak Türkçe cevap ver; her bilginin nereden geldiğini (not/hafıza/belge/mail/günlük) parantezle belirt. Kayıtlarda yoksa açıkça söyle. Bağlantılı konular varsa sonunda "Bağlantılı:" ile göster.`, [], null, { max: 1600, nocache: true });
+  return { metin: a, bulunan: Object.fromEntries(Object.entries(ctx).map(([k, v]) => [k, v.length])) };
+} };
+FN.doublecheck = { run: async g => {
+  const last = [...CHAT].reverse().find(m => m.role === "assistant"); const q = [...CHAT].reverse().find(m => m.role === "user");
+  const target = g || (last && last.content); if (!target) return { hata: "Kontrol edilecek cevap yok." };
+  const prompt = `Bir yapay zekâ asistanının cevabını bağımsız olarak doğrula. Soru: ${q ? q.content : "(bilinmiyor)"}\nCevap: ${target}\n\nHata, uydurma, eksik ya da riskli bilgi var mı? Kısa Türkçe değerlendir: "Doğru", "Kısmen doğru" ya da "Yanlış" ile başla, sonra nedenini ve doğrusunu yaz.`;
+  if (SET.groqKey) { try { const j = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel || "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], max_tokens: 700 }, { Authorization: "Bearer " + SET.groqKey }); return { metin: "🔁 İkinci model (Groq Llama): " + j.choices[0].message.content }; } catch {} }
+  const g2 = await grounded(prompt + " Gerekirse internette kontrol et.", 900); return { metin: "🔁 İkinci kontrol (internetle): " + g2.text, kaynaklar: g2.src.slice(0, 5) };
+} };
+FN.style = { ui: () => `<div class="hint">${SET.styleProfile ? "Kayıtlı tarzın: " + esc(SET.styleProfile) : "Henüz tarz kaydı yok."}</div>`, input: "Kendi yazdığın 2-3 mesaj/mail örneğini yapıştır", run: async g => { if (!g || g.length < 80) return { hata: "Tarzını öğrenmem için en az birkaç cümlelik kendi yazdığın örnekleri yapıştır." }; const p = await plainGemini(`Bu metinler kullanıcının kendi yazdıkları. Yazım tarzını başka bir yazar taklit edebilsin diye 5-7 maddede tarif et (hitap, cümle uzunluğu, samimiyet, emoji, kapanış, sık kullandığı ifadeler). Kısa yaz.\n\n${g}`, [], null, { max: 600, nocache: true }); SET.styleProfile = p.replace(/\n+/g, " ").slice(0, 900); saveSet(); return { ok: true, metin: "Tarzını öğrendim: " + p }; } };
+FN.inbox = { run: async () => {
+  const r = await runTool("mail_ozeti", { query: "in:inbox newer_than:3d", max: 15 }); if (r.hata) return r;
+  const mails = r.hesaplar ? r.hesaplar.flatMap(h => (h.mailler || []).map(m => ({ ...m, hesap: h.hesap }))) : (r.mailler || []).map(m => ({ ...m, hesap: r.hesap }));
+  if (!mails.length) return { metin: "Son 3 günde mail yok." };
+  return { metin: await plainGemini(`Bu mailleri (birden fazla hesaptan olabilir) şu gruplara ayır: 📋 Brief/iş teklifi, 📨 Başvuru dönüşü, 💳 Fatura/ödeme, 👥 Kişisel, 📰 Bülten/reklam. Her grubu önem sırasına koy; cevap gerekenleri ⚠️ ile işaretle; hangi hesaptan geldiğini yaz. Kısa.\n\n${JSON.stringify(mails).slice(0, 18000)}`, [], null, { max: 1500 }) };
+} };
+FN.trends = { run: async () => { let items = []; try { items = (await script("radarGet")).items || []; } catch (e) { return { hata: "Radar okunamadı: " + e.message }; } if (!items.length) return { metin: "Radarda ilan yok; önce Kariyer → Radar'dan casting sitelerini ekle." }; return { metin: await plainGemini(`Bu casting ilanlarından istatistik çıkar: en çok aranan yaş aralıkları, cinsiyet, tipler/özellikler, proje türleri (dizi/film/reklam), şehirler. Yüzdelerle kısa özet ve kullanıcıya (erkek oyuncu) 2 öneri.\n\n${items.slice(0, 120).map(i => i.title).join("\n")}`, [], null, { max: 1200 }) }; } };
+async function rosterRows() { if (!SET.kadroSheetId) throw new Error("KADRO tablosu bağlı değil (Ayarlar → İş bağlantıları)."); const r = await script("roster", { sheetId: SET.kadroSheetId }); return r; }
+FN.kadroclean = { run: async () => { const r = await rosterRows(); return { metin: await plainGemini(`KADRO oyuncu tablosu (başlıklar + satırlar). Veri temizliği yap: aynı kişinin tekrar eden kayıtları, eksik kritik alanlar (telefon, yaş, şehir, fotoğraf linki), tutarsız biçimler (telefon, tarih). Satır numaralarıyla liste ver ve düzeltme öner.\n\n${JSON.stringify(r).slice(0, 30000)}`, [], null, { max: 2500 }) }; } };
+FN.sheetask = { input: "KADRO'ya ne sormak istersin? (ör. 'İstanbul'da 25-35 yaş kaç erkek oyuncu var, şehirlere göre dağılım')", run: async g => { if (!g) return { hata: "Soru yaz." }; const r = await rosterRows(); const j = await geminiJSON(`Tablo: ${JSON.stringify(r).slice(0, 30000)}\nSoru: "${g}"\nTabloyu dikkatle say ve cevapla. JSON: {"cevap":"Türkçe kısa cevap","tablo":[["başlık",...],[...]],"grafik":{"tur":"bar","baslik":"","etiketler":[],"degerler":[]}}`); return { metin: j.cevap, html: tableHTML(j.tablo) + (j.grafik && j.grafik.degerler ? chartSVG(j.grafik) : "") }; } };
+FN.auditionstats = { run: async () => { const ap = S.applications || []; if (!ap.length && !(S.auditions || []).length) return { metin: "Henüz başvuru/seçme kaydı yok." }; const by = {}; ap.forEach(a => { by[a.status] = (by[a.status] || 0) + 1; }); const pos = (by.olumlu || 0) + (by.callback || 0) + (by["geri dönüş"] || 0); const t = [["Durum", "Sayı"], ...Object.entries(by)]; return { metin: `Toplam ${ap.length} başvuru, ${(S.auditions || []).length} seçme/çekim. Dönüş oranı ~%${ap.length ? Math.round(pos / ap.length * 100) : 0}.`, html: tableHTML(t) + chartSVG({ tur: "bar", baslik: "Başvuru durumları", etiketler: Object.keys(by), degerler: Object.values(by) }) }; } };
+FN.summary = { input: "Özetlenecek metni yapıştır ya da 📎 dosya ekle", run: async g => { const parts = attParts(); if (!g && !parts.length) return { hata: "Metin ya da dosya ver." }; return { metin: await plainGemini(`Şu içeriği üç seviyede özetle:\n# Tek cümle\n# Bir paragraf\n# Detaylı (maddeler, önemli rakamlar)\n\n${g || "(ekteki dosya)"}`, parts, null, { max: 2500 }) }; } };
+FN.chatmap = { run: async () => { if (CHAT.length < 4) return { metin: "Sohbet çok kısa." }; return { metin: await plainGemini("Bu sohbette konuşulan başlıkları sırayla çıkar (her biri tek satır, kısa) ve her başlığın sonucunu (karar/yapıldı/açık) yaz:\n" + CHAT.map(m => (m.role === "user" ? "Burak: " : "Titus: ") + m.content).join("\n").slice(-15000), [], null, { max: 900 }) }; } };
+FN.interests = { ...colFn("interests"), run: async g => { if (g) return colRun("interests", g); const t = await geminiJSON(`Kullanıcının hafızası ve son konuşmalarından ilgi alanlarını çıkar. Hafıza: ${(S.memory || []).map(m => m.text).join("; ")}\nKonuşmalar: ${CHAT.filter(m => m.role === "user").map(m => m.content).join(" | ").slice(-5000)}\nJSON: {"alanlar":["..."]}`); X().interests = (t.alanlar || []).map(a => ({ id: uid(), alan: a })); save(); return { ok: true, metin: "İlgi alanların: " + (t.alanlar || []).join(", ") }; } };
+FN.yearreview = { run: async () => { const tl = timeline().filter(e => e.d.startsWith(String(new Date().getFullYear()))); const exp = (S.expenses || []).filter(e => (e.date || "").startsWith(String(new Date().getFullYear()))).reduce((a, b) => a + b.amount, 0); const t = await plainGemini(`Kullanıcının ${new Date().getFullYear()} yılı kayıtları:\n${tl.map(e => `${e.d} ${e.k}: ${e.t}`).join("\n").slice(0, 20000)}\nToplam kayıtlı harcama: ${money(exp)}. Alışkanlıklar: ${(S.habits || []).map(h => h.name + " " + h.log.length + " gün").join(", ")}\n\nSıcak ve motive edici bir "Yılın Özeti" raporu yaz: öne çıkanlar, roller/seçmeler, işler, alışkanlıklar, rakamlarla yıl, öğrenilenler, gelecek yıl için 3 hedef önerisi.`, [], null, { max: 3000 }); const d = await docFromText("Yılın Özeti " + new Date().getFullYear(), t); return { metin: t, belge: d.dosya, yer: d.yer }; } };
+FN.onthisday = { run: async () => { const d = new Date(); const key = (d.getFullYear() - 1) + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); const hits = timeline().filter(e => e.d.slice(0, 10) === key); return { metin: hits.length ? "Geçen yıl bugün: " + hits.map(h => `${h.k} ${h.t}`).join("; ") : "Geçen yıl bugüne ait kaydın yok." }; } };
+FN.habits = { run: async () => { const u = META.use || []; if (u.length < 15) return { metin: "Seni tanımak için biraz daha kullanım lazım (şu an " + u.length + " kayıt)." }; const by = {}; u.forEach(x => { const k = x.h + ":" + x.k; by[k] = (by[k] || 0) + 1; }); const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 25); return { metin: await plainGemini(`Kullanım kayıtları (saat:iş → kaç kez): ${JSON.stringify(top)}\nGün ritmine dair 3 gözlem (hangi saatlerde ne yapıyor, en verimli saatler) ve otomatik rutin olarak kurulabilecek 2-3 öneri yaz (ör. 'her sabah 9'da brifing'). Kısa.`, [], null, { max: 800 }) }; } };
+FN.proactive = { run: async () => { try { await proactive(true); } catch {} return { ok: true, not: "Proaktif kontrol yapıldı; öneri varsa sohbette." }; } };
+FN.slots = { input: "Kime, ne için ve kaç dakikalık randevu?", run: async g => { let ev = []; try { ev = (await runTool("takvim_listele", { days: 7 })).etkinlikler || []; } catch {} const t = await plainGemini(`Önümüzdeki 7 günün takvimi: ${JSON.stringify(ev)}\nVardiyalar: ${JSON.stringify((S.shifts || []).slice(-14))}\nŞu an ${localISO(new Date())}. İstek: ${g || "1 saatlik görüşme"}\n10:00-19:00 arasındaki boş zamanlardan 3-4 uygun aralık seç; sonra bu saatleri öneren kibar bir mail metni yaz (konu satırıyla).`, [], null, { max: 1200, nocache: true }); return { metin: t, not: "İstersen 'bunu mail taslağı yap' de." }; } };
+FN.outfit = { run: async g => { const w = await weather(); return { metin: await plainGemini(`Hava: ${JSON.stringify(w)}. Bugünkü planlar: ${JSON.stringify((S.auditions || []).filter(a => (a.date || "").startsWith(today())))} ${JSON.stringify((S.shifts || []).filter(s => s.date === today()))}. ${g || ""}\nBurak için bugün ne giymeli? Kısa ve pratik öneri (seçme varsa kameraya uygun sade renkler).`, [], null, { max: 400 }) }; } };
+FN.fx = { run: async () => { const r = await (await fetch("https://open.er-api.com/v6/latest/USD")).json(); if (r.result !== "success") throw new Error("Kur alınamadı"); const t = r.rates.TRY; const eur = t / r.rates.EUR, gbp = t / r.rates.GBP; let gold = ""; try { gold = (await grounded("Bugün gram altın ve çeyrek altın kaç TL? Tek cümle.", 150)).text; } catch {} return { metin: `💵 1 USD = ${t.toFixed(2)} ₺ · 💶 1 EUR = ${eur.toFixed(2)} ₺ · 💷 1 GBP = ${gbp.toFixed(2)} ₺ (${r.time_last_update_utc.slice(5, 16)})${gold ? "\n🥇 " + gold : ""}` }; } };
+FN.device = { run: async () => { const o = []; o.push(`Pil: %${Math.round(BAT.level * 100)}${BAT.charging ? " (şarjda)" : ""}`); try { const e = await navigator.storage.estimate(); o.push(`Titus depolaması: ${(e.usage / 1048576).toFixed(1)} MB`); } catch {} if (navigator.deviceMemory) o.push(`Bellek: ~${navigator.deviceMemory} GB`); o.push(`Kayıtlı dosya: ${(S.files || []).length}, belge: ${(S.docs || []).length}`); return { metin: o.join("\n") + "\n\nÖneri: " + (BAT.level < 0.25 && !BAT.charging ? "Pil düşük: pil dostu modu aç." : "Durum iyi.") + " Bilgisayar için: 'bilgisayarın durumunu söyle' de." }; } };
+FN.ambient = { run: async () => { ambientOn(); return { ok: true }; } };
+async function ambientOn() {
+  let o = $("#ambient"); if (o) return; o = document.createElement("div"); o.id = "ambient"; document.body.appendChild(o);
+  let lock = null; try { lock = await navigator.wakeLock.request("screen"); } catch {}
+  let w = ""; try { const x = await weather(); w = x.simdi || ""; } catch {}
+  const draw = () => { const d = new Date(); const nx = S.reminders.filter(r => !r.done).sort((a, b) => a.due.localeCompare(b.due))[0]; o.innerHTML = `<div class="amClock">${pad(d.getHours())}:${pad(d.getMinutes())}</div><div class="amDate">${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]}</div><div class="amW">${esc(w)}</div>${nx ? `<div class="amN">⏰ ${esc(nx.text)} · ${fmtWhen(nx.due)}</div>` : ""}<div class="amHint">Çıkmak için dokun</div>`; };
+  draw(); const iv = setInterval(draw, 20000); o.onclick = () => { clearInterval(iv); try { lock && lock.release(); } catch {} o.remove(); };
+}
+FN.shared = { ui: () => `<div class="hint">Ortak liste Google E-Tablolar'da tutulur; linki sevdiklerinle paylaşınca onlar da görür/ekler.</div>${SET.sharedUrl ? `<button class="btn ghost" id="shOpen">Ortak listeyi aç</button>` : ""}`, input: "Ortak listeye ekle ya da 'listeyi göster' (ör. 'market: süt, ekmek')", run: async g => { const r = await script("sharedList", /göster|listele|neler var/.test(trLower(g)) || !g ? {} : { add: g }); SET.sharedUrl = r.url; saveSet(); return { ok: true, liste: r.rows, link: r.url }; } };
+document.addEventListener("click", e => { if (e.target.closest("#shOpen")) openUrl(SET.sharedUrl); });
+FN.teamprofiles = { ui: () => `<div class="hint">Ekip arkadaşının telefonuna Titus'u kurması yeterli; kendi Gemini anahtarını ve kendi Google bağlantısını kendisi girer. Ortak işler için "Ekip görevleri" ve "Sevdiklerinle ortak alan" (paylaşılan tablo) kullanılır. Senin anahtarlarını içeren eşleştirme kodunu başkasıyla PAYLAŞMA.</div>` };
+FN.safety = { input: "Kaç dakika sonra eve varmış olursun? ya da 'acil'", run: async g => { if (/acil|yardım|tehlike/.test(trLower(g))) return safetyAlert("🚨 Acil durum, yardıma ihtiyacım olabilir."); const n = Number((g.match(/\d+/) || [])[0]) || 45; SET.safetyDue = Date.now() + n * 6e4; saveSet(); A.addReminder({ text: "🏠 Eve vardın mı? Titus'a 'vardım' de.", due: localISO(new Date(SET.safetyDue)) }); return { ok: true, not: `${n} dakika sonra soracağım; cevap vermezsen ${SET.partnerName || "yakınına"} konumunla mesaj hazırlarım. Varınca "vardım" de.` }; } };
+async function safetyAlert(msg) { let loc = ""; try { const p = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })); loc = ` Konumum: https://maps.google.com/?q=${p.coords.latitude},${p.coords.longitude}`; } catch {} return runTool("whatsapp_mesaj", { kim: SET.partnerName || "Kübra", mesaj: msg + loc }); }
+{ const baseSend2 = send; send = async function (text, byVoice, attach, label) { if (SET.safetyDue && /^(eve )?vardım|evdeyim$/i.test(String(text || "").trim())) { SET.safetyDue = 0; saveSet(); bubble("assistant", "Sevindim, iyi geceler. 🏠"); return; } return baseSend2(text, byVoice, attach, label); }; }
+async function notifAutoRun(manual) {
+  if (!Jarvis) return { hata: "Bildirim okuma sadece telefonda." };
+  const n = await runTool("bildirimleri_oku", { limit: 30 }); const list = n.bildirimler || n.notifications || n.items || [];
+  const bank = list.filter(x => /harcama|ödeme|tutar|TL|₺|kartınız|POS|alışveriş|çekildi/i.test(JSON.stringify(x))).filter(x => !(META.bankSeen || []).includes(hash(JSON.stringify(x))));
+  if (!bank.length) return { metin: manual ? "Yeni banka bildirimi yok." : "" };
+  const j = await geminiJSON(`Bu banka/ödeme bildirimlerinden harcamaları çıkar (para girişi değil, sadece çıkış). JSON: {"harcamalar":[{"tutar":sayı,"yer":"","kategori":"Yemek|Market|Ulaşım|Kira|Fatura|Eğlence|Kişisel|Sağlık|Diğer"}]}\n${JSON.stringify(bank).slice(0, 6000)}`);
+  META.bankSeen = [...(META.bankSeen || []), ...bank.map(x => hash(JSON.stringify(x)))].slice(-300); saveMeta();
+  const hs = (j.harcamalar || []).filter(h => h.tutar > 0);
+  for (const h of hs) A.addExpense({ amount: h.tutar, category: h.kategori || "Diğer", note: "🏦 " + (h.yer || "banka bildirimi") });
+  if (hs.length) toast(`🏦 ${hs.length} harcama bildirimden eklendi`, 4000);
+  return { ok: true, eklenen: hs };
+}
+setInterval(() => { if (SET.notifAuto && !document.hidden) notifAutoRun(false).catch(() => {}); }, 20 * 6e4);
+function reelScan() { let n = 0; for (const a of S.auditions || []) if (a.done && /çekim/.test(a.type || "") && !a.reelAsked) { a.reelAsked = 1; n++; A.addReminder({ text: `🎞 "${a.title}" çekimi bitti: görüntüler gelince showreel'i güncelle.`, due: ymd(new Date(Date.now() + 21 * 864e5)) + "T12:00" }); } if (n) save(); return { ok: true, not: n ? n + " çekim için showreel hatırlatması kuruldu." : "Yeni biten çekim yok." }; }
+setInterval(() => { if (SET.reelRemind) reelScan(); }, 30 * 6e4);
+FN.devpanel = { ui: () => `<input data-sk="ghUser" value="${esc(SET.ghUser || "Mendusa27")}" placeholder="GitHub kullanıcı adı"><input data-sk="ghToken" type="password" value="${esc(SET.ghToken || "")}" placeholder="GitHub token (isteğe bağlı; özel projeler için)">`, run: async () => {
+  const H = SET.ghToken ? { Authorization: "Bearer " + SET.ghToken } : {}; const u = SET.ghUser || "Mendusa27";
+  const repos = await (await fetch(`https://api.github.com/users/${u}/repos?sort=pushed&per_page=6`, { headers: H })).json(); if (!Array.isArray(repos)) throw new Error(repos.message || "GitHub okunamadı");
+  const rows = await Promise.all(repos.map(async r => { let run = ""; try { const j = await (await fetch(`https://api.github.com/repos/${r.full_name}/actions/runs?per_page=1`, { headers: H })).json(); const x = j.workflow_runs && j.workflow_runs[0]; if (x) run = `${x.conclusion === "success" ? "✅" : x.conclusion === "failure" ? "❌" : "⏳"} ${x.name} #${x.run_number}`; } catch {} return [r.name, (r.pushed_at || "").slice(0, 10), run || "-"]; }));
+  return { metin: `${u}: son ${rows.length} proje`, html: tableHTML([["Proje", "Son değişiklik", "Son derleme"], ...rows]) };
+} };
+FN.releasenotes = { input: "Proje (varsayılan Jarvis-1)", run: async g => { const repo = /\//.test(g) ? g : `${SET.ghUser || "Mendusa27"}/${g || "Jarvis-1"}`; const H = SET.ghToken ? { Authorization: "Bearer " + SET.ghToken } : {}; const c = await (await fetch(`https://api.github.com/repos/${repo}/commits?per_page=25`, { headers: H })).json(); if (!Array.isArray(c)) throw new Error(c.message || "Okunamadı"); return { metin: await plainGemini(`Bu commit mesajlarından kullanıcıların anlayacağı Türkçe sürüm notu yaz (Yenilikler / Düzeltmeler / İyileştirmeler):\n${c.map(x => "- " + x.commit.message.split("\n")[0]).join("\n")}`, [], null, { max: 1000 }) }; } };
+FN.repobackup = { input: "Proje adı (ör. Jarvis-1)", run: async g => { const repo = /\//.test(g) ? g : `${SET.ghUser || "Mendusa27"}/${g || "Jarvis-1"}`; const r = await script("urlToDrive", { url: `https://api.github.com/repos/${repo}/zipball`, name: repo.replace("/", "-") + "-" + today() + ".zip", folder: "Titus Proje Yedekleri", auth: SET.ghToken || "" }); return { ok: true, not: "Drive'a yedeklendi: Titus Proje Yedekleri/" + r.name }; } };
+FN.web = { ui: () => `<div class="hint">Titus'un web sürümü (bilgisayar tarayıcısından): <b>https://mendusa27.github.io/Jarvis-1/</b> — ilk açılışta Gemini anahtarını oraya da girersin. Telefon özellikleri (alarm, bildirim, ekran) web'de çalışmaz; sohbet, belge, araştırma, yetenekler çalışır.</div><button class="btn ghost" id="webOpen">Aç</button>` };
+document.addEventListener("click", e => { if (e.target.closest("#webOpen")) openUrl("https://mendusa27.github.io/Jarvis-1/"); });
+
+/* =================== SES / VİDEO / FOTOĞRAF YETENEKLERİ =================== */
+function wavFromBuffers(bufs) {
+  const rate = bufs[0].sampleRate; const len = bufs.reduce((a, b) => a + b.length, 0) + bufs.length * Math.round(rate * 0.25);
+  const pcm = new Int16Array(len); let o = 0;
+  for (const b of bufs) { const d = b.getChannelData(0); for (let i = 0; i < d.length; i++) pcm[o++] = Math.max(-1, Math.min(1, d[i])) * 32767; o += Math.round(rate * 0.25); }
+  const buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf); const w = (p, s) => [...s].forEach((c, i) => v.setUint8(p + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm); return new Blob([buf], { type: "audio/wav" });
+}
+function chunkTxt(t, n = 380) { const out = []; let cur = ""; for (const s of String(t).split(/(?<=[.!?…])\s+|\n+/)) { if ((cur + " " + s).length > n && cur) { out.push(cur.trim()); cur = s; } else cur += " " + s; } if (cur.trim()) out.push(cur.trim()); return out.filter(Boolean); }
+async function audiobook(text, onStep = () => {}) {
+  if (!SET.geminiKey) throw new Error("NOKEY");
+  const vmap = {}; XL("voices").forEach(v => { if (v.karakter && v.ses) vmap[deacc(v.karakter)] = v.ses; });
+  const lines = String(text).split("\n").filter(l => l.trim()); const segs = [];
+  for (const l of lines) { const m = l.match(/^\s*([A-ZÇĞİÖŞÜa-zçğıöşü ]{2,20}):\s*(.+)/); const v = m && vmap[deacc(m[1].trim())]; for (const c of chunkTxt(v ? m[2] : l)) segs.push({ c, v: v || null }); }
+  if (segs.length > 80) throw new Error("Metin çok uzun (en fazla ~25.000 karakter). Bölerek ver.");
+  const bufs = []; const orig = SET.ttsVoice;
+  try { for (let i = 0; i < segs.length; i++) { onStep(`Seslendiriliyor ${i + 1}/${segs.length}`); if (segs[i].v) SET.ttsVoice = segs[i].v; else SET.ttsVoice = orig; bufs.push(await geminiTtsBuffer(segs[i].c)); await sleep(350); } } finally { SET.ttsVoice = orig; }
+  const r = await saveFile(wavFromBuffers(bufs), fname("seslendirme", "wav"), "music");
+  return { ok: true, yer: r.yer, parca: segs.length };
+}
+FN.audiobook = { input: "Seslendirilecek metin (karakterli metinde 'AD: replik' biçimi; sesleri Karakter ses bankası'ndan)", run: (g, s, ctx) => { const parts = attParts(); if (!g && !parts.length) return { hata: "Metin yapıştır." }; return audiobook(g, x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; }); } };
+
+async function mediaAsk(prompt, parts, json) { if (!parts.length) throw new Error("Önce 📎 ile dosya/fotoğraf ekle."); return json ? geminiJSON(prompt, parts) : plainGemini(prompt, parts, null, { max: 3500 }); }
+async function recorderRun(g) {
+  let parts = attParts();
+  if (!parts.length) { const b = await recordDialog("KAYIT", "Görüşme/prova kaydediliyor (en fazla 9 dk). Karşı tarafın onayını almayı unutma.", 540); if (!b) return { iptal: true }; parts = [{ inlineData: { mimeType: "audio/wav", data: b } }]; }
+  const j = await geminiJSON(`Bu ses/video kaydını dinle. Konuşmacıları ayır (Konuşmacı 1, 2… ya da isim geçiyorsa isimle). ${g || ""}\nJSON: {"baslik":"","dokum":"konuşmacılı tam döküm (uzunsa önemli kısımlar)","ozet":"5-8 cümle","kararlar":["..."],"gorevler":[{"is":"","kim":"","tarih":"YYYY-MM-DD ya da boş"}]}`, parts);
+  A.addNote({ text: `🎙 ${j.baslik || "Kayıt"}\n${j.ozet}\nKararlar: ${(j.kararlar || []).join("; ")}`, project: "Kayıtlar" });
+  const gs = j.gorevler || []; if (gs.length && await confirmBox(`${gs.length} görev bulundu, eklensin mi?\n${gs.map(x => "• " + x.is).join("\n")}`, "Ekle")) gs.forEach(x => A.addTask({ text: x.is + (x.kim ? " (" + x.kim + ")" : ""), date: x.tarih || "" }));
+  let d = null; try { d = await docFromText(j.baslik || "Kayıt dökümü", `# Özet\n${j.ozet}\n# Kararlar\n${(j.kararlar || []).map(k => "- " + k).join("\n")}\n# Görevler\n${gs.map(x => "- " + x.is).join("\n")}\n# Döküm\n${j.dokum}`); } catch {}
+  return { metin: `${j.baslik || ""}\n${j.ozet}\n\nKararlar: ${(j.kararlar || []).join("; ") || "-"}\nGörevler: ${gs.map(x => x.is).join("; ") || "-"}`, belge: d && d.dosya };
+}
+FN.recorder = { input: "İsteğe bağlı: kayıt ne hakkında? (📎 ile ses/video dosyası da ekleyebilirsin; yoksa kayıt başlar)", run: g => recorderRun(g) };
+FN.voicemsg = { input: "📎 ile sesli mesaj dosyasını ekle", run: async () => ({ metin: await mediaAsk("Bu sesli mesajı yazıya dök, sonra 2-3 cümlede özetle ve cevap gerekiyorsa kısa bir cevap önerisi yaz.", attParts()) }) };
+FN.videosearch = { input: "Videoda ne arıyorsun? (📎 video ekle, en fazla 15 MB)", run: async g => ({ metin: await mediaAsk(`Bu videoyu izle. ${g ? `"${g}" ile ilgili yerleri dakika:saniye zamanlarıyla bul.` : "Olayların zaman çizelgesini (dakika:saniye) çıkar ve kısa döküm yaz."}`, attParts()) }) };
+FN.camask = { input: "Ne sormak istiyorsun?", run: async g => { let parts = attParts(); if (!parts.length) { const d = await camShot(); if (!d) return { iptal: true }; parts = [{ inlineData: { mimeType: "image/jpeg", data: d } }]; } return { metin: await plainGemini(g || "Bu fotoğrafta ne var? Kısaca açıkla ve işime yarayacak bir bilgi ver.", parts, null, { max: 1200 }) }; } };
+FN.camtranslate = { input: "Hangi dile? (varsayılan Türkçe)", run: async g => { let parts = attParts(); if (!parts.length) { const d = await camShot(); if (!d) return { iptal: true }; parts = [{ inlineData: { mimeType: "image/jpeg", data: d } }]; } return { metin: await plainGemini(`Fotoğraftaki tüm yazıyı (el yazısı dahil) aynen oku ve yaz; sonra ${g || "Türkçeye"} çevir. Biçim: ORİJİNAL: … / ÇEVİRİ: …`, parts, null, { max: 2000 }) }; } };
+FN.billread = { run: async () => { let parts = attParts(); if (!parts.length) { const d = await camShot(); if (!d) return { iptal: true }; parts = [{ inlineData: { mimeType: "image/jpeg", data: d } }]; } const j = await geminiJSON(`Bu bir fatura. JSON: {"ad":"kurum/fatura türü","tutar":sayı,"son_odeme":"YYYY-MM-DD","donem":""}`, parts); const r = await runTool("fatura_ekle", { name: j.ad || "Fatura", amount: Number(j.tutar) || 0, day: j.son_odeme ? Number(j.son_odeme.slice(8, 10)) : 1, kind: "fatura" }); if (j.son_odeme && parseDate(j.son_odeme) > new Date()) A.addReminder({ text: `🧾 ${j.ad} faturası son gün (${money(Number(j.tutar) || 0)})`, due: ymd(new Date(parseDate(j.son_odeme) - 2 * 864e5)) + "T10:00" }); return { ok: true, fatura: j, kayit: r }; } };
+FN.mirror = { input: "Hedef duygu/ifade (ör. 'kırgın ama gururlu')", run: async g => { let parts = attParts(); if (!parts.length) { const d = await camShot(); if (!d) return { iptal: true }; parts = [{ inlineData: { mimeType: "image/jpeg", data: d } }]; } return { metin: await plainGemini(`Bir oyunculuk koçusun. Fotoğraftaki yüz ifadesini oku (göz, kaş, ağız, çene, gerginlik). Hedef ifade: "${g || "doğal ve sakin"}". Ne kadar örtüşüyor (0-100)? Neyi değiştirmeli? 3 somut öneri. Kısa.`, parts, null, { max: 900 }) }; } };
+FN.besttake = { input: "📎 aynı repliğin 2-5 kaydını ekle (video/ses, her biri ≤15 MB)", run: async g => { const parts = attParts(); if (parts.length < 2) return { hata: "En az 2 kayıt ekle." }; return { metin: await mediaAsk(`Bunlar aynı sahnenin/repliğin ${parts.length} farklı denemesi (sırayla 1, 2, …). ${g || ""} Her birini oyunculuk açısından puanla (inandırıcılık, metne sadakat, tempo, ses, görüntü) ve en iyisini nedeniyle seç.`, parts) }; } };
+FN.phototheme = { run: async g => { const key = today(); if (!META.ptheme || META.ptheme.d !== key) { META.ptheme = { d: key, t: await plainGemini("Bugün için yaratıcı, tek cümlelik bir fotoğraf teması ver (oyuncu/sanatçı bakışıyla). Sadece temayı yaz.", [], null, { max: 60 }) }; saveMeta(); } const parts = attParts(); if (!parts.length) return { metin: "📸 Bugünün teması: " + META.ptheme.t + "\nÇekince 📎 ile ekle, puanlayayım." }; return { metin: await plainGemini(`Bugünün teması: ${META.ptheme.t}. Bu fotoğrafı temaya uygunluk, kompozisyon, ışık ve yaratıcılık açısından 100 üzerinden puanla, kısa yorum ve bir ipucu ver.`, parts, null, { max: 600 }) }; } };
+FN.gallery = { run: async () => { const fs = await pickFiles("image/*", true); if (!fs.length) return { iptal: true }; const r = await smartPick(fs.slice(0, 30)); return { metin: `En iyi ${Math.min(5, r.length)}: ` + r.slice(0, 5).map((x, i) => `${i + 1}) ${x.f.name} — ${x.score} (${x.reason})`).join("\n") + (r.length > 5 ? `\nEn zayıflar: ${r.slice(-3).map(x => x.f.name).join(", ")}` : "") }; } };
+async function cutClips(file, prompt, format) {
+  const a = await fileToAttach(file); const j = await geminiJSON(prompt + ` Video süresini dikkate al. JSON: {"klipler":[{"bas":saniye,"son":saniye,"neden":""}]}`, [{ inlineData: { mimeType: a.mime, data: a.data } }]);
+  const clips = (j.klipler || []).filter(c => c.son > c.bas).slice(0, 8).map(c => ({ kind: "video", file, start: Number(c.bas), end: Number(c.son) }));
+  if (!clips.length) throw new Error("Uygun an bulunamadı.");
+  const out = await renderVideo({ clips, format, cleanAudio: true }); const r = await saveFile(out.blob, fname("klip", out.ext), "movies");
+  return { ok: true, yer: r.yer, klipler: (j.klipler || []).map(k => `${k.bas}-${k.son} sn: ${k.neden}`) };
+}
+FN.clips = { input: "Ne tür anlar? (ör. 'en komik 3 an', 'en güçlü oyunculuk anı') — 📎 video ekle", run: async g => { const [f] = await pickFiles("video/*"); if (!f) return { iptal: true }; return cutClips(f, `Bu uzun videodan ${g || "paylaşılabilecek en iyi 3-5 anı"} seç (her biri 5-40 sn).`, "9:16"); } };
+FN.trailer = { input: "Oyun adı / fragman tarzı", run: async g => { const [f] = await pickFiles("video/*"); if (!f) return { iptal: true }; return cutClips(f, `Bu oyun kaydından ${g || "oyunun"} için heyecan verici 20-40 saniyelik fragman oluşturacak 4-7 kısa an seç (aksiyon, görsel güzellik, merak).`, "16:9"); } };
+FN.slidevideo = { input: "Sunumun konusu / metni (bilgisayardaki Titus seslendirip videoya çevirir)", run: async g => { if (!SET.scriptUrl) return { hata: "Bilgisayar bağlantısı gerekli." }; const { id } = await script("pcPush", { cmd: { action: "ask", arg: `story_video ya da video aracıyla şu sunumu seslendirilmiş videoya çevir ve sonucu telefona bildir: ${g}` } }); return { ok: true, not: "Bilgisayardaki Titus'a iletildi.", id }; } };
+
+/* ---------- çizimli ızgaralar: çizgi roman, storyboard, moodboard, hedef panosu, alıntı kartı ---------- */
+async function gridImages(title, items, cols = 2, onStep = () => {}, w = 768, h = 768) {
+  const imgs = [];
+  for (let i = 0; i < items.length; i++) { onStep(`Çiziliyor ${i + 1}/${items.length}`); try { imgs.push(await imgEl(await anyImage(items[i].prompt, w, h))); } catch (e) { imgs.push(null); } }
+  const rows = Math.ceil(items.length / cols), cw = 540, ch = Math.round(cw * h / w), cap = 70, pad2 = 16;
+  const c = document.createElement("canvas"); c.width = cols * cw + (cols + 1) * pad2; c.height = 90 + rows * (ch + cap + pad2) + pad2; const g = c.getContext("2d");
+  g.fillStyle = "#0b0b0d"; g.fillRect(0, 0, c.width, c.height); g.fillStyle = "#fff"; g.font = "bold 40px sans-serif"; g.fillText(title.slice(0, 40), pad2, 58);
+  items.forEach((it, i) => {
+    const x = pad2 + (i % cols) * (cw + pad2), y = 90 + Math.floor(i / cols) * (ch + cap + pad2);
+    g.fillStyle = "#1c1c20"; g.fillRect(x, y, cw, ch); if (imgs[i]) g.drawImage(imgs[i], x, y, cw, ch); else { g.fillStyle = "#777"; g.font = "22px sans-serif"; g.fillText("(çizilemedi)", x + 20, y + 40); }
+    g.strokeStyle = "#ff2a3d"; g.lineWidth = 3; g.strokeRect(x, y, cw, ch);
+    g.fillStyle = "#eee"; g.font = "20px sans-serif"; wrapText(g, `${i + 1}. ${it.caption || ""}`, x + 4, y + ch + 26, cw - 8, 24, 2);
+  });
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.9)); const r = await saveFile(blob, fname(title, "jpg"), "pictures");
+  return { ok: true, yer: r.yer, panel: items.length, img: URL.createObjectURL(blob) };
+}
+function wrapText(g, t, x, y, mw, lh, max = 3) { const ws = String(t).split(/\s+/); let line = "", n = 0; for (const w of ws) { const tt = line ? line + " " + w : w; if (g.measureText(tt).width > mw && line) { g.fillText(line, x, y); y += lh; line = w; if (++n >= max - 1) { line = ws.slice(ws.indexOf(w)).join(" "); if (g.measureText(line).width > mw) { while (g.measureText(line + "…").width > mw && line.length) line = line.slice(0, -1); line += "…"; } break; } } else line = tt; } if (line) g.fillText(line, x, y); }
+const imgEl = src => new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = () => rej(new Error("görsel yüklenemedi")); i.src = src; });
+async function panelsFromStory(kind, g, n) {
+  const j = await geminiJSON(`${kind} için "${g}" konusunu ${n} panele böl. Her panel için İngilizce, ayrıntılı, aynı karakter tarifini tekrar eden bir görsel üretim istemi (${kind === "storyboard" ? "cinematic storyboard sketch, camera angle stated" : kind === "comic" ? "comic book panel, bold ink lines, vibrant colors" : "aesthetic mood photo"}) ve kısa Türkçe alt yazı yaz. JSON: {"baslik":"","paneller":[{"prompt":"","caption":""}]}`);
+  return j;
+}
+const gridFn = (kind, n, cols, label) => ({ input: label, run: async (g, s, ctx) => { if (!g) return { hata: "Konu/hikâye yaz." }; const j = await panelsFromStory(kind, g, n); const r = await gridImages(j.baslik || g, (j.paneller || []).slice(0, n), cols, x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x + " (ücretsiz çizim motoru ~15 sn/panel)"; }); return { ...r, html: `<img src="${r.img}" style="width:100%;border-radius:10px">` }; } });
+FN.comic = gridFn("comic", 4, 2, "Hikâye (4 panel çizgi roman)");
+FN.storyboard = gridFn("storyboard", 6, 2, "Senaryo/sahne (6 kare storyboard)");
+FN.moodboard = gridFn("moodboard", 6, 3, "Rol/proje (ilham panosu)");
+FN.visionboard = { run: async (g, s, ctx) => { const goals = [...(S.goals || []).map(x => x.text), ...XL("values").map(v => v.metin), g].filter(Boolean).slice(0, 6); if (!goals.length) return { hata: "Önce hedef ekle ya da hedeflerini yaz." }; const j = await geminiJSON(`Bu hedefler için ilham verici, gerçekçi fotoğraf tarzı İngilizce görsel istemleri yaz: ${JSON.stringify(goals)}. JSON: {"paneller":[{"prompt":"","caption":"hedefin kısa Türkçe hali"}]}`); const r = await gridImages("Hedef Panom", (j.paneller || []).slice(0, 6), 3, x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; }); return { ...r, html: `<img src="${r.img}" style="width:100%;border-radius:10px">` }; } };
+FN.quotecard = { input: "Alıntı metni — kimin sözü", run: async g => { if (!g) return { hata: "Alıntıyı yaz." }; const [q, who] = g.split(/\s[—–-]\s/); let bg = null; try { bg = await imgEl(await anyImage(`minimal dark cinematic abstract background, soft red light, for a quote card about: ${q.slice(0, 120)}`, 1024, 1024)); } catch {} const c = document.createElement("canvas"); c.width = c.height = 1080; const x = c.getContext("2d"); x.fillStyle = "#0b0b0d"; x.fillRect(0, 0, 1080, 1080); if (bg) { x.globalAlpha = 0.55; x.drawImage(bg, 0, 0, 1080, 1080); x.globalAlpha = 1; } x.fillStyle = "#ff2a3d"; x.font = "bold 160px serif"; x.fillText("“", 70, 230); x.fillStyle = "#fff"; x.font = "52px serif"; wrapText(x, q.trim(), 100, 330, 880, 70, 8); if (who) { x.fillStyle = "#ff2a3d"; x.font = "bold 38px sans-serif"; x.fillText("— " + who.trim(), 100, 980); } const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92)); const r = await saveFile(blob, fname("alinti", "jpg"), "pictures"); return { ok: true, yer: r.yer, html: `<img src="${URL.createObjectURL(blob)}" style="width:100%;border-radius:10px">` }; } };
+
+/* ---------- GIF ve sticker (yerleşik GIF kodlayıcı) ---------- */
+function gifEncode(frames, W, H, delayCs = 50) {
+  const out = []; const B = b => out.push(b & 255), W16 = v => { B(v); B(v >> 8); }; const S_ = s => [...s].forEach(c => B(c.charCodeAt(0)));
+  S_("GIF89a"); W16(W); W16(H); B(0xF7); B(0); B(0);
+  for (let r = 0; r < 8; r++) for (let g = 0; g < 8; g++) for (let b = 0; b < 4; b++) { B(r * 255 / 7); B(g * 255 / 7); B(b * 255 / 3); }
+  B(0x21); B(0xFF); B(11); S_("NETSCAPE2.0"); B(3); B(1); W16(0); B(0);
+  for (const fr of frames) {
+    B(0x21); B(0xF9); B(4); B(0); W16(delayCs); B(0); B(0);
+    B(0x2C); W16(0); W16(0); W16(W); W16(H); B(0);
+    const idx = new Uint8Array(W * H); for (let i = 0, p = 0; i < idx.length; i++, p += 4) idx[i] = ((fr[p] >> 5) << 5) | ((fr[p + 1] >> 5) << 2) | (fr[p + 2] >> 6);
+    const minCode = 8; B(minCode); const clear = 256, eoi = 257; let dict = new Map(), next = 258, size = 9; let bits = 0, nb = 0; const bytes = [];
+    const emit = c => { bits |= c << nb; nb += size; while (nb >= 8) { bytes.push(bits & 255); bits >>>= 8; nb -= 8; } };
+    emit(clear); let cur = idx[0];
+    for (let i = 1; i < idx.length; i++) { const k = idx[i]; const key = cur * 256 + k; const v = dict.get(key); if (v !== undefined) { cur = v; continue; } emit(cur); if (next < 4096) { dict.set(key, next++); if (next > (1 << size) && size < 12) size++; } else { emit(clear); dict = new Map(); next = 258; size = 9; } cur = k; }
+    emit(cur); emit(eoi); if (nb > 0) bytes.push(bits & 255);
+    for (let i = 0; i < bytes.length; i += 255) { const ch = bytes.slice(i, i + 255); B(ch.length); ch.forEach(B); } B(0);
+  }
+  B(0x3B); return new Blob([new Uint8Array(out)], { type: "image/gif" });
+}
+async function makeGif(files, sticker) {
+  const S0 = sticker ? 512 : 480; const frames = [];
+  for (const f of files.slice(0, 12)) { const img = await imgEl(URL.createObjectURL(f)); const c = document.createElement("canvas"); c.width = c.height = S0; const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, S0, S0); const k = Math.max(S0 / img.width, S0 / img.height); const pad3 = sticker ? 24 : 0; const k2 = sticker ? Math.min((S0 - 2 * pad3) / img.width, (S0 - 2 * pad3) / img.height) : k; const w = img.width * k2, h = img.height * k2; g.drawImage(img, (S0 - w) / 2, (S0 - h) / 2, w, h); frames.push(g.getImageData(0, 0, S0, S0).data); }
+  if (sticker) { const c = document.createElement("canvas"); c.width = c.height = S0; const g = c.getContext("2d"); const img = await imgEl(URL.createObjectURL(files[0])); g.fillStyle = "#fff"; g.beginPath(); g.roundRect ? g.roundRect(0, 0, S0, S0, 60) : g.rect(0, 0, S0, S0); g.fill(); const k = Math.min((S0 - 48) / img.width, (S0 - 48) / img.height); g.drawImage(img, (S0 - img.width * k) / 2, (S0 - img.height * k) / 2, img.width * k, img.height * k); const blob = await new Promise(r => c.toBlob(r, "image/png")); return { blob, ext: "png" }; }
+  return { blob: gifEncode(frames, S0, S0, 45), ext: "gif" };
+}
+FN.gif = { input: "'sticker' yazarsan tek fotoğraftan sticker yapar; yoksa seçtiğin fotoğraflardan GIF", run: async g => { const fs = await pickFiles("image/*", true); if (!fs.length) return { iptal: true }; const st = /sticker|çıkartma/.test(trLower(g)); const o = await makeGif(fs, st); const r = await saveFile(o.blob, fname(st ? "sticker" : "titus-gif", o.ext), "pictures"); return { ok: true, yer: r.yer, html: `<img src="${URL.createObjectURL(o.blob)}" style="max-width:100%;border-radius:10px">` }; } };
+
+/* ---------- şemalar: kavram haritası, karakter ilişkileri, sahne bloklaması ---------- */
+function drawGraph(title, nodes, edges, opt = {}) {
+  const c = document.createElement("canvas"); c.width = 1200; c.height = 1200; const g = c.getContext("2d");
+  g.fillStyle = "#0b0b0d"; g.fillRect(0, 0, 1200, 1200); g.fillStyle = "#fff"; g.font = "bold 40px sans-serif"; g.fillText(title.slice(0, 45), 30, 60);
+  const pos = {}; const n = nodes.length;
+  if (opt.stage) { g.strokeStyle = "#444"; g.lineWidth = 4; g.strokeRect(100, 150, 1000, 800); g.fillStyle = "#333"; g.fillRect(100, 950, 1000, 60); g.fillStyle = "#aaa"; g.font = "26px sans-serif"; g.fillText("SEYİRCİ", 540, 990); g.fillText("ARKA SAHNE", 520, 140); }
+  nodes.forEach((nd, i) => { if (opt.stage && nd.x != null) pos[nd.id] = [100 + nd.x / 100 * 1000, 150 + nd.y / 100 * 800]; else if (i === 0 && opt.center) pos[nd.id] = [600, 640]; else { const k = opt.center ? i - 1 : i, m = opt.center ? n - 1 : n; const a = k / Math.max(1, m) * Math.PI * 2 - Math.PI / 2; pos[nd.id] = [600 + Math.cos(a) * 400, 640 + Math.sin(a) * 400]; } });
+  g.lineWidth = 3; g.font = "22px sans-serif";
+  for (const e of edges) { const a = pos[e.from], b = pos[e.to]; if (!a || !b) continue; g.strokeStyle = e.color || "rgba(255,42,61,.7)"; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); if (opt.arrow) { const ang = Math.atan2(b[1] - a[1], b[0] - a[0]); const ex = b[0] - Math.cos(ang) * 70, ey = b[1] - Math.sin(ang) * 70; g.fillStyle = g.strokeStyle; g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex - Math.cos(ang - 0.4) * 22, ey - Math.sin(ang - 0.4) * 22); g.lineTo(ex - Math.cos(ang + 0.4) * 22, ey - Math.sin(ang + 0.4) * 22); g.fill(); } if (e.label) { g.fillStyle = "#ddd"; g.fillText(e.label.slice(0, 22), (a[0] + b[0]) / 2 + 6, (a[1] + b[1]) / 2 - 6); } }
+  nodes.forEach((nd, i) => { const [x, y] = pos[nd.id]; const r = i === 0 && opt.center ? 95 : 70; g.fillStyle = i === 0 && opt.center ? "#ff2a3d" : "#1d1d22"; g.strokeStyle = "#ff2a3d"; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.stroke(); g.fillStyle = "#fff"; g.font = "bold 22px sans-serif"; g.textAlign = "center"; wrapText(g, nd.label, x, y - 6, r * 1.8, 24, 3); g.textAlign = "left"; });
+  if (opt.note) { g.fillStyle = "#bbb"; g.font = "22px sans-serif"; wrapText(g, opt.note, 30, 1110, 1140, 28, 3); }
+  return c;
+}
+async function graphSave(c, title) { const blob = await new Promise(r => c.toBlob(r, "image/png")); const r = await saveFile(blob, fname(title, "png"), "pictures"); return { ok: true, yer: r.yer, html: `<img src="${URL.createObjectURL(blob)}" style="width:100%;border-radius:10px">` }; }
+FN.mindmap = { input: "Konu", run: async g => { if (!g) return { hata: "Konu yaz." }; const j = await geminiJSON(`"${g}" için kavram haritası: merkez + 6-9 ana kavram, aralarında anlamlı bağlantılar. JSON: {"merkez":"","kavramlar":[{"id":"k1","label":"kısa"}],"baglar":[{"from":"m","to":"k1","label":"ops."}]}  (merkezin id'si "m")`); const nodes = [{ id: "m", label: j.merkez || g }, ...(j.kavramlar || []).slice(0, 10)]; const edges = (j.baglar || []).length ? j.baglar : nodes.slice(1).map(n => ({ from: "m", to: n.id })); return graphSave(drawGraph("Kavram haritası: " + g, nodes, edges, { center: true }), "kavram-haritasi"); } };
+FN.relmap = { input: "Senaryo metnini yapıştır ya da 📎 ekle", run: async g => { const parts = attParts(); if (!g && !parts.length) return { hata: "Senaryo ver." }; const j = await geminiJSON(`Bu senaryodaki karakterleri ve aralarındaki ilişkileri çıkar (aile, aşk, düşman, iş, sır...). JSON: {"baslik":"","karakterler":[{"id":"c1","label":"ad"}],"iliskiler":[{"from":"c1","to":"c2","label":"ilişki"}]}\n${g.slice(0, 30000)}`, parts); return graphSave(drawGraph(j.baslik || "Karakter ilişkileri", (j.karakterler || []).slice(0, 12), j.iliskiler || [], {}), "iliski-haritasi"); } };
+FN.blocking = { input: "Sahne metni/tarifi (📎 de olur)", run: async g => { const parts = attParts(); const j = await geminiJSON(`Bu sahne için kuşbakışı sahne bloklaması: karakterlerin başlangıç konumları (x,y yüzde; y=100 seyirciye yakın) ve hareketleri. JSON: {"baslik":"","konumlar":[{"id":"a","label":"karakter","x":0-100,"y":0-100}],"hareketler":[{"from":"a","to":"a2","label":"replik/ an"}],"not":"yönetmen notu"} (hareket hedefleri için ayrı konum nesnesi ekle, ör. id a2 label 'Ali (2)')\n${g.slice(0, 20000)}`, parts); return graphSave(drawGraph(j.baslik || "Sahne bloklaması", (j.konumlar || []).slice(0, 14), j.hareketler || [], { stage: true, arrow: true, note: j.not }), "bloklama"); } };
+FN.survey = { input: "Anket ne hakkında? (ör. 'oyun sonrası seyirci yorumu')", run: async g => { if (!g) return { hata: "Konu yaz." }; const j = await geminiJSON(`"${g}" için kısa seyirci/müşteri anketi: 5-7 soru. JSON: {"baslik":"","sorular":[{"soru":"","tur":"puan|coktan|metin","secenekler":["..."]}]}`); const r = await script("makeForm", { title: j.baslik || g, questions: j.sorular || [] }); const qr = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(r.url)}`; return { ok: true, link: r.url, duzenle: r.edit, html: `<a href="#" data-open="${esc(r.url)}">${esc(r.url)}</a><img src="${qr}" style="width:70%;display:block;margin:10px auto;background:#fff;padding:10px;border-radius:10px">` }; } };
+document.addEventListener("click", e => { const a = e.target.closest("[data-open]"); if (a) { e.preventDefault(); openUrl(a.dataset.open); } });
+
+/* ---------- şarkı koçu (perde ölçer) ve ses/tempo ölçer ---------- */
+const NOTES = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
+function pitchOf(buf, rate) { let rms = 0; for (const v of buf) rms += v * v; rms = Math.sqrt(rms / buf.length); if (rms < 0.012) return -1; let best = -1, bc = 0; for (let lag = Math.floor(rate / 1000); lag < Math.floor(rate / 70); lag++) { let c = 0; for (let i = 0; i < buf.length - lag; i += 2) c += buf[i] * buf[i + lag]; if (c > bc) { bc = c; best = lag; } } return best > 0 ? rate / best : -1; }
+let METER = null;
+async function meterStart(kind) {
+  meterStop(); const st = await navigator.mediaDevices.getUserMedia({ audio: true }); const ac = new (window.AudioContext || window.webkitAudioContext)(); const an = ac.createAnalyser(); an.fftSize = 2048; ac.createMediaStreamSource(st).connect(an);
+  const buf = new Float32Array(an.fftSize); METER = { st, ac, hist: [], t0: Date.now(), kind };
+  const tick = () => { if (!METER) return; an.getFloatTimeDomainData(buf); const el = $("#mtrOut"); let rms = 0; for (const v of buf) rms += v * v; rms = Math.sqrt(rms / buf.length); const db = Math.round(20 * Math.log10(rms + 1e-6) + 90);
+    if (kind === "sing") { const f = pitchOf(buf, ac.sampleRate); if (f > 0) { const n = 12 * Math.log2(f / 440) + 69; const r = Math.round(n); const cents = Math.round((n - r) * 100); METER.hist.push(cents); if (el) el.innerHTML = `<div class="big">${NOTES[(r % 12 + 12) % 12]}${Math.floor(r / 12) - 1}</div><div class="hint">${f.toFixed(1)} Hz · ${cents > 0 ? "+" : ""}${cents} sent ${Math.abs(cents) < 15 ? "✅ tam" : cents > 0 ? "⬆ tiz" : "⬇ pes"}</div>`; } }
+    else { METER.hist.push(db); if (el) el.innerHTML = `<div class="big">${db} dB</div><div class="hint">${db < 55 ? "🔈 çok alçak — sesini yükselt" : db > 82 ? "🔊 çok yüksek" : "✅ iyi seviye"}</div><div class="bars">${METER.hist.slice(-40).map(v => `<span style="height:${Math.max(3, (v - 40) * 1.2)}px"></span>`).join("")}</div>`; }
+    METER.raf = requestAnimationFrame(tick); };
+  tick();
+}
+function meterStop() { if (!METER) return null; cancelAnimationFrame(METER.raf); METER.st.getTracks().forEach(t => t.stop()); METER.ac.close(); const m = METER; METER = null; return m; }
+FN.singcoach = { ui: () => `<div id="mtrOut" class="card" style="text-align:center"><div class="hint">Başlat'a bas ve bir nota söyle.</div></div><div class="row"><button class="btn" data-mtr="sing">🎤 Başlat</button><button class="btn ghost" data-mtr="stop">Durdur ve değerlendir</button></div>` };
+FN.tempo = { ui: () => `<div id="mtrOut" class="card" style="text-align:center"><div class="hint">Konuşurken ses seviyeni ölçer. Hız için "Kayıtla hız ölç".</div></div><div class="row"><button class="btn" data-mtr="vol">🎙 Ses ölç</button><button class="btn ghost" data-mtr="stop">Durdur</button><button class="btn ghost" data-mtr="wpm">⏱ Kayıtla hız ölç</button></div>` };
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-mtr]"); if (!t) return; const k = t.dataset.mtr;
+  try {
+    if (k === "sing" || k === "vol") await meterStart(k === "sing" ? "sing" : "vol");
+    else if (k === "stop") { const m = meterStop(); if (m && m.hist.length > 20) { const h = m.hist; const avg = h.reduce((a, b) => a + b, 0) / h.length; $("#mtrOut").innerHTML += `<div class="hint">${m.kind === "sing" ? `Ortalama sapma ${Math.round(h.reduce((a, b) => a + Math.abs(b), 0) / h.length)} sent: ${Math.abs(avg) < 20 ? "perden iyi 👏" : avg > 0 ? "genelde biraz tiz söylüyorsun" : "genelde biraz pes söylüyorsun"}` : `Ortalama ${Math.round(avg)} dB, ${Math.round((Date.now() - m.t0) / 1000)} sn`}</div>`; } }
+    else if (k === "wpm") { const b = await recordDialog("HIZ ÖLÇ", "30-60 sn normal konuş ya da metin oku.", 90); if (!b) return; const sec = Math.round(b.length * 0.75 / 32000); const r = await plainGemini("Bu kaydı yazıya dök ve SADECE şu biçimde yaz: KELİME=<sayı> | DOLGU=<ıı, eee gibi dolgu sayısı> | YORUM=<tempo, vurgu, netlik hakkında tek cümle>", [{ inlineData: { mimeType: "audio/wav", data: b } }], null, { max: 300, nocache: true }); const n = Number((r.match(/KELİME=(\d+)/) || [])[1]) || 0; $("#mtrOut").innerHTML = `<div class="big">${sec ? Math.round(n / sec * 60) : "?"} kelime/dk</div><div class="hint">${esc(r)} · ideal sahne/sunum hızı 130-160 kelime/dk</div>`; }
+  } catch (er) { toast("✗ " + er.message, 5000); }
+});
+
+/* ---------- zamanlayıcılar: yağmur, mola, günün kelimesi, sallama, kulaklık ---------- */
+async function notifyNow(title, body) { try { if (LN) await LN.schedule({ notifications: [{ id: hash(title + body + Date.now()) % 2000000000, title, body, schedule: { at: new Date(Date.now() + 1500) } }] }); } catch {} toast(title + " — " + body, 6000); }
+async function rainCheck() {
+  if (!SET.rainAlert || META.rainAt && Date.now() - META.rainAt < 3 * 36e5) return;
+  try { const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${SET.lat}&longitude=${SET.lng}&hourly=precipitation_probability&forecast_hours=3&timezone=Europe%2FIstanbul`)).json(); const p = (j.hourly && j.hourly.precipitation_probability) || []; const mx = Math.max(0, ...p.slice(0, 3)); if (mx >= 60) { META.rainAt = Date.now(); saveMeta(); notifyNow("☔ Yağmur geliyor", `Önümüzdeki saatlerde yağış ihtimali %${mx}. Şemsiyeni al.`); } } catch {}
+}
+setInterval(rainCheck, 30 * 6e4); setTimeout(rainCheck, 20000);
+let BREAK_IV = null;
+function setupBreaks() { clearInterval(BREAK_IV); const m = Number(SET.breaks) || 0; if (m > 0) BREAK_IV = setInterval(() => { const h = new Date().getHours(); if (h >= 8 && h < 23) notifyNow("💧 Mola zamanı", "Su iç, 20 saniye uzağa bak, omuzlarını gevşet."); }, m * 6e4); }
+async function dailyWordTick() {
+  if (!SET.dailyWord || META.dw === today() || !SET.geminiKey) return;
+  try { const w = await plainGemini("Bugünün kelimesi: oyuncu ve casting dünyasında işe yarayan bir İngilizce kelime/ifade ya da oyunculuk terimi seç. Biçim: KELİME — anlamı — tek örnek cümle. Tek satır.", [], null, { max: 80 }); META.dw = today(); saveMeta(); notifyNow("📖 Günün kelimesi", w); } catch {}
+}
+setTimeout(dailyWordTick, 15000);
+let SHAKE_T = 0;
+window.addEventListener("devicemotion", e => { if (!SET.shake) return; const a = e.accelerationIncludingGravity; if (!a) return; const f = Math.abs(a.x) + Math.abs(a.y) + Math.abs(a.z); if (f > 42 && Date.now() - SHAKE_T > 4000) { SHAKE_T = Date.now(); const nx = S.reminders.filter(r => !r.done).sort((x, y) => x.due.localeCompare(y.due))[0]; speak(nx ? `Sıradaki hatırlatıcın: ${nx.text}, ${fmtWhen(nx.due)}.` : "Bekleyen hatırlatıcın yok.", true); } });
+window.addEventListener("keydown", e => { if (SET.headset && (e.key === "MediaPlayPause" || e.key === "MediaTrackNext")) { e.preventDefault(); const m = $("#mic"); if (m) m.click(); } });
+try { if (navigator.mediaSession) navigator.mediaSession.setActionHandler("play", () => { if (SET.headset) { const m = $("#mic"); if (m) m.click(); } }); } catch {}
+{
+  const baseNight = applyLook;
+  setInterval(() => baseNight(), 10 * 6e4);
+}
+{
+  const basePlay = playBuffer;
+  playBuffer = function (buf) {
+    let vol = SET.ttsVol ?? 1; if (SET.autoVol) { const h = new Date().getHours(); if (h >= 23 || h < 7) vol *= 0.55; } if (SET.nightMode) vol *= 0.6;
+    if (vol >= 0.99) return basePlay(buf);
+    return new Promise(res => { const ctx = outCtx(); const s = ctx.createBufferSource(); s.buffer = buf; const g = ctx.createGain(); g.gain.value = vol; s.connect(g); g.connect(ctx.destination); CUR_SRC = s; s.onended = () => { if (CUR_SRC === s) CUR_SRC = null; res(); }; s.start(); });
+  };
+}
+
+FN.batchphoto = { input: "Desen (ör. 'headshot', varsayılan 'foto') — sonra fotoğrafları seç", run: async g => { const fs = await pickFiles("image/*", true); if (!fs.length) return { iptal: true }; const n = await batchEdit(fs, (g || "foto").replace(/\s+/g, "-").slice(0, 20)); return { ok: true, not: `${n} fotoğraf düzenlenip kaydedildi (Resimler/TITUS). Ayarları Stüdyo → Fotoğraf'tan değiştirebilirsin.` }; } };
+
+/* ---------- sohbeti kaydet, otomatik etiketleme ---------- */
+FN.savechat = { run: async () => { if (!CHAT.length) return { hata: "Sohbet boş." }; const t = CHAT.map(m => `${m.role === "user" ? "**" + SET.name + ":**" : "**Titus:**"} ${m.content}`).join("\n"); const d = await docFromText("Sohbet — " + localISO(new Date()).replace("T", " "), t); return { ok: true, belge: d.dosya, yer: d.yer }; } };
+FN.autotag = { run: async () => {
+  const L = (S.notes || []).filter(n => !n.project).slice(0, 60); if (!L.length) return { metin: "Etiketsiz not yok." };
+  const j = await geminiJSON(`Bu notları konularına göre etiketle (kısa Türkçe etiket: İş, Oyunculuk, Recast, Kişisel, Finans, Proje: <ad>, Sağlık, Alışveriş, Fikir...). JSON: {"etiketler":[{"id":"","etiket":""}]}\n${JSON.stringify(L.map(n => ({ id: n.id, text: n.text.slice(0, 200) })))}`);
+  let n = 0; for (const e of j.etiketler || []) { const x = S.notes.find(k => k.id === e.id); if (x && e.etiket) { x.project = e.etiket; n++; } } save();
+  return { ok: true, metin: `${n} not etiketlendi.` };
+} };
+setInterval(() => { if (SET.autoTag && SET.geminiKey && !document.hidden && (S.notes || []).some(n => !n.project)) FN.autotag.run().catch(() => {}); }, 60 * 6e4);
+
+/* =================== YETENEKLER EKRANI =================== */
+const SKV = { q: "", faz: "all", open: null };
+const DUR = { tam: ["✅", "tam çalışıyor"], yz: ["🧠", "yapay zekâ ile"], "kısmi": ["◐", "kısmi"], yok: ["✕", "yapılamıyor"] };
+const KIND_TR = k => k === "mode" ? "davranış modu" : k === "ask" ? "yapay zekâ görevi" : k.startsWith("tool:") ? "araç" : "özel";
+function skillCard(s) {
+  const open = SKV.open === s.id; const d = DUR[s.durum] || ["", s.durum];
+  const h = s.k.startsWith("fn:") ? FN[s.k.slice(3)] : null;
+  let body = "";
+  if (open) {
+    body += `<div class="skdesc">${esc(s.a)}${s.not ? `<div class="hint">ℹ️ ${esc(s.not)}</div>` : ""}</div>`;
+    if (s.k === "mode") body += `<label class="tg"><input type="checkbox" data-mode="${s.id}" ${modeOn(s) ? "checked" : ""}> Bu davranış ${modeOn(s) ? "açık" : "kapalı"}</label>`;
+    else {
+      if (h && h.ui) { try { body += `<div class="skui">${h.ui(s)}</div>`; } catch (e) { body += `<div class="hint">✗ ${esc(e.message)}</div>`; } }
+      const needsRun = !h || h.run;
+      if (needsRun && s.durum !== "yok") {
+        const ph = (h && h.input) || (s.f ? "İsteğin (📎 ile dosya/fotoğraf ekleyebilirsin)" : "İsteğin / ayrıntılar (boş bırakabilirsin)");
+        body += `<div class="form"><textarea id="skIn" placeholder="${esc(ph)}"></textarea><div class="row">${s.f || (h && /📎/.test(h.input || "")) ? `<button class="btn ghost" id="skAtt">📎 ${SK_ATT.length ? SK_ATT.length + " dosya" : "Ekle"}</button>` : ""}<button class="btn" data-skrun="1">▶ Çalıştır</button></div></div>`;
+      }
+      body += `<div id="skOut" class="skout"></div>`;
+    }
+  }
+  return `<div class="card skc ${open ? "open" : ""}" data-skid="${s.id}"><div class="skh" data-sktoggle="${s.id}"><span class="skn">${esc(s.n)}</span><span class="skb">${s.faz === 0 ? "Gmail" : s.faz === 99 ? "Senin" : "F" + s.faz}</span><span class="skd" title="${d[1]}">${d[0]}</span></div>${open ? body : `<div class="skmeta">${esc(s.a.slice(0, 90))}${s.a.length > 90 ? "…" : ""}</div>`}</div>`;
+}
+function renderSkills() {
+  const el = $("#b-skills"); if (!el) return;
+  const all = allSkills(); const q = SKV.q.trim();
+  let list = all.filter(s => SKV.faz === "all" || (SKV.faz === "on" ? modeOn(s) : SKV.faz === "u" ? s.faz === 99 : String(s.faz) === SKV.faz));
+  if (q) list = list.map(s => ({ s, v: skillScore(s, q) + (deacc(s.n).includes(deacc(q)) ? 5 : 0) })).filter(x => x.v > 0).sort((a, b) => b.v - a.v).map(x => x.s);
+  const cnt = {}; all.forEach(s => { cnt[s.durum] = (cnt[s.durum] || 0) + 1; });
+  const fz = [["all", "Tümü"], ["0", "Gmail"], ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [String(n), "Faz " + n]), ["on", "Açık modlar"], ["u", "Eklediklerim"]];
+  el.innerHTML = `<div class="skhead"><button class="btn ghost" id="skBack">← Geri</button><input id="skQ" placeholder="🔎 ${all.length} yetenekte ara…" value="${esc(SKV.q)}"></div>
+    <div class="hint" style="margin:4px 0 8px">✅ tam ${cnt.tam || 0} · 🧠 yapay zekâ ${cnt.yz || 0} · ◐ kısmi ${cnt["kısmi"] || 0} · ✕ yok ${cnt.yok || 0} — Sohbette de kullanabilirsin: "Titus, monolog kütüphanesini aç", "derin araştırma yap: …"</div>
+    <div class="chips skf">${fz.map(f => `<button class="chip ${SKV.faz === f[0] ? "on" : ""}" data-skfaz="${f[0]}">${f[1]}</button>`).join("")}</div>
+    <div id="skList">${list.slice(0, 400).map(skillCard).join("") || '<div class="empty">Bulunamadı.</div>'}</div>`;
+}
+function refreshSkill() { if ($("#v-skills.on")) { const sc = $("#b-skills").scrollTop; renderSkills(); const o = SKV.open && document.querySelector(`[data-skid="${SKV.open}"]`); if (o) $("#b-skills").scrollTop = sc; } }
+function showSkill(id) { SKV.open = id; SKV.q = ""; SKV.faz = "all"; renderSkills(); setTimeout(() => { const o = document.querySelector(`[data-skid="${id}"]`); if (o) o.scrollIntoView({ block: "start" }); }, 30); }
+function outHTML(r) {
+  if (!r) return "";
+  if (r.hata) return `<div class="hint err">✗ ${esc(r.hata === "NOKEY" ? "Gemini anahtarı yok (Ayarlar → Beyin)" : r.hata)}${r.benzerler ? " · Benzer: " + esc(r.benzerler.join(", ")) : ""}</div>`;
+  if (r.iptal) return `<div class="hint">Vazgeçildi.</div>`;
+  const txt = r.metin || r.cevap || r.not || (r.ok ? "✓ Tamam" : "");
+  const rest = Object.fromEntries(Object.entries(r).filter(([k]) => !["metin", "cevap", "not", "ok", "html", "kaynaklar", "img", "kod", "tablo", "grafik"].includes(k)));
+  return `${txt ? `<div class="skres">${esc(txt)}</div>` : ""}${r.html || ""}${r.kaynaklar && r.kaynaklar.length ? `<div class="hint">Kaynaklar: ${r.kaynaklar.map((k, i) => `<a href="#" data-open="${esc(k.uri)}">[${i + 1}] ${esc(k.title)}</a>`).join(" ")}</div>` : ""}${Object.keys(rest).length ? `<div class="hint">${esc(Object.entries(rest).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ").slice(0, 600))}</div>` : ""}${txt && txt.length > 40 ? `<div class="row"><button class="btn ghost" data-skcopy="1">Kopyala</button><button class="btn ghost" data-sknote="1">Not al</button><button class="btn ghost" data-skdoc="1">Belge</button><button class="btn ghost" data-sksay="1">🔊</button></div>` : ""}`;
+}
+let SK_LAST = null;
+async function runFromUI(fnOrId, girdi) {
+  await SKILLS_READY;
+  const s = allSkills().find(x => x.id === fnOrId) || allSkills().find(x => x.k === "fn:" + fnOrId) || allSkills().find(x => x.id === SKV.open);
+  if (!s) return;
+  const o = $("#skOut"); if (o) o.innerHTML = `<div class="hint">⏳ ${esc(s.n)} çalışıyor…</div>`;
+  let r; try { r = await runSkill(s, girdi, { fromChat: false }); } catch (e) { r = { hata: friendlyErr(e) }; }
+  SK_LAST = { s, r }; const o2 = $("#skOut"); if (o2) o2.innerHTML = outHTML(r); else if (r && (r.metin || r.hata)) toast((r.metin || r.hata).slice(0, 140), 6000);
+  if (s.k.startsWith("fn:") && FN[s.k.slice(3)] && FN[s.k.slice(3)].ui) { const ui = document.querySelector(`[data-skid="${s.id}"] .skui`); if (ui) try { ui.innerHTML = FN[s.k.slice(3)].ui(s); } catch {} }
+  return r;
+}
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-sktoggle],[data-skfaz],#skBack,[data-skrun],#skAtt,[data-skcopy],[data-sknote],[data-skdoc],[data-sksay],[data-goskills]"); if (!t) return;
+  if (t.dataset.goskills !== undefined) { go("skills"); renderSkills(); return; }
+  if (t.dataset.sktoggle) { SKV.open = SKV.open === t.dataset.sktoggle ? null : t.dataset.sktoggle; SK_ATT = []; renderSkills(); const o = document.querySelector(`[data-skid="${SKV.open}"]`); if (o) o.scrollIntoView({ block: "nearest" }); return; }
+  if (t.dataset.skfaz) { SKV.faz = t.dataset.skfaz; SKV.open = null; renderSkills(); return; }
+  if (t.id === "skBack") { go("home"); return; }
+  if (t.id === "skAtt") { SK_ATT = await pickAttach(); t.textContent = "📎 " + SK_ATT.length + " dosya"; return; }
+  if (t.dataset.skrun) { t.disabled = true; try { await runFromUI(SKV.open, ($("#skIn") || {}).value || ""); } finally { t.disabled = false; } return; }
+  const txt = SK_LAST && SK_LAST.r && (SK_LAST.r.metin || SK_LAST.r.cevap || ""); if (!txt) return;
+  if (t.dataset.skcopy) { try { await navigator.clipboard.writeText(txt); toast("Kopyalandı"); } catch { toast("Kopyalanamadı"); } }
+  else if (t.dataset.sknote) { A.addNote({ text: `${SK_LAST.s.n}: ${txt}`, project: "Titus" }); toast("✓ Not alındı"); }
+  else if (t.dataset.skdoc) { try { const d = await docFromText(SK_LAST.s.n, txt, (SK_LAST.r.kaynaklar || []).map((k, i) => `[${i + 1}] ${k.title} ${k.uri}`)); toast("✓ " + d.dosya + " → " + d.yer, 5000); } catch (er) { toast("✗ " + er.message); } }
+  else if (t.dataset.sksay) speak(txt.slice(0, 1500), true);
+});
+document.addEventListener("input", e => { if (e.target.id === "skQ") { SKV.q = e.target.value; clearTimeout(renderSkills._t); renderSkills._t = setTimeout(() => { const pos = e.target.selectionStart; renderSkills(); const q = $("#skQ"); if (q) { q.focus(); q.setSelectionRange(pos, pos); } }, 250); } });
+document.addEventListener("change", e => { const el = e.target.closest("[data-mode]"); if (!el) return; SET.modes = { ...(SET.modes || {}), [el.dataset.mode]: el.checked }; saveSet(); toast(el.checked ? "✓ Açıldı" : "Kapatıldı"); renderSkills(); });
+{
+  const baseGo = go;
+  go = function (v) { baseGo(v); if (v === "skills") renderSkills(); };
+}
+{
+  const baseRS = renderSettings;
+  renderSettings = async function () {
+    await baseRS();
+    const b = $("#b-set"); if (!b) return;
+    b.insertAdjacentHTML("afterbegin", `<div class="card"><h3>🧠 YETENEKLER (${allSkills().length})</h3><div class="hint" style="margin-top:0">Faz 1–10'un tamamı, çoklu Gmail, takipler, Telegram, otomatik güncelleme, kişilik, gizlilik ve daha fazlası.</div><div class="row"><button class="btn" data-goskills>Yetenekleri aç</button><button class="btn ghost" id="setAcc">✉️ Gmail hesapları</button><button class="btn ghost" id="setUpd">⬆️ Güncelle</button></div></div>`);
+  };
+}
+document.addEventListener("click", e => { if (e.target.closest("#setAcc")) { go("skills"); showSkill("gmail"); } if (e.target.closest("#setUpd")) checkUpdate(true); });
+
+/* =================== açılış işleri =================== */
+setTimeout(async () => {
+  await SKILLS_READY;
+  try { const chips = $("#chips"); if (chips && !chips.querySelector("[data-goskills]")) chips.insertAdjacentHTML("afterbegin", `<button class="chip" data-goskills>🧠 Yetenekler</button>`); } catch {}
+  applyLook(); a11yPass(); memPurge(); setupBreaks(); drawFace();
+  if (META.updChk !== today()) checkUpdate(false);
+  bootCheck(false);
+  const pend = (META.jobs || []).filter(j => !j.fin && Date.now() - j.at < 3 * 864e5);
+  if (pend.length) bubble("sys", `⏸ Yarım kalan iş: ${pend[0].arg} — Yetenekler → Kaldığı yerden devam`);
+  if (SET.watchSynced !== JSON.stringify(XL("watch")) && XL("watch").length) { const r = await watchSync(); if (!r.hata) { SET.watchSynced = JSON.stringify(XL("watch")); saveSet(); } }
+}, 2500);
+/* test kancası: sadece ?titustest ile açılınca (otomatik testler için) */
+if (/[?&]titustest/.test(location.search)) window.__T = { runSkill, allSkills, FN, findSkill, runTool, setAtt: a => { SK_ATT = a; }, get SET() { return SET; }, get S() { return S; }, get META() { return META; }, get CHAT() { return CHAT; }, systemPrompt: () => systemPrompt(), pickTools: h => pickTools(h).map(t => t.name), maskText, undoLast, accounts, SKILLS_READY };
 
 /* ================= açılış ================= */
 async function boot() {

@@ -230,3 +230,15 @@ Telefondan da "bilgisayarda şunu yap" diyebilirsin. GTX 1650 için ağır bir �
 - **İsteğe sadık görsel**: istek ayrıntılandırılır → üretilir → Gemini görsele bakıp isteğe uyup uymadığını puanlar → eksikse düzeltip yeniden üretir.
 - **Konuşan video** (bilgisayar): model + metin → seslendirme → Hugging Face'teki ücretsiz dudak senkronu alanları. Alanlar dolu/kapalıysa o sahne hareketli fotoğraf + ses olarak eklenir ve bunu söyler.
 - Code.gs'yi güncelleyip yeni sürüm olarak dağıt (listFolder, getFileB64, saveFile replace).
+
+## v3.0 — Büyük güncelleme: Faz 1–10'un tamamı (364 yetenek) + çoklu Gmail
+
+- **Yetenekler ekranı** (ana sayfada 🧠 Yetenekler, Ayarlar'ın en üstü; bilgisayarda "Yetenekler" sekmesi): 365 maddenin hepsi tek katalogda (`www/skills.json`, `pc-agent/skills.json`). Ara, faza göre süz, çalıştır, sonucu kopyala/not al/Word belgesi yap/sesli okut. Her maddede dürüst durum işareti: ✅ tam · 🧠 yapay zekâ ile · ◐ kısmi · ✕ yapılamıyor.
+- Sohbetten de çalışır: `yetenek_calistir`, `yetenek_ara` araçları; isteğe uyan yetenekler otomatik önerilir. Davranış modları (adım adım düşünme, uydurmama, onay noktaları, talimat tuzağı koruması…) varsayılan açık; tek tek kapatılabilir.
+- **Birden fazla Gmail hesabı**: her hesap için o hesapla Code.gs'yi ayrı dağıt → Yetenekler → "Birden fazla Gmail hesabı" → ad + link + şifre → Test. `mail_ozeti` hepsini birleştirir ya da "iş hesabımdaki mailler" diye seçilir; taslak hangi hesaptan istenirse oradan. Eşleştirme kodu ek hesapları bilgisayara da taşır.
+- **Otomatik güncelleme**: telefonda yeni APK çıkınca sohbette "İndir ve kur" düğmesi; bilgisayarda "Titus'u güncelle" deyince zip'i indirip kurar ve yeniden başlar.
+- **Takipler** (sayfa/fiyat/konu), **Telegram'dan Titus**, **dışarıdan komut adresi** (Tasker/Kısayollar), **ortak liste**, **anket (Google Form + karekod)**, **proje yedeği Drive'a** — hepsi Google tarafında ücretsiz.
+- Derin araştırma (paralel alt sorular, kaynak puanı, çelişkiler, Word raporu, kaldığı yerden devam), ajan ekibi (araştırmacı → yazar → denetçi), hesap/tablo/grafik çalışma alanı (kod çalıştırarak), uygulama fabrikası, hafıza yöneticisi, özel asistanlar, canlı çeviri, self-tape yönetmeni, konuşan Titus yüzü, kurallar (eğer–o zaman), zamanlı mesaj, geri al, eylem günlüğü, izin sistemi, sesli parola, veri maskeleme, akıllı önbellek, misafir modu, tema/büyük yazı/tek el/okuma dostu yazı, şarkı/ses/tempo ölçer, çizgi roman/storyboard/moodboard, GIF, kavram/ilişki/bloklama şemaları ve fazlası.
+- Bilgisayara özel: müzik ve ses efekti üretici, görselden 3D (Hugging Face, ücretsiz kota), ekran kaydıyla eğitim videosu, yapışkan not panosu (Ctrl+Alt+N), hızlı pencere (Ctrl+Alt+T).
+
+**Kurulum (bir kez):** Apps Script'te Code.gs'yi yeni sürümle değiştir → Kaydet → Dağıt → Dağıtımları yönet → Düzenle → Yeni sürüm → Dağıt (Google Form ve tetikleyici izni ister: izin ver). Bilgisayarda yeni zip'i eskinin üstüne çıkar.

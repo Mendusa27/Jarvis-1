@@ -68,8 +68,10 @@ def apply_pair(code):
     o = json.loads(base64.b64decode(code.split(".", 1)[1] + "==").decode("utf-8"))
     m = {"u": "url", "t": "token", "g": "gemini_key", "q": "groq_key", "ca": "cf_account", "ct": "cf_token", "k": "kadro_sheet", "a": "audition_sheet", "au": "audition_url", "ku": "kadro_url", "n": "name", "nt": "ntfy"}
     new = {v: o[k] for k, v in m.items() if o.get(k)}
+    if isinstance(o.get("acc"), list):
+        new["accounts"] = [{"n": a.get("n", "Hesap"), "u": a.get("u", ""), "t": a.get("t", ""), "e": a.get("e", "")} for a in o["acc"] if a.get("u")]
     J.save_cfg(new)
-    got = [x for x, k in (("Gemini", "gemini_key"), ("Groq", "groq_key"), ("Google (Gmail, takvim, görevler)", "url"), ("Cloudflare", "cf_token"), ("KADRO", "kadro_sheet")) if new.get(k)]
+    got = ([f"{len(new['accounts'])} ek Gmail hesabı"] if new.get("accounts") else []) + [x for x, k in (("Gemini", "gemini_key"), ("Groq", "groq_key"), ("Google (Gmail, takvim, görevler)", "url"), ("Cloudflare", "cf_token"), ("KADRO", "kadro_sheet")) if new.get(k)]
     J.log("bilgi", "Telefonla eşleştirildi: " + ", ".join(got))
     return {"ok": True, "gelenler": got}
 
@@ -326,5 +328,11 @@ def setup(jd, p):
         titus_media.setup(jd, p, __import__(__name__))
     except Exception as e:
         jd.log("hata", f"medya eklentisi yüklenemedi: {e}")
+    try:
+        import titus_skills
+        titus_skills.setup(jd, p, __import__(__name__))
+        jd.SKILLS = titus_skills
+    except Exception as e:
+        jd.log("hata", f"yetenek sistemi yüklenemedi: {e}")
     jd.MEMORY_HOOK.append(lambda: "\nGmail, takvim ve KADRO için mailleri_oku / mail_taslagi / takvim / takvime_ekle / kadro_ara kullan. Görsel için gorsel_uret, video için video_olustur, Burak'ın uygulamaları için uygulamam_ac, telefonda yapılacak işler (alarm, arama, telefon bildirimi) için telefonda_yap kullan."
                           + ("" if jd.AG.get("url") else " (Google bağlantısı henüz kurulmamış: mail/takvim/KADRO istenirse Ayarlar'a telefondaki bağlantı kodunun yapıştırılması gerektiğini söyle.)"))

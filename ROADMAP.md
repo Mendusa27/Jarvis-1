@@ -174,3 +174,7 @@ Hız: 91 Akıllı önbellek · 92 İki aşamalı beyin · 93 Önceden hazırlık
 
 ## Öncelikli istek
 - Birden fazla Gmail hesabı bağlama (Burak için önemli)
+
+
+## ✅ v3.0'da uygulandı
+Faz 1–10'daki 364 madde + çoklu Gmail, tek yetenek kataloğu (www/skills.json) olarak telefona ve bilgisayara eklendi. Her maddenin durumu katalogda: tam / yapay zekâ ile / kısmi / yapılamıyor (gerekçesiyle).

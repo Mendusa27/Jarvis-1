@@ -8,7 +8,15 @@
 const TOKEN = "BURAYA-UZUN-GIZLI-BIR-SIFRE-YAZ";
 const FILE_NAME = "jarvis-veri.json";
 
-function doGet() {
+function doGet(e) {
+  // v3.0: dışarıdan komut (Tasker, Kısayollar, IFTTT): ?hook=GİZLİ&text=komut
+  const p = (e && e.parameter) || {};
+  if (p.hook) {
+    const sec = props_().getProperty("HOOK");
+    if (!sec || p.hook !== sec) return ContentService.createTextOutput("yetkisiz");
+    phPush({ kind: "ask", text: String(p.text || "").slice(0, 2000) });
+    return ContentService.createTextOutput("ok");
+  }
   return ContentService.createTextOutput("Titus arka ucu çalışıyor ✓");
 }
 
@@ -46,6 +54,14 @@ function doPost(e) {
       case "saveFile":     return out(Object.assign({ ok: true }, saveFile(req)));
       case "getBackup":    return out(Object.assign({ ok: true }, getBackup(req)));
       case "setGeminiKey": props_().setProperty("GEMINI_KEY", String(req.key || "")); kurulumGece(); return out({ ok: true });
+      case "watchSet":     watchSet(req); return out({ ok: true });
+      case "watchRunNow":  return out({ ok: true, sonuc: watchRun(true) });
+      case "tgSetup":      return out(Object.assign({ ok: true }, tgSetup(req)));
+      case "tgSend":       tgSend_(String(req.text || "")); return out({ ok: true });
+      case "hookSet":      props_().setProperty("HOOK", String(req.secret || "")); return out({ ok: true });
+      case "sharedList":   return out(Object.assign({ ok: true }, sharedList(req)));
+      case "makeForm":     return out(Object.assign({ ok: true }, makeForm(req)));
+      case "urlToDrive":   return out(Object.assign({ ok: true }, urlToDrive(req)));
       case "mailDraftFile": return out(Object.assign({ ok: true }, gmailDraft(req)));
       default:             return out({ ok: false, error: "Bilinmeyen işlem: " + req.action });
     }
@@ -416,7 +432,7 @@ function phPush(req) {
   try {
     const q = jget_("phQueue", []).filter(x => Date.now() - x.at < 6 * 3600000).slice(-30);
     const id = Utilities.getUuid().slice(0, 8);
-    q.push({ id: id, kind: req.kind === "note" ? "note" : "ask", text: String(req.text || "").slice(0, 2000), at: Date.now() });
+    q.push({ id: id, kind: ["note", "ring"].indexOf(req.kind) >= 0 ? req.kind : "ask", text: String(req.text || "").slice(0, 2000), at: Date.now() });
     jset_("phQueue", q); return id;
   } finally { lock.releaseLock(); }
 }
@@ -440,4 +456,160 @@ function getFileB64(req) {
   const x = DriveApp.getFileById(req.id);
   if (x.getSize() > 25 * 1024 * 1024) throw new Error("Dosya çok büyük");
   return { name: x.getName(), mime: x.getMimeType(), data: Utilities.base64Encode(x.getBlob().getBytes()) };
+}
+
+
+/* =====================================================================
+   v3.0 — takipler, Telegram, ortak liste, anket, Drive'a indirme
+   ===================================================================== */
+function gemini_(prompt, search) {
+  const key = props_().getProperty("GEMINI_KEY"); if (!key) return "";
+  const models = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"];
+  for (const m of models) {
+    try {
+      const body = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 900 } };
+      if (search) body.tools = [{ google_search: {} }];
+      const r = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models/" + m + ":generateContent?key=" + encodeURIComponent(key), { method: "post", contentType: "application/json", muteHttpExceptions: true, payload: JSON.stringify(body) });
+      if (r.getResponseCode() !== 200) continue;
+      const j = JSON.parse(r.getContentText());
+      const t = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.filter(p => p.text && !p.thought).map(p => p.text).join("").trim();
+      if (t) return t;
+    } catch (e) {}
+  }
+  return "";
+}
+function notifyAll_(title, body) {
+  const topic = props_().getProperty("ntfy");
+  if (topic) { try { UrlFetchApp.fetch("https://ntfy.sh/" + encodeURIComponent(topic), { method: "post", payload: body, headers: { Title: title, Tags: "eye" }, muteHttpExceptions: true }); } catch (e) {} }
+  try { phPush({ kind: "note", text: title + ": " + body }); } catch (e) {}
+  try { tgSend_(title + "\n" + body); } catch (e) {}
+}
+
+/* ---------- takipler ---------- */
+function watchSet(req) {
+  jset_("watchList", req.list || []);
+  if (req.ntfy !== undefined) props_().setProperty("ntfy", req.ntfy || "");
+  if (req.gkey) props_().setProperty("GEMINI_KEY", req.gkey);
+  const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === "watchTick");
+  if (!has && (req.list || []).length) ScriptApp.newTrigger("watchTick").timeBased().everyHours(1).create();
+}
+function watchTick() { watchRun(false); }
+function pageText_(url) {
+  const html = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { "User-Agent": "Mozilla/5.0 (Titus takip)" } }).getContentText();
+  return html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+}
+function watchRun(manual) {
+  const list = jget_("watchList", []); const st = jget_("watchState", {}); const out = [];
+  list.forEach(w => {
+    try {
+      let text = "";
+      if (w.tur === "konu") {
+        const day = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+        if (!manual && st[w.id] && st[w.id].day === day) { out.push({ id: w.id, ad: w.ad, durum: "bugün kontrol edildi" }); return; }
+        text = gemini_("Son 24-48 saatte '" + w.konu + "' hakkında önemli yeni gelişme var mı? İnternette ara. Varsa en fazla 3 madde ve tarihleriyle yaz; yoksa sadece YOK yaz.", true);
+        const prev = st[w.id] || {}; st[w.id] = { day: day, h: text.slice(0, 300) };
+        if (text && !/^\s*YOK/i.test(text) && text.slice(0, 300) !== prev.h) { notifyAll_("📰 " + w.ad, text.slice(0, 700)); out.push({ id: w.id, ad: w.ad, durum: "yenilik var" }); }
+        else out.push({ id: w.id, ad: w.ad, durum: "yenilik yok" });
+        return;
+      }
+      text = pageText_(w.url);
+      const kws = String(w.anahtar || "").split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
+      let focus = text;
+      if (kws.length) { const low = text.toLowerCase(); const parts = []; kws.forEach(k => { let i = low.indexOf(k); let n = 0; while (i >= 0 && n < 5) { parts.push(text.slice(Math.max(0, i - 150), i + 250)); i = low.indexOf(k, i + 1); n++; } }); focus = parts.join(" … ") || ""; }
+      const h = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, focus.slice(0, 20000)));
+      const prev = st[w.id];
+      st[w.id] = { h: h, snip: focus.slice(0, 1500), at: fmt_(new Date()) };
+      if (!prev) { out.push({ id: w.id, ad: w.ad, durum: "ilk kayıt alındı" }); return; }
+      if (prev.h === h) { out.push({ id: w.id, ad: w.ad, durum: "değişiklik yok" }); return; }
+      let msg = "Sayfada değişiklik var: " + w.url;
+      if (w.kosul) {
+        const ans = gemini_("Bir web sayfası değişti. Kullanıcının koşulu: '" + w.kosul + "'.\nÖNCEKİ:\n" + prev.snip + "\n\nŞİMDİ:\n" + focus.slice(0, 1500) + "\n\nKoşul şimdi sağlanıyor mu? İlk kelime EVET ya da HAYIR olsun, sonra tek cümle açıklama.");
+        if (ans && /^\s*HAYIR/i.test(ans)) { out.push({ id: w.id, ad: w.ad, durum: "değişti ama koşul yok" }); return; }
+        if (ans) msg = ans.replace(/^\s*EVET[:,.]?\s*/i, "") + " " + w.url;
+      }
+      notifyAll_("👁 " + w.ad, msg); out.push({ id: w.id, ad: w.ad, durum: "DEĞİŞTİ — haber verildi" });
+    } catch (e) { out.push({ id: w.id, ad: w.ad, durum: "hata: " + e }); }
+  });
+  jset_("watchState", st);
+  return out;
+}
+
+/* ---------- Telegram (dakikada bir yoklar; webhook gerekmez) ---------- */
+function tgApi_(method, payload) {
+  const tok = props_().getProperty("TG_TOKEN"); if (!tok) throw new Error("Telegram bağlı değil");
+  const r = UrlFetchApp.fetch("https://api.telegram.org/bot" + tok + "/" + method, { method: "post", contentType: "application/json", payload: JSON.stringify(payload || {}), muteHttpExceptions: true });
+  const j = JSON.parse(r.getContentText()); if (!j.ok) throw new Error(j.description || "Telegram hatası"); return j.result;
+}
+function tgSetup(req) {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === "tgPoll").forEach(t => ScriptApp.deleteTrigger(t));
+  if (req.off) { props_().deleteProperty("TG_TOKEN"); return { kapali: true }; }
+  props_().setProperty("TG_TOKEN", String(req.botToken || ""));
+  if (req.gkey) props_().setProperty("GEMINI_KEY", req.gkey);
+  const me = tgApi_("getMe");
+  try { tgApi_("deleteWebhook", {}); } catch (e) {}
+  ScriptApp.newTrigger("tgPoll").timeBased().everyMinutes(1).create();
+  return { bot: me.username };
+}
+function tgSend_(text) {
+  const chat = props_().getProperty("TG_CHAT"); if (!chat || !props_().getProperty("TG_TOKEN")) return;
+  tgApi_("sendMessage", { chat_id: chat, text: String(text).slice(0, 3900) });
+}
+function tgPoll() {
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(5000)) return;
+  try {
+    const off = Number(props_().getProperty("TG_OFF") || 0);
+    const ups = tgApi_("getUpdates", { offset: off, timeout: 0, allowed_updates: ["message"] });
+    ups.forEach(u => {
+      props_().setProperty("TG_OFF", String(u.update_id + 1));
+      const m = u.message; if (!m || !m.text) return;
+      let owner = props_().getProperty("TG_CHAT");
+      if (!owner) { owner = String(m.chat.id); props_().setProperty("TG_CHAT", owner); }
+      if (String(m.chat.id) !== owner) { tgApi_("sendMessage", { chat_id: m.chat.id, text: "Bu Titus özel bir asistan." }); return; }
+      tgReply_(m.text, owner);
+    });
+  } finally { lock.releaseLock(); }
+}
+function tgReply_(text, chat) {
+  const t = String(text).trim(); let ans = "";
+  if (/^\/start/.test(t)) ans = "Merhaba! Ben Titus. Bana soru sorabilirsin. 'telefon: …' ile telefondaki Titus'a, 'bilgisayar: …' ile bilgisayardakine iş gönderirsin.";
+  else if (/^telefon\s*[:,]/i.test(t)) { phPush({ kind: "ask", text: t.replace(/^telefon\s*[:,]\s*/i, "") }); ans = "📱 Telefondaki Titus'a ilettim (telefon açıkken ~1 dk içinde yapar)."; }
+  else if (/^(bilgisayar|pc)\s*[:,]/i.test(t)) { pcPush({ action: "ask", arg: t.replace(/^(bilgisayar|pc)\s*[:,]\s*/i, "") + " (Sonucu telefona bildir.)" }); ans = "💻 Bilgisayardaki Titus'a ilettim."; }
+  else {
+    let ctx = "";
+    try { const d = loadState() || {}; ctx = "HATIRLATICILAR: " + (d.reminders || []).filter(r => !r.done).slice(0, 15).map(r => r.text + " @" + r.due).join("; ") + "\nGÖREVLER: " + (d.tasks || []).filter(x => !x.done).slice(0, 15).map(x => x.text).join("; ") + "\nHAFIZA: " + (d.memory || []).slice(0, 20).map(x => x.text).join("; "); } catch (e) {}
+    try { ctx += "\nTAKVİM: " + calendarList(2).map(e => e.baslangic + " " + e.baslik).join("; "); } catch (e) {}
+    ans = gemini_("Sen Titus'sun, Burak'ın kişisel asistanı. Telegram'dan yazıyor. Türkçe, kısa ve samimi cevap ver. Bir işlem (hatırlatıcı, not, görev) isterse 'Bunu telefondaki Titus'a iletmemi istersen başına telefon: yaz' de. Şu an: " + fmt_(new Date()) + "\n" + ctx + "\n\nMesaj: " + t, /hava|haber|kaç|fiyat|kim|nedir|ne zaman|güncel|bugün/i.test(t)) || "Şu an cevap üretemedim (Gemini anahtarı/kotası?).";
+  }
+  tgApi_("sendMessage", { chat_id: chat, text: ans.slice(0, 3900) });
+}
+
+/* ---------- ortak liste (paylaşılabilir Google Tablo) ---------- */
+function sharedList(req) {
+  let id = props_().getProperty("SHARED_SS"); let ss;
+  try { ss = id ? SpreadsheetApp.openById(id) : null; } catch (e) { ss = null; }
+  if (!ss) { ss = SpreadsheetApp.create("Titus Ortak Liste"); ss.getSheets()[0].appendRow(["Tarih", "Ekleyen", "Madde", "Durum"]); props_().setProperty("SHARED_SS", ss.getId()); }
+  const sh = ss.getSheets()[0];
+  if (req.add) String(req.add).split(/[,\n]/).map(x => x.trim()).filter(Boolean).forEach(x => sh.appendRow([fmt_(new Date()), "Titus", x, "açık"]));
+  const rows = sh.getDataRange().getValues().slice(1).filter(r => r[3] !== "bitti").slice(-50).map(r => r[2]);
+  return { url: ss.getUrl(), rows: rows };
+}
+
+/* ---------- anket (Google Form) ---------- */
+function makeForm(req) {
+  const f = FormApp.create(req.title || "Titus Anket");
+  (req.questions || []).forEach(q => {
+    if (q.tur === "puan") f.addScaleItem().setTitle(q.soru).setBounds(1, 5);
+    else if (q.tur === "coktan" && (q.secenekler || []).length) f.addMultipleChoiceItem().setTitle(q.soru).setChoiceValues(q.secenekler);
+    else f.addParagraphTextItem().setTitle(q.soru);
+  });
+  return { url: f.getPublishedUrl(), edit: f.getEditUrl() };
+}
+
+/* ---------- linkten Drive'a (proje yedeği vb.) ---------- */
+function urlToDrive(req) {
+  const h = { "User-Agent": "Titus" }; if (req.auth) h.Authorization = "Bearer " + req.auth;
+  const r = UrlFetchApp.fetch(req.url, { headers: h, followRedirects: true, muteHttpExceptions: true });
+  if (r.getResponseCode() >= 300) throw new Error("İndirilemedi: HTTP " + r.getResponseCode());
+  const f = folder_(req.folder || "Titus").createFile(r.getBlob().setName(req.name || "dosya"));
+  return { name: f.getName(), id: f.getId() };
 }

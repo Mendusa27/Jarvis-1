@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
-VERSION = "2.7"
+VERSION = "3.0"
 CFG = Path.home() / ".jarvis_desktop.json"
 DATA = Path.home() / ".titus"
 DATA.mkdir(exist_ok=True)

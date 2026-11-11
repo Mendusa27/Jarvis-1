@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "2.7"
+GUI_VERSION = "3.0"
 
 
 def open_window():
@@ -246,6 +246,12 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"modeller": [{"id": m["id"], "name": m["name"], "desc": m.get("desc", "")[:160], "n": len(m["imgs"]), "thumb": _b.b64encode(J.MEDIA.jpeg(m["imgs"][0], 160, 80)).decode() if m["imgs"] else ""} for m in ms]})
         if p.startswith("/api/memory"):
             return self.send(200, {"hafiza": TP.mem_list() if TP else []})
+        if p.startswith("/api/skills"):
+            SK = getattr(J, "SKILLS", None)
+            if not SK:
+                return self.send(200, {"yetenekler": [], "hata": "Yetenek sistemi yüklenemedi (Günlük'e bak)."})
+            return self.send(200, {"yetenekler": [{"id": x["id"], "n": x["n"], "faz": x["faz"], "durum": x["durum"], "a": x["a"], "k": x["k"].split(":")[0], "on": SK.mode_on(x), "not": x.get("not", "")} for x in SK.SKILLS],
+                                   "hesaplar": [{"n": a["n"], "e": a.get("e", ""), "main": bool(a.get("main"))} for a in SK.accounts()]})
         if p.startswith("/api/tasks"):
             out = {"yerel": [r for r in (TP.rem_list() if TP else []) if not r.get("done")]}
             if "telefon=1" in p and TP:
@@ -338,6 +344,22 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, TP.rem_add({"text": body.get("text", ""), "due": body.get("due", ""), "repeat": body.get("repeat", "none")}))
         if p == "/api/task/done":
             return self.send(200, TP.rem_done(body.get("id", "")))
+        if p == "/api/skill/run":
+            SK = getattr(J, "SKILLS", None)
+            if not SK:
+                return self.send(200, {"hata": "Yetenek sistemi yüklenemedi."})
+            r = SK.run_skill(str(body.get("id", "")), str(body.get("girdi", "")))
+            return self.send(200, r)
+        if p == "/api/acc/add":
+            SK = J.SKILLS
+            a = {"n": str(body.get("n", "")).strip() or "Hesap", "u": str(body.get("u", "")).strip(), "t": str(body.get("t", "")).strip()}
+            r = SK.acc_call(a, "ping")
+            a["e"] = r.get("email", "")
+            J.save_cfg({"accounts": [x for x in J.C.get("accounts", []) if x.get("u") != a["u"]] + [a]})
+            return self.send(200, {"ok": True, "email": a["e"]})
+        if p == "/api/acc/del":
+            J.save_cfg({"accounts": [x for x in J.C.get("accounts", []) if x.get("n") != body.get("n")]})
+            return self.send(200, {"ok": True})
         if p == "/api/quit":
             self.send(200, {"ok": True})
             threading.Timer(0.3, lambda: os._exit(0)).start()
@@ -417,6 +439,10 @@ label.f{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
 .lg{font:12px/1.4 Consolas,monospace;white-space:pre-wrap;word-break:break-word;padding:5px 0;border-bottom:1px solid rgba(255,72,72,.08)}
 .lg.hata{color:#ff8a80}.lg.uyarı{color:var(--warn)}.lg .tm{color:var(--dim)}
 .ok{color:var(--ok)}.no{color:#ff8a80}
+.skgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-top:10px}
+.sk{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;cursor:pointer}.sk:hover{border-color:var(--red)}
+.sk b{display:block;font-size:14px}.sk small{color:var(--dim);font-size:12px}.sk .bd{float:right;font-size:11px;color:var(--red2)}
+@media (min-width:1100px){#v-chat{flex-direction:row}}
 nav{display:flex;border-top:1px solid var(--line);background:rgba(10,2,3,.9)}
 nav button{flex:1;background:none;border:none;color:var(--dim);padding:8px 0 10px;cursor:pointer;font:11px inherit;font-family:inherit}
 nav button i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}nav button.on{color:var(--red)}
@@ -525,13 +551,21 @@ body.dragging #drop{display:flex}
 <div class="note" style="text-align:center;margin-top:10px">Pencereyi kapatsan da Titus arka planda dinler. Tamamen kapatmak için “Titus'u kapat”. <span id="ver"></span></div>
 </div></section>
 
+<section class="view" id="v-skills"><div class="in">
+<h2>YETENEKLER</h2><div class="note">Faz 1–10'un tamamı. Ara, seç, çalıştır — ya da sohbette “Titus, derin araştırma yap: …” de. Telefona özel olanlar telefondaki Titus'a iletilir.</div>
+<div class="card"><h3>GMAIL HESAPLARI</h3><div id="accList"></div><div class="row" style="margin-top:6px"><input type="text" id="acN" placeholder="Ad (İş)" style="max-width:110px"><input type="text" id="acU" placeholder="Apps Script …/exec"><input type="password" id="acT" placeholder="Şifre" style="max-width:120px"><button class="btn sm" id="acAdd" style="flex:none">Ekle</button></div></div>
+<div class="row" style="margin-top:10px"><input type="text" id="skQ" placeholder="🔎 Yeteneklerde ara…"><select id="skF" style="max-width:150px"><option value="">Tüm fazlar</option><option value="0">Gmail</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></div>
+<div id="skSel" class="card" style="display:none"><h3 id="skT"></h3><div class="note" id="skA" style="margin-top:0"></div><textarea id="skIn" placeholder="İsteğin / ayrıntılar (boş bırakabilirsin)" style="margin-top:8px"></textarea><div class="row" style="margin-top:8px"><button class="btn sm" id="skRun">▶ Çalıştır</button></div><div id="skOut" style="margin-top:8px;white-space:pre-wrap;user-select:text"></div></div>
+<div id="skList" class="skgrid"></div>
+</div></section>
+
 <section class="view" id="v-apps"><div class="in">
 <h2>UYGULAMALARIM</h2><div class="note">Birlikte yaptığımız uygulamalar. Tıkla, açılsın — ya da “Titus, Senaryo Masası'nı aç” de. Claude hesabınla giriş yapılı tarayıcıda açılır.</div>
 <div id="apList"></div>
 <div class="card"><h3>UYGULAMA EKLE</h3><div class="row"><input type="text" id="apN" placeholder="Ad" style="max-width:130px"><input type="text" id="apU" placeholder="https://…"><button class="btn sm" id="apAdd" style="flex:none">Ekle</button></div></div>
 </div></section>
 
-<nav><button data-v="chat" class="on"><i>◉</i>Sohbet</button><button data-v="apps"><i>🧩</i>Uygulamalar</button><button data-v="tasks"><i>✓</i>Görevler</button><button data-v="mem"><i>🧠</i>Hafıza</button><button data-v="logs"><i>🩺</i>Günlük</button><button data-v="set"><i>⚙</i>Ayarlar</button></nav>
+<nav><button data-v="chat" class="on"><i>◉</i>Sohbet</button><button data-v="apps"><i>🧩</i>Uygulamalar</button><button data-v="tasks"><i>✓</i>Görevler</button><button data-v="skills"><i>✦</i>Yetenekler</button><button data-v="mem"><i>🧠</i>Hafıza</button><button data-v="logs"><i>🩺</i>Günlük</button><button data-v="set"><i>⚙</i>Ayarlar</button></nav>
 <script>
 const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=true, liveU=null, liveT=null, view="chat";
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
@@ -540,7 +574,7 @@ function add(cls,txt,tag){const d=document.createElement("div");d.className="m "
 const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space"];
 const TOOL={fotograf_montaj:"montaj yapılıyor",model_kaydet:"model kaydediliyor",modeller:"modeller",konusan_video:"konuşan video hazırlanıyor",mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
 function show(v){view=v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  if(v==="apps")loadApps(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
+  if(v==="apps")loadApps(); if(v==="skills")loadSkills(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>show(b.dataset.v));
 async function poll(){try{const r=await api("state?since="+since);
   document.body.className=r.durum.replace(/\s/g,"");$("#st").textContent=r.durum.toLocaleUpperCase("tr-TR");
@@ -604,6 +638,19 @@ $("#mdSync").onclick=async()=>{const r=await api("model/sync",{});if(r.hata)aler
 async function loadMem(){loadModels();const r=await api("memory");$("#mList").innerHTML=(r.hafiza||[]).map((x,i)=>`<div class="item"><div class="t">${esc(x.t)}<div class="meta">${fmtDue(x.at)}</div></div><button class="x" data-mdel="${i}" title="Sil">✕</button></div>`).reverse().join("")||'<div class="empty">Henüz bir şey kaydedilmedi.</div>';
   document.querySelectorAll("[data-mdel]").forEach(b=>b.onclick=async()=>{await api("memory/del",{i:+b.dataset.mdel});loadMem();});}
 $("#mAdd").onclick=async()=>{const t=$("#mText").value.trim();if(!t)return;await api("memory/add",{t});$("#mText").value="";loadMem();};
+
+// yetenekler
+let SKL=[],SKC=null;const DUR={tam:"✅",yz:"🧠","kısmi":"◐",yok:"✕"};
+const dz=s=>String(s||"").toLocaleLowerCase("tr-TR").replace(/[çğıöşü]/g,c=>({ç:"c",ğ:"g",ı:"i",ö:"o",ş:"s",ü:"u"}[c]));
+async function loadSkills(){const r=await api("skills");SKL=r.yetenekler||[];$("#accList").innerHTML=(r.hesaplar||[]).map(a=>`<div class="item"><div class="t">✉️ ${esc(a.n)}${a.main?" · ana":""}<div class="meta">${esc(a.e||"")}</div></div>${a.main?"":`<button class="x" data-acd="${esc(a.n)}">✕</button>`}</div>`).join("")||'<div class="empty">Gmail bağlı değil.</div>';
+  document.querySelectorAll("[data-acd]").forEach(b=>b.onclick=async()=>{await api("acc/del",{n:b.dataset.acd});loadSkills();});drawSkills();}
+function drawSkills(){const q=dz($("#skQ").value.trim()),f=$("#skF").value;const L=SKL.filter(s=>(f===""||String(s.faz)===f)&&(!q||dz(s.n+" "+s.a).includes(q)));
+  $("#skList").innerHTML=L.map(s=>`<div class="sk" data-sk="${s.id}"><span class="bd">${s.faz?"F"+s.faz:"Gmail"} ${DUR[s.durum]||""}</span><b>${esc(s.n)}</b><small>${esc(s.k==="mode"?(s.on?"● açık mod":"○ kapalı mod"):s.a.slice(0,80))}</small></div>`).join("")||'<div class="empty">Bulunamadı.</div>';
+  document.querySelectorAll("[data-sk]").forEach(d=>d.onclick=()=>{SKC=SKL.find(x=>x.id===d.dataset.sk);$("#skSel").style.display="";$("#skT").textContent=SKC.n+(SKC.k==="mode"?(SKC.on?" (açık)":" (kapalı)"):"");$("#skA").textContent=SKC.a+(SKC.not?" — "+SKC.not:"");$("#skOut").textContent="";$("#skRun").textContent=SKC.k==="mode"?(SKC.on?"Kapat":"Aç"):"▶ Çalıştır";$("#skSel").scrollIntoView({block:"nearest"});});}
+$("#skQ").oninput=drawSkills;$("#skF").onchange=drawSkills;
+$("#skRun").onclick=async()=>{if(!SKC)return;$("#skOut").textContent="⏳ çalışıyor…";const g=SKC.k==="mode"?(SKC.on?"kapat":"aç"):$("#skIn").value;const r=await api("skill/run",{id:SKC.id,girdi:g});
+  $("#skOut").textContent=r.hata?"✗ "+r.hata+(r.benzerler?" (benzer: "+r.benzerler.join(", ")+")":""):(r.metin||r.not||r.durum||"✓ Tamam")+(r.belge?"\n📄 "+r.belge:"")+(r.dosya?"\n📁 "+r.dosya:"");if(SKC.k==="mode")loadSkills();};
+$("#acAdd").onclick=async()=>{const n=$("#acN").value.trim(),u=$("#acU").value.trim(),t=$("#acT").value.trim();if(!u||!t)return alert("Adres ve şifre gerekli");const r=await api("acc/add",{n,u,t});if(r.hata)return alert(r.hata);$("#acN").value=$("#acU").value=$("#acT").value="";loadSkills();};
 // günlük
 let LG=[];async function loadLogs(){const r=await api("log");LG=r.log||[];const only=$("#lgErr").checked;
   $("#lgList").innerHTML=LG.filter(x=>!only||x[1]==="hata").slice().reverse().map(x=>`<div class="lg ${esc(x[1])}"><span class="tm">${esc(x[0])} [${esc(x[1])}]</span> ${esc(x[2])}</div>`).join("")||'<div class="empty">Kayıt yok — her şey yolunda.</div>';}
