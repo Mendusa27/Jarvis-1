@@ -64,6 +64,7 @@ function doPost(e) {
       case "fetchText":    return out({ ok: true, text: pageText_(req.url).slice(0, 400000) });
       case "tdk":          return out({ ok: true, sonuc: tdk_(req.kelime) });
       case "bugReport":    return out(Object.assign({ ok: true }, bugReport_(req)));
+      case "auditReport":  return out(Object.assign({ ok: true }, auditReport_(req)));
       case "ghSet":        return out(Object.assign({ ok: true }, ghSet_(req)));
       case "publishPage":  return out(Object.assign({ ok: true }, publishPage_(req)));
       case "unpublishPage": { const pg = jget_("pages", {}); if (pg[req.id]) { try { DriveApp.getFileById(pg[req.id].file).setTrashed(true); } catch (e) {} delete pg[req.id]; jset_("pages", pg); } return out({ ok: true }); }
@@ -657,6 +658,26 @@ function bugReport_(req) {
   jset_("bugs", all.slice(-500));
   let gh = false; try { gh = bugFlushGh_(); } catch (e) {}
   return { github: gh, toplam: all.length };
+}
+/* Yetenek denetimi raporu: depoda tek bir issue'da tutulur, her denetimde gövdesi yenilenir ve özet yorum olarak eklenir. */
+function auditReport_(req) {
+  const tok = props_().getProperty("GH_TOKEN"); if (!tok) return { github: false };
+  const repo = props_().getProperty("GH_REPO") || "Mendusa27/Jarvis-1";
+  const H = { Authorization: "Bearer " + tok, Accept: "application/vnd.github+json" };
+  const title = "Titus yetenek denetimi (" + String(req.device || "telefon").slice(0, 20) + ")";
+  const body = String(req.body || "").slice(0, 60000);
+  const open = JSON.parse(UrlFetchApp.fetch("https://api.github.com/repos/" + repo + "/issues?state=open&labels=titus-denetim&per_page=50", { headers: H, muteHttpExceptions: true }).getContentText() || "[]");
+  const ex = Array.isArray(open) && open.find(function (i) { return i.title === title; });
+  let r;
+  if (ex) {
+    r = UrlFetchApp.fetch(ex.url, { method: "patch", contentType: "application/json", headers: H, payload: JSON.stringify({ body: body }), muteHttpExceptions: true });
+    UrlFetchApp.fetch(ex.url + "/comments", { method: "post", contentType: "application/json", headers: H, payload: JSON.stringify({ body: String(req.ozet || "Yeni denetim").slice(0, 2000) }), muteHttpExceptions: true });
+  } else {
+    r = UrlFetchApp.fetch("https://api.github.com/repos/" + repo + "/issues", { method: "post", contentType: "application/json", headers: H, payload: JSON.stringify({ title: title, body: body, labels: ["titus-denetim"] }), muteHttpExceptions: true });
+  }
+  const code = r.getResponseCode();
+  if (code >= 300) throw new Error("GitHub raporu kabul etmedi (HTTP " + code + "). Token'ın Issues yazma izni var mı?");
+  return { github: true };
 }
 function bugFlushGh_() {
   const tok = props_().getProperty("GH_TOKEN"); if (!tok) return false;

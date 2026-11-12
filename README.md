@@ -114,7 +114,14 @@ Ana ekrandaki **🏛 Holding** düğmesi ya da "Titus, holdinge şu işi ver: �
 - **Onay kutusu:** Mail, başvuru, paylaşım ve muhasebe kaydı önce buraya düşer. Onaylamadan hiçbir şey gönderilmez. Alıcı adresi verilerde geçmiyorsa mail gönderilmez, Gmail'de taslak olur.
 - **Otomatik tarama:** "Her gün otomatik iş taraması" açıkken Titus günde bir kez Menajer'i çalıştırır ve bulduğu başvuruları onay kutusuna koyar. Holding ekranından kapatılır.
 - **Onaydan sonra otomatik gönderim için:** `apps-script/Code.gs` dosyasının yeni halini yapıştırıp **Dağıt → Dağıtımları yönet → Düzenle → Yeni sürüm** de. Güncellemezsen onayladığın mailler gönderilmez, Gmail'de taslak olarak bekler.
+- **Yedek beyin:** Gemini kotası dolarsa ajanlar bağlı Groq anahtarıyla yazmaya devam eder (internet taraması yalnızca Gemini ile yapılır).
 - **Sınırlar:** Ajanlar yalnızca Titus açıkken çalışır. Instagram'a kendisi paylaşım yapmaz, metni kopyalar. Form ya da DM ile başvurulan ilanlarda başvuruyu "İlanı aç" ile sen tamamlarsın. APEX bu ekibe bağlı değildir.
+
+## Yetenek denetimi
+"Titus, yeteneklerini kontrol et" de ya da Yetenekler → **Yetenek denetimi**'ni çalıştır. Her güncellemeden sonra ve haftada bir kendiliğinden de çalışır.
+- **Ne yapar:** Bütün yetenekleri tek tek gezer. Ekranı olanları çizer, salt okuma araçlarını gerçekten çağırır, beyin ve Google bağlantısını dener. Girdi isteyen ya da bir şey gönderen/değiştiren yetenekleri güvenlik için çalıştırmaz; işleyicisi ve bağlı olduğu parçalar yerindeyse "hazır" sayar.
+- **Sonuç:** ✅ çalıştırıldı · 🟢 hazır · 🟡 bağlantısı eksik · ❌ bozuk. Özet sohbete ve bildirime düşer.
+- **GitHub kaydı:** Rapor depoda **"Titus yetenek denetimi"** başlıklı issue'da tutulur ve her denetimde yenilenir. Bunun için bir kez GitHub token'ı ekle (Yetenekler → Otomatik hata raporu; yalnızca bu depo, "Issues: Read and write") ve `Code.gs`'in yeni halini dağıt.
 
 ## Bilinen sınırlar
 - Canlı modda hoparlörden konuşurken Titus'un sözünü kesmek için biraz yüksek sesle konuşman gerekir (kendi sesini duymasın diye). Kulaklıkla bu ayarı açabilirsin.

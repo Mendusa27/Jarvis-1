@@ -5654,6 +5654,18 @@ const hJobs = () => XL("holding");
 const hPending = () => hJobs().flatMap(j => j.adimlar.flatMap((s, si) => (s.eylemler || []).map((e, ei) => ({ j, s, si, e, ei })))).filter(x => x.e.durum === "bekliyor" || x.e.durum === "hata");
 const hS = (v, n = 4000) => String(v ?? "").slice(0, n);
 
+/* ---------- beyin: önce Gemini, kota dolarsa ya da anahtar yoksa bağlı Groq ---------- */
+async function hJSON(prompt) {
+  try { return await geminiJSON(prompt); }
+  catch (e) {
+    const yedek = SET.groqKey && (e.message === "NOKEY" || [429, 500, 503].includes(e.status) || /kota|quota/i.test(e.message || ""));
+    if (!yedek) throw e;
+    const j = await httpJson("https://api.groq.com/openai/v1/chat/completions", { model: SET.groqModel || "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt + "\n\nSADECE geçerli JSON döndür, açıklama yazma." }], response_format: { type: "json_object" }, temperature: 0.5, max_tokens: 3000 }, { Authorization: "Bearer " + SET.groqKey });
+    const t = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || ""; const m = t.match(/[\[{][\s\S]*[\]}]/);
+    if (!m) throw new Error("Yedek model geçerli bir yanıt üretemedi"); HOLD.yedek = Date.now(); return JSON.parse(m[0]);
+  }
+}
+
 /* ---------- ajanın elindeki gerçek veriler ---------- */
 async function hCtx(ajan, job, gorev) {
   const out = []; const add = (t, v) => { if (v) out.push(`## ${t}\n${typeof v === "string" ? v : JSON.stringify(v)}`.slice(0, 9000)); };
@@ -5694,7 +5706,7 @@ async function hCtx(ajan, job, gorev) {
 /* ---------- Genel Müdür: işi böl ---------- */
 async function hPlan(metin) {
   const liste = Object.entries(H_AG).map(([k, a]) => `- ${k}: ${a.ad}. ${a.rol}`).join("\n");
-  const p = await geminiJSON(`Sen Tunçbilek Holding'in Genel Müdür ajanısın. ${userCtx()}
+  const p = await hJSON(`Sen Tunçbilek Holding'in Genel Müdür ajanısın. ${userCtx()}
 Görevin: gelen işi en fazla 5 adıma bölüp doğru ajana vermek. Adımlar sırayla çalışır, her ajan öncekilerin çıktısını görür.
 
 Ajanlar:
@@ -5734,7 +5746,7 @@ async function hStep(job, i, duzeltme) {
   try {
     const ctx = await hCtx(st.ajan, job, st.gorev);
     const once = job.adimlar.slice(0, i).filter(a => a.cikti).map(a => `[${H_AG[a.ajan].ad}]\n${a.cikti.slice(0, 2500)}`).join("\n\n");
-    const r = await geminiJSON(`Sen Tunçbilek Holding'in ${ag.ad} ajanısın. Rolün: ${ag.rol}
+    const t0 = Date.now(); const r = await hJSON(`Sen Tunçbilek Holding'in ${ag.ad} ajanısın. Rolün: ${ag.rol}
 ${userCtx()}
 
 Kurallar: Türkçe yaz. "metin" Burak'a kısa bir rapordur: düz metin, en fazla 250 kelime, başlık işareti ya da yıldız yok. Yalnızca işin metnine ve aşağıdaki gerçek verilere dayan; ilan, kişi, e-posta adresi, rakam ya da tarih uydurma. Bilmediğin yeri [köşeli parantez] içinde boş bırak. Hiçbir şeyi gönderdiğini ya da yaptığını söyleme: dışarı gidecek her şey önce Burak'ın onayına sunulur.
@@ -5748,7 +5760,7 @@ ${once ? "Önceki ajanların çıktıları:\n" + once + "\n\n" : ""}${ctx ? "Eli
 
 JSON: {"metin":"rapor","eylemler":[]}
 ${ag.ey.length ? `"eylemler" Burak'ın onayına sunulacak hazır işlerdir; gerek yoksa boş dizi bırak, en fazla 3 tane. Kullanabileceğin biçimler:\n${ag.ey.map(k => H_EY_TARIF[k]).join("\n")}` : `"eylemler" boş dizi kalsın.`}`);
-    st.cikti = hS(r && r.metin, 6000) || "(Ajan boş yanıt verdi.)";
+    st.cikti = hS(r && r.metin, 6000) || "(Ajan boş yanıt verdi.)"; st.yedek = (HOLD.yedek || 0) >= t0;
     const yeni = hClean(r && r.eylemler, ag, job.metin + "\n" + once + "\n" + ctx);
     st.eylemler = [...(st.eylemler || []).filter(e => e.durum === "yapildi"), ...yeni];
     st.eylemler.filter(e => e.tur === "gorev" && e.durum === "bekliyor").forEach(e => { e.liste.forEach(t => A.addTask({ text: t, project: "Holding" })); e.durum = "yapildi"; e.sonuc = e.liste.length + " görev listene eklendi."; });
@@ -5823,7 +5835,7 @@ function hJobHTML(j) {
   const calisiyor = HOLD.run.has(j.id), yarim = !calisiyor && j.adimlar.some(s => s.durum !== "tamam");
   const steps = j.adimlar.map((s, si) => `<div style="border-left:2px solid ${s.durum === "tamam" ? "var(--green)" : s.durum === "hata" ? "var(--red)" : "var(--line)"};padding-left:10px;margin-top:10px">
       <div><span class="meta" style="font-family:monospace">${H_AG[s.ajan].kod}</span> <b>${esc(H_AG[s.ajan].ad)}</b> <span class="pill ${s.durum === "tamam" ? "ok" : ""}">${H_ST[s.durum] || s.durum}</span></div>
-      <div class="meta" style="color:var(--dim)">${esc(s.gorev)}</div>${s.hata ? `<div class="hint err">${esc(s.hata)}</div>` : ""}
+      <div class="meta" style="color:var(--dim)">${esc(s.gorev)}</div>${s.hata ? `<div class="hint err">${esc(s.hata)}</div>` : ""}${s.yedek ? `<div class="meta">Gemini kotası dolduğu için yedek modelle (Groq) yazıldı.</div>` : ""}
       ${s.cikti ? `<details><summary class="meta" style="cursor:pointer;color:var(--cyan2)">Raporu göster</summary>${hPre(s.cikti)}</details>` : ""}
       ${(s.eylemler || []).filter(e => e.durum === "yapildi" || e.durum === "reddedildi").map(e => `<div class="meta">${H_EY[e.tur]}: ${e.durum === "reddedildi" ? "reddedildi" : esc(e.sonuc)}</div>`).join("")}
     </div>`).join("");
@@ -5862,7 +5874,7 @@ document.addEventListener("click", async ev => {
   if (t.id === "hGo" || t.id === "hScan") {
     const inp = $("#hIn"), metin = t.id === "hScan" ? "Bana uygun güncel oyunculuk işlerini bul ve başvuru hazırla." : inp.value.trim();
     if (!metin) { inp.focus(); return; }
-    if (!SET.geminiKey) { toast("Önce Ayarlar → Beyin'e Gemini anahtarını gir."); return; }
+    if (!SET.geminiKey && !SET.groqKey) { toast("Önce Ayarlar → Beyin'e Gemini anahtarını gir."); return; }
     t.disabled = true; const eski = t.textContent; t.textContent = t.id === "hScan" ? "⏳ Başlıyor…" : "⏳ Genel Müdür bölüyor…";
     try { await hStart(metin, t.id === "hScan" ? H_SCAN() : null); if (t.id === "hGo") inp.value = ""; } catch (e) { toast("✗ " + friendlyErr(e), 5000); }
     t.disabled = false; t.textContent = eski; return;
@@ -5911,6 +5923,70 @@ setTimeout(() => {
     hStart("Bana uygun güncel oyunculuk işlerini bul ve başvuru hazırla.", H_SCAN()).catch(() => {});
   }, 15000);
 }, 3200);
+
+/* =================== YETENEK DENETİMİ: her yeteneği tek tek kontrol et, GitHub'a kaydet =================== */
+/* Güvenle çalıştırılabilenler gerçekten çalıştırılır (ekranı olanlar çizilir, salt okuma araçları çağrılır).
+   Girdi isteyen ya da bir şey gönderen/değiştiren yetenekler çalıştırılmaz; işleyicisi ve bağlı olduğu parçalar kontrol edilir. */
+const AUD_TR = { calisti: ["✅", "Çalıştırıldı, sorun yok"], hazir: ["🟢", "Hazır (güvenlik için çalıştırılmadı)"], eksik: ["🟡", "Bağlantısı ya da anahtarı eksik"], bozuk: ["❌", "Bozuk"], yok: ["⚪", "Bu sürümde yok"] };
+async function skillAudit(onStep = () => {}) {
+  await SKILLS_READY; const all = allSkills(); const rows = [];
+  const dep = { net: navigator.onLine, beyin: false, beyinNot: "", google: false, googleNot: "Google bağlı değil" };
+  onStep("Beyin kontrol ediliyor");
+  if (!dep.net) dep.beyinNot = "internet yok";
+  else try { dep.beyin = !!(await hJSON(`Yalnızca şu JSON'u döndür: {"ok":true}`)); } catch (e) { dep.beyinNot = e.message === "NOKEY" ? "Gemini anahtarı yok" : friendlyErr(e); }
+  if (SET.scriptUrl && dep.net) { onStep("Google kontrol ediliyor"); try { await script("ping"); dep.google = true; dep.googleNot = ""; } catch (e) { dep.googleNot = e.message; } }
+  const GOOGLE_RX = /gmail|mail|takvim|drive|kadro|recast|radar|audition|senkron|bilgisayar|yayınla|telegram/i;
+  for (let i = 0; i < all.length; i++) {
+    const s = all[i]; let d = "hazir", not = "";
+    if (i % 25 === 0) { onStep(`Yetenekler: ${i}/${all.length}`); await new Promise(r => setTimeout(r, 0)); }
+    try {
+      const kind = s.k.split(":")[0], name = s.k.slice(s.k.indexOf(":") + 1).split(":")[0];
+      const h = kind === "fn" ? FN[name] : null, tool = kind === "tool" ? TOOLS.find(t => t.name === name) : null;
+      if (s.durum === "yok") { d = "yok"; not = s.not || ""; }
+      else if (kind === "mode") { if (!s.a) { d = "bozuk"; not = "davranış kuralı boş"; } else { d = "calisti"; not = modeOn(s) ? "açık" : "kapalı"; } }
+      else if (kind === "tool" && !tool) { d = "bozuk"; not = `"${name}" aracı kodda yok`; }
+      else if (kind === "ask" || (kind === "fn" && !h)) { if (dep.beyin) not = "yapay zekâ görevi; beyin çalışıyor"; else { d = "eksik"; not = "beyin: " + dep.beyinNot; } }
+      else if (kind === "tool") {
+        if (READONLY.test(name) && !tool.required.length && name !== "ekrani_gor" && name !== "radar_kontrol") { const r = await runTool(name, {}); if (r && r.hata) { d = /bağlı değil|gerekli|kurulmamış|izin/i.test(r.hata) ? "eksik" : "bozuk"; not = String(r.hata).slice(0, 140); } else d = "calisti"; }
+      } else {
+        if (h.ui) { const html = h.ui(s); if (typeof html !== "string") throw new Error("ekran boş döndü"); d = "calisti"; not = "ekranı çizildi"; }
+        if (!h.ui && !h.run) { d = "bozuk"; not = "ne ekranı ne işlevi var"; }
+      }
+      if ((d === "hazir" || d === "calisti") && !dep.google && GOOGLE_RX.test(s.n + " " + s.a) && kind !== "mode") { d = "eksik"; not = "Google: " + dep.googleNot; }
+    } catch (e) { d = "bozuk"; not = String(e && e.message || e).slice(0, 160); }
+    rows.push({ id: s.id, n: s.n, k: s.k, d, not });
+  }
+  const say = {}; rows.forEach(r => { say[r.d] = (say[r.d] || 0) + 1; });
+  const ozet = `${rows.length} yetenek: ${say.calisti || 0} çalıştırıldı, ${say.hazir || 0} hazır, ${say.eksik || 0} bağlantısı eksik, ${say.bozuk || 0} bozuk, ${say.yok || 0} bu sürümde yok.`;
+  const cihaz = NATIVE ? "telefon" : "web", at = localISO(new Date());
+  const liste = d => rows.filter(r => r.d === d).map(r => `- **${r.n}** (\`${r.k}\`)${r.not ? ": " + r.not : ""}`).join("\n") || "- yok";
+  const body = `# Titus yetenek denetimi\n\n- Zaman: ${at.replace("T", " ")}\n- Sürüm: ${APP_VER}-${APP_RUN} · ${cihaz}\n- Beyin: ${dep.beyin ? "çalışıyor" : "çalışmıyor (" + dep.beyinNot + ")"} · Google: ${dep.google ? "bağlı" : dep.googleNot}\n\n**${ozet}**\n\n## ❌ Bozuk\n${liste("bozuk")}\n\n## 🟡 Bağlantısı ya da anahtarı eksik\n${liste("eksik")}\n\n<details><summary>✅ Çalıştırıldı (${say.calisti || 0})</summary>\n\n${liste("calisti")}\n</details>\n\n<details><summary>🟢 Hazır, çalıştırılmadı (${say.hazir || 0})</summary>\n\nGirdi istediği ya da bir şey gönderdiği/değiştirdiği için otomatik çalıştırılmadı.\n\n${rows.filter(r => r.d === "hazir").map(r => r.n).join(" · ")}\n</details>\n`;
+  let github = false, ghNot = "";
+  if (!SET.scriptUrl) ghNot = "Google bağlı olmadığı için GitHub'a gönderilemedi.";
+  else try { const r = await script("auditReport", { device: cihaz, ozet, body }); github = !!r.github; if (!github) ghNot = "GitHub token'ı ekli değil (Yetenekler → Otomatik hata raporu)."; }
+  catch (e) {
+    if (/Bilinmeyen işlem/i.test(e.message)) { try { const r = await script("bugReport", { items: [{ at, ver: APP_VER + "-" + APP_RUN, type: "denetim", detail: (ozet + " Bozuk: " + (rows.filter(r => r.d === "bozuk").map(r => r.n).join(", ") || "yok")).slice(0, 480) }], device: cihaz }); github = !!r.github; ghNot = github ? "Yalnızca özet gitti; tam rapor için Apps Script'i güncelle." : "GitHub token'ı ekli değil."; } catch (e2) { ghNot = e2.message; } }
+    else ghNot = e.message;
+  }
+  META.audit = { at, ver: APP_VER + "-" + APP_RUN, ozet, say, github, ghNot, sorun: rows.filter(r => r.d === "bozuk" || r.d === "eksik").slice(0, 60) }; saveMeta();
+  return { ok: !(say.bozuk || 0), metin: ozet + (github ? " Rapor GitHub'a kaydedildi." : " " + ghNot) + ((say.bozuk || 0) ? "\n\nBozuk:\n" + rows.filter(r => r.d === "bozuk").map(r => `✗ ${r.n}: ${r.not}`).join("\n") : ""), ozet, github, say };
+}
+async function skillAuditAuto() {
+  if (SET.autoAudit === false || !navigator.onLine || busy) return;
+  const a = META.audit, ver = APP_VER + "-" + APP_RUN;
+  if (a && a.ver === ver && Date.now() - parseDate(a.at).getTime() < 7 * 864e5) return; // her güncellemeden sonra ve haftada bir
+  const r = await skillAudit();
+  const msg = r.ozet + (r.github ? " GitHub'a kaydedildi." : "");
+  bubble("sys", "🧪 Yetenek denetimi: " + msg); if ((r.say.bozuk || 0) || (r.say.eksik || 0)) notifyNow("🧪 Titus yetenek denetimi", msg);
+}
+setTimeout(() => skillAuditAuto().catch(() => {}), 120000);
+TOOLS.push(T("yetenek_denetimi", "Titus'un bütün yeteneklerini tek tek kontrol eder (çalışıyor mu, bağlantısı eksik mi, bozuk mu), raporu GitHub'a kaydeder ve özetini söyler. 'Yeteneklerini kontrol et', 'hangi yeteneklerin çalışmıyor' gibi isteklerde kullan.", {}, [], () => skillAudit()));
+Object.assign(ACT_TR, { yetenek_denetimi: "🧪 denetim" });
+TOOL_GROUPS.push([/yetenek(ler)?(ini|i)? (kontrol|denetle|test)|denetim|hangi yetenek/, ["yetenek_denetimi"]]);
+FN.audit = {
+  ui: () => { const a = META.audit; return `<label class="tg"><input type="checkbox" data-sk="autoAudit" ${SET.autoAudit !== false ? "checked" : ""}> Her güncellemeden sonra ve haftada bir kendiliğinden denetle</label>` + (a ? `<div class="hint">Son denetim: ${esc(a.at.replace("T", " "))} · sürüm ${esc(a.ver)}</div><div class="hint">${esc(a.ozet)}</div><div class="hint">${a.github ? "✅ GitHub'a kaydedildi" : "⚠️ " + esc(a.ghNot || "GitHub'a kaydedilmedi")}</div>${a.sorun.map(r => `<div class="hint">${AUD_TR[r.d][0]} ${esc(r.n)}${r.not ? " — " + esc(r.not) : ""}</div>`).join("")}` : `<div class="hint">Henüz denetim yapılmadı.</div>`); },
+  run: (g, s, ctx) => skillAudit(x => { const o = $("#skOut"); if (o && !ctx.fromChat) o.textContent = "⏳ " + x; })
+};
 
 /* =================== açılış işleri =================== */
 setTimeout(async () => {
