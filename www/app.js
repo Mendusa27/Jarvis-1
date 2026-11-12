@@ -2638,7 +2638,7 @@ TOOLS.push(
   T("fotograf_duzenle", "Stüdyo'da açık fotoğrafı düzenleyip kaydeder.", { oran: str("Oran", ["orig", "1:1", "4:5", "9:16", "16:9", "8x10"]), filtre: str("Filtre", ["none", "bw", "warm", "cool", "cine"]), parlaklik: num("50-150"), kontrast: num("50-150"), doygunluk: num("0-200"), yazi: str("Üstüne yazı"), arka_plan: str("Arka plan", ["none", "blur", "white", "black", "grey", "remove"]) }, [],
     async a => { if (!ED.img) return { hata: "Önce Stüdyo → Fotoğraf'tan bir fotoğraf seç." }; Object.assign(ED, { aspect: a.oran || ED.aspect, filter: a.filtre || ED.filter, bri: a.parlaklik || ED.bri, con: a.kontrast || ED.con, sat: a.doygunluk ?? ED.sat, text: a.yazi ?? ED.text, bg: a.arka_plan || ED.bg }); await previewPhoto(); const r = await savePhoto(); return { ok: true, yer: r.yer }; }),
   T("portfolyo_sitesi", "Burak için oyuncu portfolyo web sayfası (HTML) hazırlar.", {}, [], () => portfolioSite()),
-  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files", "seed"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
+  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files", "seed", "kesit"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
 );
 Object.assign(ACT_TR, { sunum_hazirla: "📊 sunum", belge_hazirla: "📄 belge", gorsel_uret: "🎨 görsel", fotograf_duzenle: "🖼 fotoğraf", portfolyo_sitesi: "🌐 portfolyo" });
 let STUDIO_LAST = null;
@@ -3887,7 +3887,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.1", APP_RUN = "__RUN__";
+const APP_VER = "4.2", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6193,7 +6193,7 @@ async function seedProjHTML(p) {
   <div class="card"><h3>BİRLEŞTİR</h3><div class="form"><button class="btn ghost" id="sdPick">🎞 Klipleri seç</button><div id="sdClips">${clipHTML}</div>
     <div class="row"><select id="sdVoice"><option value="titus">Seslendirme: Titus okusun</option><option value="file">Seslendirme: kendi kaydım</option><option value="none">Seslendirme yok</option></select><button class="btn ghost sm" id="sdVoicePick" style="flex:0 0 auto">🎙 Kayıt ${SEED.voice ? "✓" : "seç"}</button></div>
     <div class="row"><button class="btn ghost sm" id="sdMusic" style="flex:0 0 auto">🎵 Müzik ${SEED.music ? "✓" : "ekle"}</button><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="sdSubs" style="width:auto"> altyazı</label><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="sdCard" checked style="width:auto"> açılış kartı</label></div>
-    <button class="btn" id="sdGo" ${SEED.clips.some(c => c.shot >= 0) ? "" : "disabled"}>🎬 Videoyu birleştir</button><div class="hint">Seslendirme varken kliplerin kendi sesi kısılır. Telefonda işlem video süresi kadar sürer.</div></div></div>`;
+    <button class="btn" id="sdGo" ${SEED.clips.some(c => c.shot >= 0) ? "" : "disabled"}>🎬 Videoyu birleştir</button><button class="btn ghost" id="sdKesit" ${SEED.clips.some(c => c.shot >= 0) ? "" : "disabled"}>✂️ Kesit'te kurgula (elle düzenle)</button><div class="hint">Seslendirme varken kliplerin kendi sesi kısılır. Telefonda işlem video süresi kadar sürer.</div></div></div>`;
 }
 {
   const base = listHTML;
@@ -6209,7 +6209,7 @@ const seedRender = () => { if (CUR.studio === "seed") renderSec("studio"); };
 document.addEventListener("change", e => {
   const t = e.target; if (!t.dataset) return;
   if (t.dataset.sddone !== undefined) { const p = seedGet(SEED.open); if (p) { p.shots[+t.dataset.sddone].done = t.checked; seedSave(); } }
-  else if (t.dataset.sdmap !== undefined) { SEED.clips[+t.dataset.sdmap].shot = Number(t.value); const g = $("#sdGo"); if (g) g.disabled = !SEED.clips.some(c => c.shot >= 0); }
+  else if (t.dataset.sdmap !== undefined) { SEED.clips[+t.dataset.sdmap].shot = Number(t.value); for (const id of ["#sdGo", "#sdKesit"]) { const g = $(id); if (g) g.disabled = !SEED.clips.some(c => c.shot >= 0); } }
 });
 document.addEventListener("click", async e => {
   const t = e.target.closest("#sdPlan,[data-sdopen],[data-sddel],#sdBack,#sdDream,#sdCopyAll,#sdUrl,#sdChars,[data-sdchar],[data-sdcopy],[data-sdcopyonly],[data-sdre],#sdPick,#sdVoicePick,#sdMusic,#sdGo");
@@ -6268,6 +6268,177 @@ TOOLS.push(
 Object.assign(ACT_TR, { seedance_video: "🎬 Seedance", seedance_projeler: "🎬 projeler" });
 TOOL_GROUPS.push([/seedance|dreamina|hikâye|hikaye|kısa film|dizi|videoya (çevir|dönüştür)|teaser|fragman|sahne sahne/, ["seedance_video", "seedance_projeler", "modeller"]]);
 FN.seedance = { input: "Hikâyen (boş bırakırsan Seedance stüdyosu açılır)", run: async g => { if (!g) { go("studio"); openSec("studio", "seed"); return { metin: "Seedance stüdyosu açıldı." }; } const p = await seedPlan({ hikaye: g }); SEED.open = p.id; SEED.clips = []; go("studio"); openSec("studio", "seed"); return { ok: true, metin: `"${p.title}" hazır: ${p.shots.length} çekim, ~${seedSecs(p)} sn. Stüdyo → Seedance'ta karakter görsellerini üretip prompt'ları Dreamina'ya kopyalayabilirsin.` }; } };
+
+/* ================= KESİT KURGU (v4.2) =================
+   Kesit (www/kesit.html) Titus'un içinde tam ekran açılır. Titus Burak'ın Türkçe talimatını Kesit komutlarına çevirir
+   (KesitAPI.run), kurguyu canlı yapar, dışa aktarır ve galeriye kaydeder. Burak'ın geri bildirimleri "kurgu notları" olarak
+   saklanır ve sonraki kurgularda uygulanır (öğrenme). */
+const KS = { files: [], busy: "", last: null, frame: null, ready: null, cat: null };
+const ksNotes = () => (S.kesitNotes = S.kesitNotes || []);
+const ksLog = () => (S.kesitLog = S.kesitLog || []);
+function ksStat(t) { KS.busy = t || ""; for (const id of ["#ksStat", "#ksBar"]) { const e = $(id); if (e) e.textContent = t ? "⏳ " + t : ""; } }
+function ksOverlay(show = true) {
+  let ov = $("#kesitOv");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "kesitOv";
+    ov.style.cssText = "position:fixed;inset:0;z-index:9000;background:#101218;display:flex;flex-direction:column";
+    ov.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 6px) 10px 6px;background:#1a0608;border-bottom:1px solid #3a0d12"><button class="btn ghost sm" id="ksClose" style="flex:0 0 auto">← Titus</button><b style="color:#ff5a5a;letter-spacing:2px">KESİT</b><span id="ksBar" class="hint" style="flex:1;margin:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></span></div><iframe id="kesitFrame" src="kesit.html" style="flex:1;width:100%;border:0;background:#101218" allow="camera;microphone;autoplay;fullscreen"></iframe>`;
+    document.body.appendChild(ov); KS.frame = ov.querySelector("#kesitFrame");
+    KS.ready = new Promise(res => { KS.frame.addEventListener("load", () => res(), { once: true }); });
+    ov.querySelector("#ksClose").onclick = () => { if (KS.busy) return toast("Titus kurguluyor, bitince kapanır"); ksOverlay(false); };
+  }
+  ov.style.display = show ? "flex" : "none";
+  return ov;
+}
+async function ksApi() {
+  ksOverlay(true); await KS.ready;
+  for (let i = 0; i < 60; i++) { const w = KS.frame.contentWindow; if (w && w.KesitAPI) return w.KesitAPI; await sleep(150); }
+  throw new Error("Kesit açılamadı");
+}
+async function ksCatalog() { if (KS.cat) return KS.cat; const api = await ksApi(); KS.cat = api.catalog(); return KS.cat; }
+async function ksFileInfo(files) {
+  const out = [];
+  for (let i = 0; i < files.length; i++) { const f = files[i]; const kind = /^video|\.(mp4|mov|webm|mkv|3gp)$/i.test(f.type || f.name) ? "video" : /^audio|\.(mp3|wav|m4a|aac|ogg)$/i.test(f.type || f.name) ? "audio" : "image";
+    let dur = null; if (kind !== "image") { try { dur = await new Promise(r => { const m = document.createElement(kind); m.preload = "metadata"; m.src = URL.createObjectURL(f); m.onloadedmetadata = () => { const d = m.duration; URL.revokeObjectURL(m.src); r(isFinite(d) ? +d.toFixed(2) : null); }; m.onerror = () => r(null); }); } catch {} }
+    out.push({ file: i, ad: f.name, tur: kind, sure: dur }); }
+  return out;
+}
+async function ksPlan(talimat, files, { devam = false } = {}) {
+  const cat = await ksCatalog(); const api = await ksApi();
+  const info = await ksFileInfo(files); const st = devam ? api.state() : null;
+  const L = a => a.map(x => x[0] + "=" + x[1]).join(", ");
+  const notes = ksNotes().slice(-15).map(n => "- " + n.t).join("\n");
+  const ex = ksLog().slice(-3).map(x => `İSTEK: ${x.istek}\nKOMUTLAR: ${JSON.stringify(x.ops).slice(0, 700)}`).join("\n\n");
+  return seedJSON(`Sen Titus'sun ve Burak'ın video kurgucususun. Kurguyu Kesit adlı kurgu programına JSON komutlarıyla yaptırıyorsun. Burak'ın talimatını en iyi kurguya dönüştüren komut listesini yaz.
+TALİMAT: """${talimat}"""
+DOSYALAR (file = sıra numarası): ${JSON.stringify(info)}
+${devam ? "MEVCUT KURGU (bunun üzerine düzenle, 'clear' KULLANMA): " + JSON.stringify(st) : "Yeni kurgu: ilk komut {\"op\":\"clear\"} olsun."}
+KOMUTLAR (sırayla çalışır; "clip" = ana izdeki klibin O ANKİ 1'den başlayan sırası, ya da "all" / "last" / [1,3]):
+- {"op":"clear"} · {"op":"settings","aspect":"16:9|9:16|1:1|4:5|21:9","name":"proje adı"}
+- {"op":"add","file":0,"to":"main|over|music|audio","in":sn,"out":sn,"speed":1,"vol":1,"fit":"fill|fit|blur","at":sn(over/müzik için)} — main sırayla arkaya eklenir; görsel için "dur"
+- {"op":"card","text":"BAŞLIK","sub":"alt satır","dur":2.5,"at":"start|end","c1":"#renk","c2":"#renk"} — renkli başlık/kapanış kartı (ana ize girer; numaraları kaydırır, o yüzden kartları EN SONA yaz)
+- {"op":"text","clip":2,"content":"yazı","offset":0.3,"dur":2,"pos":"top|center|bottom","size":72,"color":"#fff","font":"…","box":false}
+- {"op":"sub","clip":2,"text":"altyazı","offset":0.2,"dur":2} — altyazı
+- {"op":"transition","clip":"all|n","type":"geçiş id","dur":0.6} — klibin GİRİŞ geçişi
+- {"op":"effect","clip":n|null,"type":"efekt id","amount":5-100,"start":sn,"dur":sn} — clip null ise belirli aralığa efekt katmanı
+- {"op":"look","clip":"all","look":"görünüm id"} · {"op":"color","clip":n,"bri":-100..100,"con":..,"sat":..,"temp":..,"vig":..}
+- {"op":"speed","clip":n,"speed":0.25-4} · {"op":"trim","clip":n,"in":sn,"out":sn} · {"op":"volume","clip":n,"vol":0-2} ya da {"op":"volume","track":"music","vol":0.5} · {"op":"mute","clip":n} · {"op":"fade","clip":n,"in":sn,"out":sn}
+- {"op":"kenburns","clip":n,"type":"in|out|left|right|up|down"} (fotoğraflara hareket) · {"op":"cutSilence","clip":"all"} (konuşmadaki sessizlikleri keser) · {"op":"beatCut","n":2} (müziğin ritmine göre keser; önce müzik ekle)
+- {"op":"template","id":"şablon id","at":"start|end"} · {"op":"brand","name":"Recast Talent House","color":"#hex","watermark":true}
+GEÇİŞLER: ${L(cat.transitions)}
+EFEKTLER: ${L(cat.effects)}
+GÖRÜNÜMLER: ${L(cat.looks)}
+ŞABLONLAR: ${L(cat.templates)}
+YAZI TİPLERİ: ${cat.fonts.join(", ")}
+KURALLAR: Talimattaki her isteği karşıla, istenmeyen gösterişli efekt ekleme. Süreler dosya süresini aşmasın. Burak bir oyuncu; self-tape ve showreel işlerinde sade, temiz kurgu sever (aksi söylenmedikçe). Yazılar Türkçe. "export" komutu YAZMA (Titus ayrıca yapar).
+${notes ? "BURAK'IN KURGU NOTLARI (her zaman uygula, talimatla çelişirse talimat kazanır):\n" + notes : ""}
+${ex ? "ÖNCEKİ KURGULARDAN ÖRNEKLER:\n" + ex : ""}
+JSON: {"ozet":"Türkçe 1-2 cümle: ne yaptın","ops":[...]}`, 8000);
+}
+async function ksRun({ talimat, files = [], disaAktar = true, devam = null, res = 1920 }) {
+  if (KS.busy) throw new Error("Titus zaten kurguluyor");
+  if (!talimat) throw new Error("Nasıl bir kurgu istediğini yaz");
+  const cont = devam ?? !files.length;
+  try {
+    ksStat("Talimat kurgu komutlarına çevriliyor");
+    const plan = await ksPlan(talimat, files, { devam: cont });
+    const ops = (plan.ops || []).filter(o => o && o.op && o.op !== "export");
+    if (!ops.length) throw new Error("Kurgu planı çıkmadı, talimatı biraz aç");
+    const api = await ksApi();
+    ksStat("Kesit'te kurguluyorum");
+    const r = await api.run(ops, files, { onStep: s => ksStat("Kurgu: " + s), onProgress: p => ksStat(`Dışa aktarılıyor %${Math.round(p * 100)}`), export: disaAktar ? res : null });
+    let kayit = null;
+    if (r.blob) { ksStat("Kaydediliyor"); kayit = await saveFile(r.blob, fname(r.name || "kesit", r.ext), "movies"); }
+    KS.last = { istek: talimat, ozet: plan.ozet || "", ops, hatalar: r.errors || [], yer: kayit && kayit.yer, at: localISO(new Date()) };
+    ksLog().push({ istek: talimat.slice(0, 300), ops: ops.slice(0, 40), at: KS.last.at }); S.kesitLog = ksLog().slice(-12); save();
+    return { ok: true, ozet: plan.ozet, komut: ops.length, hatalar: r.errors, yer: kayit && kayit.yer, sure: r.dur || (r.state && r.state.total) };
+  } finally { ksStat(""); if (CUR.studio === "kesit") renderSec("studio"); }
+}
+async function ksExportNow(res = 1920) {
+  if (KS.busy) throw new Error("Titus meşgul");
+  const api = await ksApi();
+  try { const r = await api.exportBlob(res, p => ksStat(`Dışa aktarılıyor %${Math.round(p * 100)}`)); ksStat("Kaydediliyor"); return await saveFile(r.blob, fname(r.name || "kesit", r.ext), "movies"); }
+  finally { ksStat(""); }
+}
+function ksLearn(t, iyi) { const n = String(t || "").trim(); if (!n) return; ksNotes().push({ id: uid(), t: n, iyi: !!iyi, at: localISO(new Date()) }); S.kesitNotes = ksNotes().slice(-30); save(); }
+
+/* WAV yardımcı: Titus seslendirmesini Kesit'e ses dosyası olarak vermek için */
+function bufToWav(buf) {
+  const ch = buf.numberOfChannels, sr = buf.sampleRate, n = buf.length, out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); out.setUint32(4, 36 + n * ch * 2, true); w(8, "WAVE"); w(12, "fmt "); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true); out.setUint32(24, sr, true); out.setUint32(28, sr * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true); w(36, "data"); out.setUint32(40, n * ch * 2, true);
+  const chs = [...Array(ch)].map((_, i) => buf.getChannelData(i)); let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const v = Math.max(-1, Math.min(1, chs[c][i])); out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2; }
+  return new Blob([out], { type: "audio/wav" });
+}
+/* Seedance klipleri → Kesit (LLM'siz, doğrudan) */
+async function seedToKesit(p, { voice = "titus", subs = false } = {}) {
+  const order = SEED.clips.filter(c => c.shot >= 0).sort((a, b) => a.shot - b.shot);
+  if (!order.length) throw new Error("Önce klipleri seç ve sahnelere eşle");
+  const files = order.map(c => c.file); const ops = [{ op: "clear" }, { op: "settings", aspect: p.format, name: p.title }];
+  order.forEach((c, k) => ops.push({ op: "add", file: k, vol: voice === "none" ? 1 : 0.35 }));
+  ops.push({ op: "transition", clip: "all", type: "cross", dur: 0.4 });
+  order.forEach((c, k) => { const s = p.shots[c.shot]; if (!s) return; if (subs && s.vo) ops.push({ op: "sub", clip: k + 1, text: s.vo }); if (s.text) ops.push({ op: "text", clip: k + 1, content: s.text, pos: "center", size: 84, offset: 0.3, dur: 2.2 }); });
+  if (voice === "titus") { const durs = []; for (const c of order) durs.push(await vidDur(c.file)); const nb = await seedNarration(p, order, durs); if (nb) { files.push(new File([bufToWav(nb)], "titus-seslendirme.wav", { type: "audio/wav" })); ops.push({ op: "add", file: files.length - 1, to: "audio", at: 0, vol: 1 }); } }
+  else if (voice === "file" && SEED.voice) { files.push(SEED.voice); ops.push({ op: "add", file: files.length - 1, to: "audio", at: 0, vol: 1 }); }
+  if (SEED.music) { files.push(SEED.music); ops.push({ op: "add", file: files.length - 1, to: "music", vol: 0.5 }); }
+  ops.push({ op: "card", text: p.title, at: "end", dur: 2.5 });
+  const api = await ksApi(); ksStat("Klipler Kesit'e diziliyor");
+  try { return await api.run(ops, files, { onStep: s => ksStat("Kesit: " + s) }); } finally { ksStat(""); }
+}
+
+/* ---------- Stüdyo → Kesit ekranı ---------- */
+function ksHTML() {
+  const notes = ksNotes(); const L = KS.last;
+  return `<div class="card"><h3>KESİT · TİTUS KURGULASIN</h3><div class="hint" style="margin-top:0">Dosyaları seç, ne istediğini yaz ya da söyle: Titus Kesit'i açar, kurguyu canlı yapar, dışa aktarıp galeriye kaydeder. Dosya seçmeden yazarsan açık kurgunun üzerinde düzenler ("2. klibi kısalt, sona kapanış kartı ekle").</div>
+  <div class="form" style="margin-top:8px"><button class="btn ghost" id="ksPick">📎 Video / foto / müzik seç</button><div class="hint">${KS.files.length ? KS.files.map((f, i) => `${i + 1}. ${esc(f.name.slice(0, 32))}`).join("<br>") + ` <button class="btn ghost sm" id="ksClear">temizle</button>` : "Seçili dosya yok (açık kurgu düzenlenir)"}</div>
+  <textarea id="ksTxt" placeholder="Talimat… (ör. 'Bu 3 self-tape'i birleştir, sessiz yerleri kes, başa adımla rol adı kartı koy, sinema görünümü, sona Recast kapanış kartı, dikey 9:16')" style="min-height:90px"></textarea>
+  <div class="row"><select id="ksRes"><option value="1920">1080p</option><option value="1280">720p (hızlı)</option></select><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="ksExp" checked style="width:auto"> bitince dışa aktar</label></div>
+  <button class="btn" id="ksGo">✂️ Titus kurgulasın</button><div class="row" style="margin-top:6px"><button class="btn ghost sm" id="ksOpen">🎞 Kesit'i aç (elle düzenle)</button><button class="btn ghost sm" id="ksExport">⬇️ Açık kurguyu dışa aktar</button></div>
+  <div class="hint" id="ksStat">${esc(KS.busy ? "⏳ " + KS.busy : "")}</div></div></div>
+  ${L ? `<div class="card"><h3>SON KURGU</h3><div class="hint" style="margin-top:0">${esc(L.ozet)}${L.yer ? "<br>✓ " + esc(L.yer) : ""}${L.hatalar && L.hatalar.length ? "<br>⚠️ " + esc(L.hatalar.join(" · ")) : ""}</div>
+  <div class="form" style="margin-top:6px"><input id="ksFb" placeholder="Nasıldı? Kalıcı not (ör. 'geçişleri hep çok kısa tut', 'yazılarda Anton kullan')"><div class="row"><button class="btn sm" id="ksGood">👍 Beğendim</button><button class="btn ghost sm" id="ksBad">👎 Düzelt ve hatırla</button></div></div></div>` : ""}
+  <div class="card"><h3>KURGU NOTLARIM (TİTUS'UN ÖĞRENDİKLERİ)</h3>${notes.length ? notes.map(n => `<div class="item"><div class="ic">${n.iyi ? "👍" : "📝"}</div><div class="t"><div class="h" style="font-weight:500">${esc(n.t)}</div></div><button class="x" data-ksdel="${n.id}">✕</button></div>`).join("") : `<div class="hint" style="margin-top:0">Henüz not yok. Kurgulardan sonra geri bildirim verdikçe Titus tarzını öğrenir ve her kurguda uygular.</div>`}
+  <div class="form" style="margin-top:6px"><input id="ksNote" placeholder="Elle not ekle (ör. 'self-tape'lerde müzik kullanma')"><button class="btn ghost sm" id="ksNoteAdd">+ Not</button></div></div>`;
+}
+{
+  const base = listHTML;
+  listHTML = function (sec) { return sec === "kesit" ? ksHTML() : base(sec); };
+}
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#ksPick,#ksClear,#ksGo,#ksOpen,#ksExport,#ksGood,#ksBad,#ksNoteAdd,[data-ksdel],#sdKesit");
+  if (!t) return;
+  try {
+    if (t.id === "ksPick") { const fs = await pickFiles("video/*,audio/*,image/*", true); if (fs.length) { KS.files = fs; renderSec("studio"); } }
+    else if (t.id === "ksClear") { KS.files = []; renderSec("studio"); }
+    else if (t.id === "ksGo") { const talimat = $("#ksTxt").value.trim(); if (!talimat) return toast("Ne istediğini yaz"); t.disabled = true;
+      try { const r = await ksRun({ talimat, files: KS.files, disaAktar: $("#ksExp").checked, res: +$("#ksRes").value }); KS.files = []; renderSec("studio"); toast(r.yer ? "✓ Video kaydedildi → " + r.yer : "✓ Kurgu hazır (Kesit'te açık)", 6000); if (!r.yer) ksOverlay(true); else ksOverlay(false); }
+      finally { t.disabled = false; } }
+    else if (t.id === "ksOpen") { await ksApi(); }
+    else if (t.id === "ksExport") { t.disabled = true; try { const f = await ksExportNow(+$("#ksRes").value); toast("✓ Video kaydedildi → " + f.yer, 6000); ksOverlay(false); } finally { t.disabled = false; } }
+    else if (t.id === "ksGood" || t.id === "ksBad") { const n = $("#ksFb").value.trim(); if (t.id === "ksBad" && !n) return toast("Neyin değişmesini istediğini yaz"); if (n) ksLearn(n, t.id === "ksGood"); renderSec("studio"); if (t.id === "ksBad") { const b = $("#ksTxt"); if (b) b.value = "Son kurguyu düzelt: " + n; toast("✓ Hatırlayacağım. Düzeltmek için 'Titus kurgulasın'a bas", 5000); } else toast("✓ Not alındı"); }
+    else if (t.id === "ksNoteAdd") { const n = $("#ksNote").value.trim(); if (!n) return; ksLearn(n, false); renderSec("studio"); }
+    else if (t.dataset.ksdel) { S.kesitNotes = ksNotes().filter(n => n.id !== t.dataset.ksdel); save(); renderSec("studio"); }
+    else if (t.id === "sdKesit") { const p = SEED.open && seedGet(SEED.open); if (!p) return; t.disabled = true; try { const r = await seedToKesit(p, { voice: $("#sdVoice").value, subs: $("#sdSubs").checked }); toast(r.errors && r.errors.length ? "⚠️ " + r.errors.join(" · ") : "✓ Kesit'te hazır: düzenle ya da dışa aktar", 5000); } finally { t.disabled = false; } }
+  } catch (er) { ksStat(""); toast("✗ " + friendlyErr(er), 6000); }
+});
+
+/* ---------- sohbet / ses aracı + yetenek ---------- */
+TOOLS.push(
+  T("kesit_kurgu", "Kesit kurgu programıyla video kurgular: Burak'ın talimatını kurgu komutlarına çevirir (kes, birleştir, kırp, hız, geçiş, efekt, renk, yazı, altyazı, müzik, ritme göre kesme, sessizlik kesme, kart/şablon), Kesit'te canlı uygular ve istenirse dışa aktarıp galeriye kaydeder. Burak'ın kurgu notlarını (öğrendiklerini) her seferinde uygular. Yeni dosya gerekiyorsa Burak'a dosya seçtirir; dosya yoksa açık kurguyu düzenler.", { talimat: str("Kurgu talimatı, kullanıcının TÜM ayrıntılarıyla"), dosya_sec: { type: "boolean", description: "Yeni video/foto/müzik dosyaları seçtirilsin mi (yeni kurgu)" }, disa_aktar: { type: "boolean", description: "Bitince videoyu dışa aktarıp kaydet (varsayılan evet)" } }, ["talimat"],
+    async a => {
+      let files = [];
+      if (a.dosya_sec) { if (!(await confirmBox("Kurgu için dosyaları seç (video, foto, müzik).", "Seç"))) return { iptal: true }; files = await pickFiles("video/*,audio/*,image/*", true); if (!files.length) return { iptal: true, not: "Dosya seçilmedi." }; }
+      const r = await ksRun({ talimat: a.talimat, files, disaAktar: a.disa_aktar !== false, devam: !files.length });
+      if (!r.yer) ksOverlay(true);
+      return r;
+    }),
+  T("kesit_not", "Burak'ın kurgu tercihini kalıcı olarak kaydeder (Titus sonraki kurgularda uygular). Ör. 'geçişleri kısa tut', 'self-tape'lerde müzik olmasın'.", { not: str("Tercih, kısa ve net") }, ["not"], async a => { ksLearn(a.not, false); return { ok: true, notlar: ksNotes().length }; }),
+  T("kesit_ac", "Kesit kurgu programını tam ekran açar (elle düzenleme için).", {}, [], async () => { await ksApi(); return { ok: true }; })
+);
+Object.assign(ACT_TR, { kesit_kurgu: "✂️ kurgu", kesit_not: "📝 kurgu notu", kesit_ac: "✂️ Kesit" });
+TOOL_GROUPS.push([/kurgu|kesit|klip|videoyu (düzenle|kes|birleştir|kısalt|hızlandır)|geçiş|altyazı|showreel|self.?tape (kurgu|düzenle)|dışa aktar|müzik ekle/, ["kesit_kurgu", "kesit_not", "kesit_ac"]]);
+FN.kesit = { input: "Kurgu talimatı (boş bırakırsan Kesit ekranı açılır)", run: async g => { if (!g) { go("studio"); openSec("studio", "kesit"); return { metin: "Kesit ekranı açıldı." }; } const r = await ksRun({ talimat: g, files: [], devam: true }); return { metin: `${r.ozet || "Kurgu yapıldı."}${r.yer ? "\n✓ " + r.yer : ""}${r.hatalar && r.hatalar.length ? "\n⚠️ " + r.hatalar.join(" · ") : ""}` }; } };
 
 boot();
 })();
