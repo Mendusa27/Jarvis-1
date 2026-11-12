@@ -1,5 +1,7 @@
 # T.I.T.U.S. — Burak'ın Kişisel Asistanı
 
+**v4.1:** Seedance Video Stüdyosu (Stüdyo → Seedance): hikâyeni sahnelere böler, karakterleri Modeller'e kaydedip hatırlar, her çekimin Seedance 2.0 prompt'unu yazar; Dreamina'da ürettiğin klipleri birleştirip seslendirme ve müzik ekler.
+
 **v4.0:** Tunçbilek Holding (11 ajanlı ekip, onay kutusu, günlük iş taraması), yetenek denetimi (GitHub raporu), Holding için Groq yedeği, canlı modda yalnızca Türkçe dinleme, kamera düğmesi artık yazı kutusunun üstüne binmiyor.
 
 Android uygulaması (Capacitor). Tamamen ücretsiz bileşenlerle çalışır. Aynı arayüz tarayıcıda da açılır (tablet/bilgisayar).

@@ -2561,7 +2561,7 @@ async function autoTrim(file) {
   return first < 0 ? null : { start: Math.max(0, first * 0.1 - 0.6), end: last * 0.1 + 0.8 };
 }
 /** clips: [{file|img, start, end, kind:"video"|"image"|"card", text}] */
-async function renderVideo({ clips, format = "9:16", music = null, subs = "none", cleanAudio = true, narration = null, onProgress }) {
+async function renderVideo({ clips, format = "9:16", music = null, subs = "none", cleanAudio = true, narration = null, clipGain = 1, onProgress }) {
   const [W, H] = format === "16:9" ? [1280, 720] : format === "1:1" ? [1080, 1080] : [720, 1280];
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   const ac = new (window.AudioContext || window.webkitAudioContext)(); const dest = ac.createMediaStreamDestination();
@@ -2582,7 +2582,7 @@ async function renderVideo({ clips, format = "9:16", music = null, subs = "none"
     if (c.kind === "video") {
       const v = document.createElement("video"); v.src = URL.createObjectURL(c.file); v.playsInline = true; v.preload = "auto"; v.crossOrigin = "anonymous";
       await new Promise(r => { v.onloadedmetadata = r; v.load(); });
-      const vs = ac.createMediaElementSource(v); vs.connect(chain);
+      const vs = ac.createMediaElementSource(v); let cgn = null; if (clipGain !== 1) { cgn = ac.createGain(); cgn.gain.value = clipGain; vs.connect(cgn); cgn.connect(chain); } else vs.connect(chain);
       if ((c.start || 0) > 0.01) { v.currentTime = c.start; await new Promise(r => { v.onseeked = r; }); }
       await v.play();
       await new Promise(res => {
@@ -2592,7 +2592,7 @@ async function renderVideo({ clips, format = "9:16", music = null, subs = "none"
           onProgress && onProgress(Math.min(1, (done + t - (c.start || 0)) / total)); requestAnimationFrame(tick);
         }; requestAnimationFrame(tick);
       });
-      vs.disconnect(); URL.revokeObjectURL(v.src);
+      vs.disconnect(); if (cgn) cgn.disconnect(); URL.revokeObjectURL(v.src);
     } else {
       const t0 = performance.now();
       await new Promise(res => { const tick = () => { const p = (performance.now() - t0) / 1000 / dur; if (p >= 1) return res();
@@ -2638,7 +2638,7 @@ TOOLS.push(
   T("fotograf_duzenle", "Stüdyo'da açık fotoğrafı düzenleyip kaydeder.", { oran: str("Oran", ["orig", "1:1", "4:5", "9:16", "16:9", "8x10"]), filtre: str("Filtre", ["none", "bw", "warm", "cool", "cine"]), parlaklik: num("50-150"), kontrast: num("50-150"), doygunluk: num("0-200"), yazi: str("Üstüne yazı"), arka_plan: str("Arka plan", ["none", "blur", "white", "black", "grey", "remove"]) }, [],
     async a => { if (!ED.img) return { hata: "Önce Stüdyo → Fotoğraf'tan bir fotoğraf seç." }; Object.assign(ED, { aspect: a.oran || ED.aspect, filter: a.filtre || ED.filter, bri: a.parlaklik || ED.bri, con: a.kontrast || ED.con, sat: a.doygunluk ?? ED.sat, text: a.yazi ?? ED.text, bg: a.arka_plan || ED.bg }); await previewPhoto(); const r = await savePhoto(); return { ok: true, yer: r.yer }; }),
   T("portfolyo_sitesi", "Burak için oyuncu portfolyo web sayfası (HTML) hazırlar.", {}, [], () => portfolioSite()),
-  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
+  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files", "seed"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
 );
 Object.assign(ACT_TR, { sunum_hazirla: "📊 sunum", belge_hazirla: "📄 belge", gorsel_uret: "🎨 görsel", fotograf_duzenle: "🖼 fotoğraf", portfolyo_sitesi: "🌐 portfolyo" });
 let STUDIO_LAST = null;
@@ -3887,7 +3887,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.0", APP_RUN = "__RUN__";
+const APP_VER = "4.1", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6049,5 +6049,225 @@ async function boot() {
   if (!NATIVE && "serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   if (!SET.geminiKey && !SET.claudeKey) bubble("sys", "İlk adım: Ayarlar → Beyin'e ücretsiz Gemini anahtarını gir.");
 }
+/* ================= SEEDANCE STÜDYOSU (v4.1) =================
+   Hikâye → sahne planı → karakter modelleri (Modeller kütüphanesinde kalıcı) → her çekim için Seedance prompt'u
+   → Burak Dreamina'da (kendi aboneliğiyle) üretir → Titus klipleri sırayla birleştirir, seslendirme + müzik ekler.
+   Dreamina'nın API'si olmadığı için üretim adımı bilerek kullanıcıda; Titus otomatik tıklama yapmaz. */
+const SEED_URL_DEF = "https://dreamina.capcut.com/create/seedance-2-0-official-website";
+const SEED_STYLES = {
+  gercekci: "Cinematic live-action, photorealistic, 35mm film look, natural motivated lighting, shallow depth of field, subtle film grain, realistic skin texture",
+  karikatur: "Stylized 3D animated cartoon, expressive faces, bright warm colors, soft global illumination, clean shapes, playful comedic acting",
+  anime: "2D anime style, clean line art, cel shading, vivid colors, dynamic camera, expressive eyes",
+  belgesel: "Documentary handheld look, natural available light, realistic, 4K, slight camera shake"
+};
+const SEED = { open: null, busy: "", clips: [], music: null, voice: null };
+const SEED_STYLE_TR = { gercekci: "gerçekçi", karikatur: "karikatür", anime: "anime", belgesel: "belgesel" };
+const seedAll = () => (S.seed = S.seed || []);
+const seedGet = id => seedAll().find(p => p.id === id);
+const seedSave = () => save();
+const seedSecs = p => (p.shots || []).reduce((a, s) => a + (Number(s.sure) || 0), 0);
+function seedStat(t) { SEED.busy = t || ""; const e = $("#sdStat"); if (e) e.textContent = t ? "⏳ " + t : ""; }
+
+async function seedJSON(prompt, max = 12000) { const t = await plainGemini(prompt + "\n\nSADECE geçerli JSON döndür, açıklama yazma.", [], null, { temperature: 0.7, max, json: true }); const m = String(t).match(/[\[{][\s\S]*[\]}]/); if (!m) throw new Error("Yapay zekâ geçerli bir plan üretemedi, tekrar dene"); return JSON.parse(m[0]); }
+async function seedPlan({ hikaye, stil = "gercekci", format = "16:9", sure = 45, ad = "" }) {
+  if (!hikaye || hikaye.trim().length < 15) throw new Error("Hikâyeyi biraz daha anlat (en az bir iki cümle).");
+  const styleBlock = SEED_STYLES[stil] || String(stil);
+  const saved = (await modelList()).map(m => ({ ad: m.name, tarif: String(m.desc || "").slice(0, 600) }));
+  const j = await seedJSON(`Sen deneyimli bir yapay zekâ video yönetmeni ve Seedance 2.0 prompt uzmanısın. Kullanıcının hikâyesini ByteDance Seedance 2.0 (Dreamina) ile çekim çekim üretilecek kısa bir videoya dönüştür.
+HİKÂYE: """${hikaye}"""
+STİL BLOĞU (her prompt'un başına AYNEN koy): "${styleBlock}"
+FORMAT: ${format} · HEDEF TOPLAM SÜRE: yaklaşık ${sure} saniye
+KAYITLI KARAKTERLER (hikâyede aynı isim ya da aynı kişi geçerse bunu kullan, tarifini değiştirme, "kayitli": true yaz): ${JSON.stringify(saved)}
+KURALLAR:
+1) Çekim süreleri 4-15 sn; toplam hedefe yakın olsun. Her çekimde TEK net ana aksiyon, en fazla 3 karakter.
+2) Seedance önceki klibi bilmez: her prompt TEK BAŞINA anlaşılır olmalı. Sıra: stil bloğu → mekân, zaman, ışık → o çekimdeki karakterlerin TAM görsel tarifi (karakter listesindeki tarifle AYNI kelimeler, kıyafet dahil) → aksiyon ve oyunculuk → kamera (çekim ölçeği + hareket) → ses atmosferi (diyalog yok).
+3) Gerçek ünlü/kişi adı, marka, telifli karakter KULLANMA. Ekrana yazı yazdırma (Türkçe harfleri bozar); yazılar "ekran_yazisi" alanına.
+4) Prompt'lar İngilizce, her biri en fazla 900 karakter.
+5) "seslendirme": o çekimde okunacak kısa Türkçe anlatım; sığsın diye saniye başına en fazla 2.5 kelime. Gerekmiyorsa "".
+6) Karakter tarifleri (tarif_en): yaş, yüz, saç, ten, yapı ve SABİT kıyafet; tutarlılık için ayrıntılı ama tek paragraf.
+7) portre_prompt_en: o karakterin referans görseli için prompt — stil bloğuyla aynı tarzda, nötr sade arka plan, belden yukarı, önden, net yüz.
+JSON: {"baslik":"Türkçe kısa başlık","ozet":"1-2 cümle Türkçe","karakterler":[{"ad":"","rol":"Türkçe kısa","tarif_en":"","portre_prompt_en":"","kayitli":false}],"sahneler":[{"no":1,"sure":6,"baslik":"Türkçe kısa","karakterler":["ad"],"prompt_en":"","seslendirme":"","ekran_yazisi":""}]}`);
+  const shots = (j.sahneler || []).slice(0, 24).map((s, i) => ({ no: i + 1, sure: Math.max(4, Math.min(15, Math.round(Number(s.sure) || 6))), baslik: String(s.baslik || `Sahne ${i + 1}`), chars: (s.karakterler || []).map(String), prompt: String(s.prompt_en || "").slice(0, 1400), vo: String(s.seslendirme || ""), text: String(s.ekran_yazisi || ""), done: false }));
+  if (!shots.length) throw new Error("Sahne planı çıkmadı, hikâyeyi biraz daha açık anlat.");
+  const chars = [];
+  for (const c of j.karakterler || []) {
+    const m = await modelGet(c.ad);
+    chars.push({ ad: String(c.ad), rol: String(c.rol || ""), tarif: m ? m.desc : String(c.tarif_en || ""), portre: String(c.portre_prompt_en || c.tarif_en || ""), modelId: m ? m.id : null });
+  }
+  const p = { id: uid(), title: ad || String(j.baslik || "Yeni video"), ozet: String(j.ozet || ""), story: hikaye, stil, styleBlock, format, sure: Number(sure) || 45, chars, shots, at: localISO(new Date()) };
+  seedAll().unshift(p); S.seed = S.seed.slice(0, 30); seedSave();
+  return p;
+}
+
+/* karakter görselleri: Modeller kütüphanesine kalıcı kaydedilir (sonraki hikâyelerde aynı isimle tekrar kullanılır) */
+async function seedMakeChar(p, i, force = false) {
+  const c = p.chars[i]; if (!c) return;
+  if (c.modelId && !force) { const m = await modelGet(c.modelId); if (m) return m; }
+  seedStat(`${c.ad} için referans görsel üretiliyor`);
+  const r = await smartImage({ istek: `Character reference portrait of ${c.ad}: ${c.portre}. ${c.tarif}. Plain neutral background, waist-up, facing camera, sharp face, even lighting. Style: ${p.styleBlock}`, oran: "4:5", onStep: s => seedStat(`${c.ad}: ${s}`) });
+  const b64 = await toJpegB64(r.img, 1024);
+  const old = (await modelGet(c.ad)) || null;
+  const m = { id: old && !force ? old.id : (c.modelId || uid()), name: c.ad, desc: c.tarif, imgs: [b64], at: localISO(new Date()), kind: "karakter", proje: p.title };
+  await mtx("readwrite", s => s.put(m));
+  if (SET.scriptUrl) script("saveFile", { name: `model-${m.id}.json`, mime: "application/json", data: b64utf8(JSON.stringify(m)), folder: "TITUS Modeller", replace: true }).catch(() => {});
+  try { await saveFile(await (await fetch(r.img)).blob(), fname(`${p.title}-${c.ad}`, "jpg"), "pictures"); } catch {}
+  c.modelId = m.id; seedSave();
+  return m;
+}
+async function seedMakeAllChars(p) {
+  let n = 0; for (let i = 0; i < p.chars.length; i++) { try { await seedMakeChar(p, i); n++; } catch (e) { toast(`✗ ${p.chars[i].ad}: ${friendlyErr(e)}`, 5000); } if ($("#sdProj")) renderSec("studio"); }
+  seedStat(""); return n;
+}
+
+async function seedRewrite(p, i, not) {
+  const s = p.shots[i]; if (!s) return;
+  const chars = p.chars.filter(c => s.chars.includes(c.ad)).map(c => ({ ad: c.ad, tarif: c.tarif }));
+  const j = await geminiJSON(`Seedance 2.0 için bu çekimin prompt'unu yeniden yaz. Stil bloğu başta AYNEN: "${p.styleBlock}". Karakterlerin tarifini AYNI kelimelerle kullan: ${JSON.stringify(chars)}.
+Mevcut çekim: ${JSON.stringify({ baslik: s.baslik, sure: s.sure, prompt: s.prompt, seslendirme: s.vo })}
+Kullanıcının isteği: "${not || "daha sinematik ve net yap"}"
+Kurallar: tek başına anlaşılır, tek ana aksiyon, kamera + ışık + ses atmosferi, diyalog ve ekran yazısı yok, İngilizce, en fazla 900 karakter, gerçek ünlü adı yok.
+JSON: {"prompt_en":"","sure":${s.sure},"seslendirme":"Türkçe, gerekirse güncelle"}`);
+  s.prompt = String(j.prompt_en || s.prompt).slice(0, 1400); s.sure = Math.max(4, Math.min(15, Math.round(Number(j.sure) || s.sure))); if (typeof j.seslendirme === "string") s.vo = j.seslendirme; s.done = false; seedSave();
+}
+
+const seedFullPrompt = (p, s) => s.prompt;
+async function seedCopy(text) { if (await hCopy(text)) { toast("✓ Prompt kopyalandı — Dreamina'da yapıştır"); return true; } infoBox("PROMPT", `<textarea style="width:100%;min-height:220px">${esc(text)}</textarea><div class="hint">Metni seçip kopyala.</div>`); return false; }
+
+/* ---------- birleştirme ---------- */
+const vidDur = f => new Promise(res => { const v = document.createElement("video"); v.preload = "metadata"; v.src = URL.createObjectURL(f); v.onloadedmetadata = () => { const d = v.duration; URL.revokeObjectURL(v.src); res(isFinite(d) ? d : 5); }; v.onerror = () => res(5); });
+async function seedNarration(p, order, durs) {
+  const ctx = outCtx(); const parts = []; let t = 0;
+  for (let k = 0; k < order.length; k++) {
+    const s = p.shots[order[k].shot]; const line = s && s.vo && s.vo.trim();
+    if (line) { seedStat(`Seslendirme ${k + 1}/${order.length}`); try { parts.push({ at: t + 0.3, buf: await geminiTtsBuffer(line) }); } catch (e) { toast("Seslendirme: " + friendlyErr(e), 4000); } }
+    t += durs[k];
+  }
+  if (!parts.length) return null;
+  const sr = parts[0].buf.sampleRate, len = Math.ceil((t + 1) * sr); const out = ctx.createBuffer(1, len, sr); const d = out.getChannelData(0);
+  for (const x of parts) { const src = x.buf.getChannelData(0), off = Math.floor(x.at * sr); for (let i = 0; i < src.length && off + i < len; i++) d[off + i] += src[i]; }
+  return out;
+}
+async function seedAssemble(p, { voice = "titus", music = null, clipVol = 0.35, subs = false, titleCard = true } = {}) {
+  const order = SEED.clips.filter(c => c.shot >= 0).sort((a, b) => a.shot - b.shot);
+  if (!order.length) throw new Error("Önce klipleri seç ve sahnelere eşle.");
+  seedStat("Klipler okunuyor");
+  const durs = []; for (const c of order) durs.push(await vidDur(c.file));
+  let narration = null;
+  if (voice === "titus") narration = await seedNarration(p, order, durs);
+  else if (voice === "file" && SEED.voice) { seedStat("Ses kaydı okunuyor"); narration = await outCtx().decodeAudioData(await SEED.voice.arrayBuffer()); }
+  const clips = [];
+  if (titleCard && !narration) clips.push({ kind: "card", text: p.title, sub: "", start: 0, end: 2.5 });
+  order.forEach((c, k) => { const s = p.shots[c.shot]; clips.push({ kind: "video", file: c.file, start: 0, end: durs[k], subs: subs && s && s.vo ? [{ start: 0.3, end: durs[k] - 0.3, text: s.vo }] : null }); });
+  seedStat("Video birleştiriliyor (klip süresi kadar sürer)");
+  const r = await renderVideo({ clips, format: p.format, music, narration, clipGain: narration ? clipVol : 1, cleanAudio: false, onProgress: x => seedStat(`Birleştiriliyor %${Math.round(x * 100)}`) });
+  const f = await saveFile(r.blob, fname(p.title, r.ext), "movies"); seedStat("");
+  return f;
+}
+
+/* ---------- ekran ---------- */
+function seedListHTML() {
+  const ps = seedAll();
+  return `<div class="card"><h3>SEEDANCE VİDEO STÜDYOSU</h3><div class="hint" style="margin-top:0">Hikâyeni anlat: Titus sahnelere böler, karakterleri üretip <b>Modeller</b>'e kaydeder (sonraki hikâyelerde aynı isimle hatırlar) ve her çekim için Seedance prompt'unu yazar. Videoyu Dreamina'da kendi aboneliğinle üretirsin; indirdiğin klipleri Titus birleştirir, seslendirme ve müzik ekler.</div>
+  <div class="form" style="margin-top:8px"><input id="sdName" placeholder="Proje adı (isteğe bağlı)"><textarea id="sdStory" placeholder="Hikâyen… (ör. 'Molière'in Hastalık Hastası: hastalık hastası Argan, ona oyun eden hizmetçi Toinette…')" style="min-height:110px"></textarea>
+  <div class="row"><select id="sdStyle"><option value="gercekci">Gerçekçi (sinematik)</option><option value="karikatur">Karikatür 3D</option><option value="anime">Anime</option><option value="belgesel">Belgesel</option></select><select id="sdFmt"><option value="16:9">Yatay 16:9</option><option value="9:16">Dikey 9:16</option><option value="1:1">Kare 1:1</option></select><input id="sdSure" type="number" min="10" max="240" value="45" title="Hedef süre (sn)"></div>
+  <button class="btn" id="sdPlan">🎬 Sahneleri ve prompt'ları hazırla</button><div class="hint" id="sdStat">${esc(SEED.busy ? "⏳ " + SEED.busy : "")}</div></div></div>
+  ${ps.length ? `<div class="card"><h3>PROJELER</h3>${ps.map(p => `<div class="item"><div class="ic">🎞</div><div class="t"><div class="h">${esc(p.title)}</div><div class="meta">${p.shots.length} çekim · ~${seedSecs(p)} sn · ${p.shots.filter(s => s.done).length}/${p.shots.length} üretildi</div></div><button class="btn ghost sm" data-sdopen="${p.id}">Aç</button><button class="x" data-sddel="${p.id}">✕</button></div>`).join("")}</div>` : ""}`;
+}
+async function seedProjHTML(p) {
+  const ms = await modelList(); const mOf = c => c.modelId && ms.find(m => m.id === c.modelId);
+  const url = SET.seedUrl || SEED_URL_DEF; const secs = seedSecs(p);
+  const charHTML = p.chars.map((c, i) => { const m = mOf(c); return `<div class="item">${m && m.imgs && m.imgs[0] ? `<img src="data:image/jpeg;base64,${m.imgs[0]}" style="width:54px;height:66px;object-fit:cover;border-radius:10px">` : `<div class="ic">🧍</div>`}<div class="t"><div class="h">${esc(c.ad)}${c.rol ? ` · <span class="meta">${esc(c.rol)}</span>` : ""}</div><div class="meta">${m ? "✓ Modeller'de kayıtlı" : "görsel yok"}</div></div><button class="btn ghost sm" data-sdchar="${i}">${m ? "↻" : "Üret"}</button></div>`; }).join("");
+  const shotHTML = p.shots.map((s, i) => `<div class="card" style="margin:8px 0;${s.done ? "opacity:.6" : ""}"><div class="row" style="align-items:center"><b style="flex:1">${s.no}. ${esc(s.baslik)} · ${s.sure} sn</b><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" data-sddone="${i}" ${s.done ? "checked" : ""} style="width:auto"> üretildi</label></div>
+    ${s.chars.length ? `<div class="hint" style="margin-top:2px">Referans yükle: ${s.chars.map(esc).join(", ")}</div>` : ""}
+    <textarea readonly style="min-height:90px;font-size:12px;margin-top:6px">${esc(s.prompt)}</textarea>
+    ${s.vo ? `<div class="hint">🎙 ${esc(s.vo)}</div>` : ""}${s.text ? `<div class="hint">🔤 Kurguda yazı: ${esc(s.text)}</div>` : ""}
+    <div class="row" style="margin-top:6px"><button class="btn sm" data-sdcopy="${i}">📋 Kopyala + Dreamina</button><button class="btn ghost sm" data-sdcopyonly="${i}">Kopyala</button><button class="btn ghost sm" data-sdre="${i}">✏️ Yeniden yaz</button></div></div>`).join("");
+  const clipHTML = SEED.clips.length ? SEED.clips.map((c, k) => `<div class="step"><span style="flex:1">${esc(c.file.name.slice(0, 28))}</span><select data-sdmap="${k}" style="width:auto"><option value="-1">— kullanma</option>${p.shots.map((s, i) => `<option value="${i}" ${c.shot === i ? "selected" : ""}>${s.no}. ${esc(s.baslik.slice(0, 18))}</option>`).join("")}</select></div>`).join("") : `<div class="hint">Dreamina'dan indirdiğin klipleri seç; Titus indirme sırasına göre sahnelere eşler, gerekirse düzelt.</div>`;
+  return `<div class="card" id="sdProj"><div class="row" style="align-items:center"><button class="btn ghost sm" id="sdBack" style="flex:0 0 auto">← Projeler</button><h3 style="flex:1;margin:0 0 0 8px">${esc(p.title)}</h3></div>
+    <div class="hint">${esc(p.ozet)} · ${p.shots.length} çekim · ~${secs} sn · ${esc(p.format)} · ${esc(SEED_STYLE_TR[p.stil] || p.stil)}</div>
+    <div class="hint">Dreamina'da: model <b>Seedance 2.0</b>, oran <b>${esc(p.format)}</b>, süreyi her çekimdeki gibi ayarla, karakter görsellerini referans olarak yükle, prompt'u yapıştır. Kendi sesi gerekmiyorsa sesi kapat.</div>
+    <div class="row" style="margin-top:6px"><button class="btn ghost sm" id="sdDream">🌐 Dreamina'yı aç</button><button class="btn ghost sm" id="sdCopyAll">📋 Tüm prompt'lar</button><button class="btn ghost sm" id="sdUrl">⚙️ Adres</button></div>
+    <div class="hint" id="sdStat">${esc(SEED.busy ? "⏳ " + SEED.busy : "")}</div></div>
+  <div class="card"><h3>KARAKTERLER</h3>${charHTML || `<div class="hint">Bu hikâyede karakter yok.</div>`}${p.chars.length ? `<button class="btn" id="sdChars" style="margin-top:8px">🧍 Eksik karakter görsellerini üret</button><div class="hint">Görseller galeriye (Pictures/TITUS) de kaydedilir; Dreamina'da referans olarak oradan yüklersin.</div>` : ""}</div>
+  <div class="card"><h3>ÇEKİMLER</h3>${shotHTML}</div>
+  <div class="card"><h3>BİRLEŞTİR</h3><div class="form"><button class="btn ghost" id="sdPick">🎞 Klipleri seç</button><div id="sdClips">${clipHTML}</div>
+    <div class="row"><select id="sdVoice"><option value="titus">Seslendirme: Titus okusun</option><option value="file">Seslendirme: kendi kaydım</option><option value="none">Seslendirme yok</option></select><button class="btn ghost sm" id="sdVoicePick" style="flex:0 0 auto">🎙 Kayıt ${SEED.voice ? "✓" : "seç"}</button></div>
+    <div class="row"><button class="btn ghost sm" id="sdMusic" style="flex:0 0 auto">🎵 Müzik ${SEED.music ? "✓" : "ekle"}</button><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="sdSubs" style="width:auto"> altyazı</label><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="sdCard" checked style="width:auto"> açılış kartı</label></div>
+    <button class="btn" id="sdGo" ${SEED.clips.some(c => c.shot >= 0) ? "" : "disabled"}>🎬 Videoyu birleştir</button><div class="hint">Seslendirme varken kliplerin kendi sesi kısılır. Telefonda işlem video süresi kadar sürer.</div></div></div>`;
+}
+{
+  const base = listHTML;
+  listHTML = function (sec) {
+    if (sec !== "seed") return base(sec);
+    const p = SEED.open && seedGet(SEED.open);
+    if (!p) return seedListHTML();
+    setTimeout(async () => { const el = $("#b-studio"); if (el && CUR.studio === "seed" && SEED.open === p.id) el.innerHTML = await seedProjHTML(p); }, 0);
+    return `<div class="card"><div class="hint">Yükleniyor…</div></div>`;
+  };
+}
+const seedRender = () => { if (CUR.studio === "seed") renderSec("studio"); };
+document.addEventListener("change", e => {
+  const t = e.target; if (!t.dataset) return;
+  if (t.dataset.sddone !== undefined) { const p = seedGet(SEED.open); if (p) { p.shots[+t.dataset.sddone].done = t.checked; seedSave(); } }
+  else if (t.dataset.sdmap !== undefined) { SEED.clips[+t.dataset.sdmap].shot = Number(t.value); const g = $("#sdGo"); if (g) g.disabled = !SEED.clips.some(c => c.shot >= 0); }
+});
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#sdPlan,[data-sdopen],[data-sddel],#sdBack,#sdDream,#sdCopyAll,#sdUrl,#sdChars,[data-sdchar],[data-sdcopy],[data-sdcopyonly],[data-sdre],#sdPick,#sdVoicePick,#sdMusic,#sdGo");
+  if (!t) return;
+  const p = SEED.open && seedGet(SEED.open);
+  try {
+    if (t.id === "sdPlan") {
+      if (SEED.busy) return toast("Bir iş sürüyor, bitmesini bekle");
+      const hikaye = $("#sdStory").value.trim(); t.disabled = true; seedStat("Hikâye sahnelere bölünüyor, prompt'lar yazılıyor");
+      try { const np = await seedPlan({ hikaye, stil: $("#sdStyle").value, format: $("#sdFmt").value, sure: +$("#sdSure").value || 45, ad: $("#sdName").value.trim() }); SEED.open = np.id; SEED.clips = []; seedStat(""); seedRender(); toast(`✓ ${np.shots.length} çekim hazır`); if (np.chars.some(c => !c.modelId) && await confirmBox(`Eksik ${np.chars.filter(c => !c.modelId).length} karakter için referans görsel üreteyim mi? (Modeller'e kaydedilir)`, "Üret")) { await seedMakeAllChars(np); seedRender(); } }
+      finally { t.disabled = false; seedStat(""); }
+    }
+    else if (t.dataset.sdopen) { SEED.open = t.dataset.sdopen; SEED.clips = []; seedRender(); }
+    else if (t.dataset.sddel) { if (await confirmBox("Proje silinsin mi? (Karakterler Modeller'de kalır)", "Sil")) { S.seed = seedAll().filter(x => x.id !== t.dataset.sddel); seedSave(); seedRender(); } }
+    else if (t.id === "sdBack") { SEED.open = null; seedRender(); }
+    else if (!p) return;
+    else if (t.id === "sdDream") openUrl(SET.seedUrl || SEED_URL_DEF);
+    else if (t.id === "sdCopyAll") seedCopy(p.shots.map(s => `#${s.no} (${s.sure} sn) ${s.baslik}${s.chars.length ? " · referans: " + s.chars.join(", ") : ""}\n${seedFullPrompt(p, s)}`).join("\n\n"));
+    else if (t.id === "sdUrl") { infoBox("DREAMINA ADRESİ", `<input id="sdUrlIn" value="${esc(SET.seedUrl || SEED_URL_DEF)}" style="width:100%"><button class="btn" id="sdUrlSave" style="margin-top:8px">Kaydet</button><div class="hint">Dreamina'da Seedance video ekranının adresi. Boş bırakırsan varsayılan kullanılır.</div>`); setTimeout(() => { const b = $("#sdUrlSave"); if (b) b.onclick = () => { SET.seedUrl = $("#sdUrlIn").value.trim(); saveSet(); $("#modal").classList.remove("on"); toast("✓ Kaydedildi"); }; }, 0); }
+    else if (t.id === "sdChars") { if (SEED.busy) return toast("Bir iş sürüyor"); t.disabled = true; try { const n = await seedMakeAllChars(p); toast(`✓ ${n} karakter hazır`); } finally { seedStat(""); seedRender(); } }
+    else if (t.dataset.sdchar !== undefined) { if (SEED.busy) return toast("Bir iş sürüyor"); t.disabled = true; try { await seedMakeChar(p, +t.dataset.sdchar, true); toast("✓ Karakter görseli güncellendi"); } finally { seedStat(""); seedRender(); } }
+    else if (t.dataset.sdcopy !== undefined) { const s = p.shots[+t.dataset.sdcopy]; await seedCopy(seedFullPrompt(p, s)); await sleep(400); openUrl(SET.seedUrl || SEED_URL_DEF); }
+    else if (t.dataset.sdcopyonly !== undefined) seedCopy(seedFullPrompt(p, p.shots[+t.dataset.sdcopyonly]));
+    else if (t.dataset.sdre !== undefined) {
+      const i = +t.dataset.sdre;
+      infoBox("ÇEKİMİ YENİDEN YAZ", `<textarea id="sdReNote" placeholder="Ne değişsin? (ör. 'kamera yavaşça yaklaşsın, Argan daha panik olsun')" style="width:100%;min-height:80px"></textarea><button class="btn" id="sdReGo" style="margin-top:8px">✏️ Yeniden yaz</button>`);
+      setTimeout(() => { const b = $("#sdReGo"); if (b) b.onclick = async () => { b.disabled = true; b.textContent = "⏳ Yazılıyor…"; try { await seedRewrite(p, i, $("#sdReNote").value.trim()); $("#modal").classList.remove("on"); seedRender(); toast("✓ Prompt güncellendi"); } catch (er) { b.disabled = false; b.textContent = "✏️ Yeniden yaz"; toast("✗ " + friendlyErr(er), 5000); } }; }, 0);
+    }
+    else if (t.id === "sdPick") {
+      const fs = await pickFiles("video/*", true); if (!fs.length) return;
+      fs.sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0) || a.name.localeCompare(b.name));
+      SEED.clips = fs.map((file, k) => ({ file, shot: k < p.shots.length ? k : -1 })); seedRender();
+    }
+    else if (t.id === "sdVoicePick") { const [f] = await pickFiles("audio/*"); if (f) { SEED.voice = f; $("#sdVoice").value = "file"; toast("✓ Ses kaydı seçildi"); t.textContent = "🎙 Kayıt ✓"; } }
+    else if (t.id === "sdMusic") { const [f] = await pickFiles("audio/*"); if (f) { SEED.music = f; t.textContent = "🎵 Müzik ✓"; } }
+    else if (t.id === "sdGo") {
+      if (SEED.busy) return toast("Bir iş sürüyor"); const voice = $("#sdVoice").value;
+      if (voice === "file" && !SEED.voice) return toast("Önce kendi ses kaydını seç");
+      t.disabled = true;
+      try { const f = await seedAssemble(p, { voice, music: SEED.music, subs: $("#sdSubs").checked, titleCard: $("#sdCard").checked }); toast("✓ Video kaydedildi → " + f.yer, 6000); } finally { t.disabled = false; seedStat(""); }
+    }
+  } catch (er) { seedStat(""); toast("✗ " + friendlyErr(er), 6000); }
+});
+
+/* ---------- sohbet / ses aracı + yetenek ---------- */
+TOOLS.push(
+  T("seedance_video", "Burak'ın anlattığı hikâyeyi Seedance 2.0 (Dreamina) ile üretilecek videoya hazırlar: sahnelere böler, her çekimin İngilizce Seedance prompt'unu yazar, karakterleri Modeller'e kaydeder (istenirse referans görsellerini üretir) ve Stüdyo → Seedance ekranını açar. Videoyu Burak Dreamina'da kendi aboneliğiyle üretir; klipleri Titus birleştirir.", { hikaye: str("Hikâye, kullanıcının anlattığı TÜM ayrıntılarla"), stil: str("Görsel tarz", ["gercekci", "karikatur", "anime", "belgesel"]), format: str("Oran", ["16:9", "9:16", "1:1"]), sure: num("Hedef toplam süre (saniye), varsayılan 45"), ad: str("Proje adı (isteğe bağlı)"), karakter_gorselleri: { type: "boolean", description: "Eksik karakterlerin referans görselleri de şimdi üretilsin mi" } }, ["hikaye"],
+    async a => {
+      const p = await seedPlan({ hikaye: a.hikaye, stil: a.stil || "gercekci", format: a.format || "16:9", sure: a.sure || 45, ad: a.ad || "" });
+      SEED.open = p.id; SEED.clips = []; go("studio"); openSec("studio", "seed");
+      let gorsel = 0; if (a.karakter_gorselleri) { gorsel = await seedMakeAllChars(p); seedRender(); }
+      return { ok: true, proje: p.title, cekim: p.shots.length, toplam_sn: seedSecs(p), karakterler: p.chars.map(c => c.ad + (c.modelId ? " (kayıtlı)" : "")), uretilen_gorsel: gorsel, not: "Stüdyo → Seedance ekranında her çekimin 'Kopyala + Dreamina' düğmesi var. Klipleri indirince 'Videoyu birleştir' ile seslendirme ve müzik eklenir." };
+    }),
+  T("seedance_projeler", "Seedance video projelerini ve ilerlemesini listeler.", {}, [], async () => ({ projeler: seedAll().map(p => ({ ad: p.title, cekim: p.shots.length, uretilen: p.shots.filter(s => s.done).length, sn: seedSecs(p) })) }))
+);
+Object.assign(ACT_TR, { seedance_video: "🎬 Seedance", seedance_projeler: "🎬 projeler" });
+TOOL_GROUPS.push([/seedance|dreamina|hikâye|hikaye|kısa film|dizi|videoya (çevir|dönüştür)|teaser|fragman|sahne sahne/, ["seedance_video", "seedance_projeler", "modeller"]]);
+FN.seedance = { input: "Hikâyen (boş bırakırsan Seedance stüdyosu açılır)", run: async g => { if (!g) { go("studio"); openSec("studio", "seed"); return { metin: "Seedance stüdyosu açıldı." }; } const p = await seedPlan({ hikaye: g }); SEED.open = p.id; SEED.clips = []; go("studio"); openSec("studio", "seed"); return { ok: true, metin: `"${p.title}" hazır: ${p.shots.length} çekim, ~${seedSecs(p)} sn. Stüdyo → Seedance'ta karakter görsellerini üretip prompt'ları Dreamina'ya kopyalayabilirsin.` }; } };
+
 boot();
 })();
