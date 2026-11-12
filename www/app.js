@@ -1972,14 +1972,14 @@ function pcm16ToBuffer(ctx, u8, rate = 24000) {
 
 /* ================= 1) CANLI KONUŞMA (Gemini Live API) ================= */
 const LIVE_MODELS = ["gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025", "gemini-2.5-flash-native-audio-preview-09-2025"];
-let LIVE = null, LIVE_OFF_UNTIL = 0;
+let LIVE = null, LIVE_OFF_UNTIL = 0; const LIVE_NOLANG = new Set();
 class LiveSession {
   constructor() { this.ws = null; this.playing = []; this.nextT = 0; this.userTxt = ""; this.botTxt = ""; this.uSpan = null; this.bSpan = null; this.lastAct = Date.now(); this.closed = false; this.acts = []; this.handle = null; this.model = ""; this.lite = false; this.reconnecting = false; this.endAfter = false; }
   setupMsg(model, lite) {
     const decl = TOOLS.map(t => { const d = { name: t.name, description: t.description }; if (Object.keys(t.props).length) { d.parameters = schemaFor(t, true); if (!t.required.length) delete d.parameters.required; } return d; });
     const setup = {
       model: "models/" + model,
-      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.liveVoice || "Charon" } } } },
+      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: SET.liveVoice || "Charon" } }, ...(LIVE_NOLANG.has(model) ? {} : { languageCode: "tr-TR" }) } },
       systemInstruction: { parts: [{ text: systemPrompt() + LIVE_PERSONA() }] },
       tools: [{ functionDeclarations: decl }],
       inputAudioTranscription: {}, outputAudioTranscription: {}
@@ -2008,7 +2008,7 @@ class LiveSession {
       ws.onerror = () => {};
       ws.onclose = ev => {
         clearTimeout(to);
-        if (!ready) return rej(new Error(ev.reason || "bağlantı kapandı " + ev.code));
+        if (!ready) { if (/language/i.test(ev.reason || "") && !LIVE_NOLANG.has(model)) { LIVE_NOLANG.add(model); return this.open(model, lite).then(res, rej); } return rej(new Error(ev.reason || "bağlantı kapandı " + ev.code)); }
         if (ws !== this.ws || this.closed) return;
         if (/quota|exceed|limit/i.test(ev.reason || "")) { LIVE_OFF_UNTIL = Date.now() + 36e5; return this.stop("Canlı sohbet kotası doldu, normal moda geçtim."); }
         this.reconnect();
@@ -2076,7 +2076,7 @@ class LiveSession {
       if (sc.interrupted) { this.stopAudio(); setMode("listen", "Canlı · dinliyor"); }
       if (sc.inputTranscription && sc.inputTranscription.text) {
         this.userTxt += sc.inputTranscription.text; this.lastAct = Date.now();
-        if (!this.uSpan) this.uSpan = bubble("user", ""); this.uSpan.textContent = this.userTxt.trim();
+        if (!this.uSpan) this.uSpan = bubble("user", ""); this.uSpan.textContent = this.userTxt.trim() + (/\b(tá|você|está|falando|mais|muito|obrigad[oa]|the|you|what|está|usted)\b/i.test(this.userTxt) && !/[çğıöşüÇĞİÖŞÜ]/.test(this.userTxt) ? " (?)" : "");
       }
       if (sc.modelTurn && sc.modelTurn.parts) for (const p of sc.modelTurn.parts) if (p.inlineData && p.inlineData.data) this.play(p.inlineData.data);
       if (sc.outputTranscription && sc.outputTranscription.text) {
@@ -2117,6 +2117,7 @@ class LiveSession {
 }
 const BYE_RX = /^(tamam(dır)?[, ]*)?(görüşürüz|hoşça kal|bu kadar|şimdilik bu kadar|teşekkürler titus|sağ ?ol titus|kapat|iyi geceler|bye)\b/i;
 const LIVE_PERSONA = () => `
+DİL: Burak her zaman TÜRKÇE konuşur. Duyduğun ses başka bir dile (Portekizce, İspanyolca, İngilizce…) benziyorsa bile onu Türkçe olarak anla; arka plandaki konuşma, müzik ya da gürültüyü Burak sanma. Her zaman yalnızca Türkçe cevap ver. Bir cümleyi anlamadıysan "Tam anlayamadım, tekrar eder misin?" de.
 ŞU AN CANLI, KESİNTİSİZ BİR SESLİ SOHBETTESİN. Burak her cümlede "Titus" demek zorunda değil; sohbet akıp gidiyor.
 Bir insan gibi konuş: doğal, sıcak, akıcı Türkçe; kısa cümleler; konuşma dilinde ("tabii", "hmm, bakalım", "anladım"). Yazı dili, madde işareti, uzun liste yok.
 Sıra al: genelde 1-3 cümle söyle, sonra sözü ona bırak. Gerekirse kısa bir soru sor, ama her cevabı soruyla bitirme.
@@ -3018,7 +3019,7 @@ document.addEventListener("click", async e => {
 });
 function prompt2(label) { return new Promise(res => { $("#modalBox").innerHTML = `<h2>${esc(label)}</h2><input id="p2" type="password" style="margin-bottom:12px"><div class="row"><button class="btn ghost" id="mNo">Vazgeç</button><button class="btn" id="mYes">Tamam</button></div>`; $("#modal").classList.add("on"); $("#mNo").onclick = () => { $("#modal").classList.remove("on"); res(null); }; $("#mYes").onclick = () => { const v = $("#p2").value; $("#modal").classList.remove("on"); res(v); }; }); }
 // canlı modda kamera düğmesi
-{ const baseStart = LiveSession.prototype.start; LiveSession.prototype.start = async function () { await baseStart.call(this); let b = $("#camBtn"); if (!b) { b = document.createElement("button"); b.id = "camBtn"; b.className = "chip"; b.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + var(--sb));z-index:41"; document.body.appendChild(b); } b.textContent = "📷 Kamera"; b.style.display = ""; }; }
+{ const baseStart = LiveSession.prototype.start; LiveSession.prototype.start = async function () { await baseStart.call(this); let b = $("#camBtn"); if (!b) { b = document.createElement("button"); b.id = "camBtn"; b.className = "chip"; b.style.cssText = "display:block;margin:8px auto 0"; const st = $("#status"); if (st) st.insertAdjacentElement("afterend", b); else document.body.appendChild(b); } b.textContent = "📷 Kamera"; b.style.display = ""; }; }
 
 /* ---------- 13) proaktif ek: kişiler ---------- */
 {
@@ -3886,7 +3887,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "3.1", APP_RUN = "__RUN__";
+const APP_VER = "4.0", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -5991,7 +5992,7 @@ FN.audit = {
 /* =================== açılış işleri =================== */
 setTimeout(async () => {
   await SKILLS_READY;
-  try { const chips = $("#chips"); if (chips && !chips.querySelector("[data-goskills]")) chips.insertAdjacentHTML("afterbegin", `<button class="chip" data-goskills>🧠 Yetenekler</button>`); } catch {}
+  try { const chips = $("#chips"); if (chips && !chips.querySelector("[data-goskills]")) { const hc = $("#hChip"); hc ? hc.insertAdjacentHTML("afterend", `<button class="chip" data-goskills>🧠 Yetenekler</button>`) : chips.insertAdjacentHTML("afterbegin", `<button class="chip" data-goskills>🧠 Yetenekler</button>`); } } catch {}
   applyLook(); a11yPass(); memPurge(); setupBreaks(); drawFace();
   if (META.updChk !== today()) checkUpdate(false);
   bootCheck(false);
