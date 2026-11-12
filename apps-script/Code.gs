@@ -39,6 +39,7 @@ function doPost(e) {
       case "calendarAdd":  return out(Object.assign({ ok: true }, calendarAdd(req)));
       case "gmail":        return out({ ok: true, mailler: gmail(req.query, Number(req.max) || 8) });
       case "gmailDraft":   return out(Object.assign({ ok: true }, gmailDraft(req)));
+      case "gmailSend":    return out(Object.assign({ ok: true }, gmailSend(req)));
       case "sheetQuery":   return out(Object.assign({ ok: true }, sheetQuery(req)));
       case "radarSet":     radarSet(req); return out({ ok: true });
       case "radarGet":     return out({ ok: true, items: radarGet() });
@@ -174,6 +175,14 @@ function gmailDraft(req) {
   if (req.bcc) opts.bcc = req.bcc;
   const d = GmailApp.createDraft(req.to || "", req.subject || "(konu yok)", req.body || "", opts);
   return { taslak: true, id: d.getId(), not: "Taslak Gmail'de hazır; kontrol edip gönder." };
+}
+
+/* ---------- Gmail gönderimi (yalnızca Holding onay kutusunda Burak onaylayınca çağrılır) ---------- */
+function gmailSend(req) {
+  const to = String(req.to || "").trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw new Error("Geçerli alıcı adresi yok");
+  GmailApp.sendEmail(to, req.subject || "(konu yok)", req.body || "");
+  return { gonderildi: true, to: to };
 }
 
 /* ---------- KADRO / herhangi bir Google E-Tablo ---------- */

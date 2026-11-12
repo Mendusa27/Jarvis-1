@@ -5625,6 +5625,293 @@ document.addEventListener("change", e => { const el = e.target.closest("[data-mo
 }
 document.addEventListener("click", e => { if (e.target.closest("#setAcc")) { go("skills"); showSkill("gmail"); } if (e.target.closest("#setUpd")) checkUpdate(true); });
 
+/* =================== TUNÇBİLEK HOLDİNG: ajan ekibi =================== */
+/* Genel Müdür işi böler, ajanlar sırayla çalışır ve birbirinin çıktısını devralır.
+   Dışarı gidecek her şey (mail, başvuru, paylaşım, kayıt) onay kutusuna düşer; onaysız hiçbir şey gönderilmez. */
+const H_AG = {
+  sekreter: { ad: "Sekreter", kod: "YÖN-02", ey: ["gorev"], rol: "Takvim, hatırlatma, yapılacaklar listesi ve günlük özet hazırlar." },
+  kadro: { ad: "Kadro", kod: "AJS-01", ey: [], rol: "KADRO oyuncu havuzundan gelen işe uygun oyuncuları seçer, eşleşme listesi çıkarır." },
+  casting: { ad: "Casting", kod: "AJS-02", ey: [], rol: "Gelen işleri ve başvuruları takip eder; self-tape isteklerini ve müşteri sunumunu hazırlar." },
+  iletisim: { ad: "İletişim", kod: "AJS-03", ey: ["mail"], rol: "Oyunculara ve müşterilere gidecek mailleri ve randevu metinlerini yazar." },
+  sosyal: { ad: "Sosyal Medya", kod: "AJS-04", ey: ["paylasim"], rol: "İçerik planı ve paylaşım metinleri (metin, etiket, görsel fikri) hazırlar." },
+  yazilim: { ad: "Yazılım", kod: "YZL-01", ey: ["gorev"], rol: "Uygulama ve oyunlar için teknik plan, özellik tasarımı ve kod taslağı hazırlar." },
+  test: { ad: "Test", kod: "YZL-02", ey: [], rol: "Çıkan işi dener; test senaryoları yazar, hataları ve eksikleri listeler." },
+  satis: { ad: "Satış", kod: "TCR-01", ey: ["mail"], rol: "İnternetten müşteri adayı bulur; teklif ve takip maili hazırlar." },
+  muhasebe: { ad: "Muhasebe", kod: "TCR-02", ey: ["kayit"], rol: "Gelir-gider kaydı, fatura ve tahsilat takibi, komisyon hesabı ve aylık rapor hazırlar. Resmi beyanname vermez." },
+  menajer: { ad: "Menajer", kod: "KRY-01", ey: ["basvuru"], rol: "Burak'ın oyunculuk kariyeri için radarı ve interneti tarar, uygun ilanları eler, başvuruyu hazırlar." }
+};
+const H_ST = { bekliyor: "Sırada", calisiyor: "⏳ Çalışıyor", tamam: "✓ Tamam", hata: "✗ Hata" };
+const H_EY = { mail: "✉️ Mail", basvuru: "🎬 Başvuru", paylasim: "📣 Paylaşım", kayit: "🧾 Muhasebe kaydı", gorev: "✅ Görevler" };
+const H_EY_TARIF = {
+  mail: `{"tur":"mail","to":"alıcının e-postası; verilerde yoksa boş bırak","subject":"konu","body":"mail metni"}`,
+  basvuru: `{"tur":"basvuru","project":"proje adı","role":"rol","contact":"casting/ajans","link":"ilanın linki","to":"ilanda yazan başvuru e-postası; yoksa boş bırak","subject":"konu","body":"başvuru metni"}`,
+  paylasim: `{"tur":"paylasim","platform":"Instagram","metin":"paylaşım metni ve etiketler"}`,
+  gorev: `{"tur":"gorev","liste":["yapılacak iş"]}`,
+  kayit: `{"tur":"kayit","kayitlar":[{"tip":"gelir ya da gider","tutar":0,"aciklama":"ne için"}]}`
+};
+const HOLD = { run: new Set(), radarAt: 0 };
+const hJobs = () => XL("holding");
+const hPending = () => hJobs().flatMap(j => j.adimlar.flatMap((s, si) => (s.eylemler || []).map((e, ei) => ({ j, s, si, e, ei })))).filter(x => x.e.durum === "bekliyor" || x.e.durum === "hata");
+const hS = (v, n = 4000) => String(v ?? "").slice(0, n);
+
+/* ---------- ajanın elindeki gerçek veriler ---------- */
+async function hCtx(ajan, job, gorev) {
+  const out = []; const add = (t, v) => { if (v) out.push(`## ${t}\n${typeof v === "string" ? v : JSON.stringify(v)}`.slice(0, 9000)); };
+  const url = (job.metin.match(/https?:\/\/[^\s)>\]]+/) || [])[0];
+  if (url) try { add("İşte verilen linkin içeriği (" + url + ")", (await fetchPage(url)).slice(0, 7000)); } catch (e) { add("Link okunamadı", url + " — " + e.message); }
+  const web = async (t, q) => { if (!navigator.onLine) return; try { const g = await grounded(q, 1600); add(t, g.text + (g.src.length ? "\nKaynaklar:\n" + g.src.slice(0, 8).map(s => `- ${s.title} ${s.uri}`).join("\n") : "")); } catch (e) { add(t, "Arama yapılamadı: " + friendlyErr(e)); } };
+  if (ajan === "sekreter") {
+    add("Açık görevler", S.tasks.filter(t => !t.done).slice(0, 20).map(t => t.text + (t.date ? " (" + t.date + ")" : "")));
+    add("Yaklaşan hatırlatıcılar", S.reminders.filter(r => !r.done).slice(0, 12).map(r => r.text + " @" + r.due));
+    add("Seçme/çekim", S.auditions.filter(a => !a.done).slice(0, 10).map(a => `${a.title} ${a.date || ""} ${a.place || ""}`));
+    add("Vardiyalar", S.shifts.filter(s => s.date >= today()).slice(0, 8).map(s => `${s.date} ${s.start}-${s.end}`));
+    if (SET.scriptUrl) try { add("Google Takvim (7 gün)", (await script("calendarList", { days: 7 })).etkinlikler); } catch {}
+  } else if (ajan === "kadro") {
+    if (SET.kadroSheetId) try { add("KADRO tablosu", JSON.stringify(await rosterRows()).slice(0, 9000)); } catch (e) { add("KADRO okunamadı", e.message); }
+    else add("KADRO", "KADRO tablosu Titus'a bağlı değil (Ayarlar → İş bağlantıları). Oyuncu ismi uydurma; yalnızca aranacak ölçütleri yaz.");
+  } else if (ajan === "iletisim") {
+    add("Bağlı Gmail hesapları", accounts().map(a => a.name + (a.email ? " <" + a.email + ">" : "")));
+    if (SET.styleProfile) add("Burak'ın yazım tarzı", SET.styleProfile);
+  } else if (ajan === "yazilim") {
+    add("Projeler", S.projects.slice(0, 20).map(p => `${p.name}: ${p.status || "-"}${p.next ? " → " + p.next : ""}`));
+  } else if (ajan === "satis") {
+    await web("İnternet araması (müşteri adayları)", `Şu iş için Türkiye'de gerçek müşteri adaylarını ara (casting ajansları, oyunculuk atölyeleri, yapım şirketleri): ${gorev}. Her aday için ad, şehir, web sitesi ve sitede açıkça yazıyorsa iletişim e-postası. Yalnızca gerçekten bulduklarını yaz.`);
+  } else if (ajan === "muhasebe") {
+    add("Son 30 gün harcama özeti", A.expenseSummary(30));
+    add("Faturalar/abonelikler", (S.bills || []).slice(0, 20));
+    add("Holding gelir-gider defteri", XL("hledger").slice(-40));
+    add("Başvuru ve iş kayıtları", (S.applications || []).slice(-15).map(a => `${a.project} (${a.status})`));
+  } else if (ajan === "menajer") {
+    add("Oyuncu profili", SET.actorProfile || (S.memory || []).slice(0, 25).map(m => m.text).join("; ") || "Profil kayıtlı değil; yaş, boy, tip gibi bilgileri uydurma.");
+    add("Daha önce başvurulanlar (tekrar başvurma)", (S.applications || []).slice(-25).map(a => `${a.project} / ${a.role} / ${a.contact} (${a.status})`));
+    if (SET.scriptUrl) try { if (!RADAR_CACHE.length || Date.now() - HOLD.radarAt > 36e5) { await radarCheck(); HOLD.radarAt = Date.now(); } add("Radar ilanları (Titus'un taradığı kaynaklar)", RADAR_CACHE.filter(x => !/ev|kira/i.test(x.radar || "")).slice(0, 18).map(x => `- ${x.title} | ${x.link || ""}${x.score !== undefined ? " | uygunluk " + x.score : ""}`).join("\n")); } catch (e) { add("Radar okunamadı", e.message); }
+    else add("Radar", "Google bağlantısı yok; radar kaynakları taranamadı.");
+    await web("İnternet araması (güncel ilanlar)", `Türkiye'de, özellikle İstanbul'da, şu an başvurusu açık olan ve oyuncu arayan güncel casting ilanlarını ara (dizi, film, reklam, tiyatro, kısa film, dijital). Oyuncu profili: ${SET.actorProfile || "erkek oyuncu, İstanbul"}. İstek: ${gorev}. Her ilan için: proje, aranan rol ve özellikler, son başvuru tarihi, nasıl başvurulur (e-posta, form, link) ve kaynak linki. Yalnızca gerçekten bulduğun ilanları yaz; bulamadıysan açıkça söyle.`);
+  }
+  return out.join("\n\n");
+}
+
+/* ---------- Genel Müdür: işi böl ---------- */
+async function hPlan(metin) {
+  const liste = Object.entries(H_AG).map(([k, a]) => `- ${k}: ${a.ad}. ${a.rol}`).join("\n");
+  const p = await geminiJSON(`Sen Tunçbilek Holding'in Genel Müdür ajanısın. ${userCtx()}
+Görevin: gelen işi en fazla 5 adıma bölüp doğru ajana vermek. Adımlar sırayla çalışır, her ajan öncekilerin çıktısını görür.
+
+Ajanlar:
+${liste}
+
+Kurallar: Yalnızca gereken ajanları kullan; basit iş tek adım olabilir. Aynı ajanı iki kez kullanma.
+JSON: {"ozet":"işin tek cümlelik özeti","adimlar":[{"ajan":"ajan kimliği","gorev":"ajanın yapacağı iş, bir iki cümle"}]}
+
+İş:
+<<<
+${metin.slice(0, 6000)}
+>>>`);
+  let adimlar = (p && Array.isArray(p.adimlar) ? p.adimlar : []).filter(a => a && H_AG[a.ajan]).slice(0, 5).map(a => ({ ajan: a.ajan, gorev: hS(a.gorev, 500), durum: "bekliyor", cikti: "", eylemler: [] }));
+  if (!adimlar.length) adimlar = [{ ajan: "sekreter", gorev: "İşi değerlendir ve yapılacaklar listesi çıkar.", durum: "bekliyor", cikti: "", eylemler: [] }];
+  return { ozet: hS(p && p.ozet, 300), adimlar };
+}
+
+/* ---------- eylemleri temizle: yalnızca ajanın yetkili olduğu türler, uydurma adres yok ---------- */
+function hClean(list, ag, kaynak) {
+  const hay = trLower(kaynak);
+  const mail = v => { const m = hS(v, 200).trim(); return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m) && hay.includes(trLower(m)) ? m : ""; };
+  return (Array.isArray(list) ? list : []).filter(e => e && ag.ey.includes(e.tur)).slice(0, 3).map(e => {
+    const b = { id: uid(), tur: e.tur, durum: "bekliyor", sonuc: "" };
+    if (e.tur === "mail") return { ...b, to: mail(e.to), subject: hS(e.subject, 200), body: hS(e.body) };
+    if (e.tur === "basvuru") return { ...b, project: hS(e.project, 160), role: hS(e.role, 160), contact: hS(e.contact, 160), link: /^https?:\/\//i.test(e.link || "") ? hS(e.link, 600) : "", to: mail(e.to), subject: hS(e.subject, 200), body: hS(e.body) };
+    if (e.tur === "paylasim") return { ...b, platform: hS(e.platform || "Instagram", 40), metin: hS(e.metin) };
+    if (e.tur === "gorev") return { ...b, liste: (Array.isArray(e.liste) ? e.liste : []).map(x => hS(x, 200)).filter(Boolean).slice(0, 8) };
+    if (e.tur === "kayit") return { ...b, kayitlar: (Array.isArray(e.kayitlar) ? e.kayitlar : []).map(k => ({ tip: /gelir/i.test(k && k.tip) ? "gelir" : "gider", tutar: Math.abs(Number(k && k.tutar)) || 0, aciklama: hS(k && k.aciklama, 200) })).filter(k => k.tutar > 0).slice(0, 10) };
+    return b;
+  }).filter(e => (e.tur === "gorev" ? e.liste.length : e.tur === "kayit" ? e.kayitlar.length : e.tur === "paylasim" ? e.metin : e.body));
+}
+
+/* ---------- bir ajanı çalıştır ---------- */
+async function hStep(job, i, duzeltme) {
+  const st = job.adimlar[i], ag = H_AG[st.ajan];
+  st.durum = "calisiyor"; st.hata = ""; hDraw();
+  try {
+    const ctx = await hCtx(st.ajan, job, st.gorev);
+    const once = job.adimlar.slice(0, i).filter(a => a.cikti).map(a => `[${H_AG[a.ajan].ad}]\n${a.cikti.slice(0, 2500)}`).join("\n\n");
+    const r = await geminiJSON(`Sen Tunçbilek Holding'in ${ag.ad} ajanısın. Rolün: ${ag.rol}
+${userCtx()}
+
+Kurallar: Türkçe yaz. "metin" Burak'a kısa bir rapordur: düz metin, en fazla 250 kelime, başlık işareti ya da yıldız yok. Yalnızca işin metnine ve aşağıdaki gerçek verilere dayan; ilan, kişi, e-posta adresi, rakam ya da tarih uydurma. Bilmediğin yeri [köşeli parantez] içinde boş bırak. Hiçbir şeyi gönderdiğini ya da yaptığını söyleme: dışarı gidecek her şey önce Burak'ın onayına sunulur.
+
+Burak'ın verdiği iş:
+<<<
+${job.metin.slice(0, 6000)}
+>>>
+
+${once ? "Önceki ajanların çıktıları:\n" + once + "\n\n" : ""}${ctx ? "Elindeki gerçek veriler:\n" + ctx + "\n\n" : ""}Senin görevin: ${st.gorev}${duzeltme ? `\n\nÖnceki raporun:\n${hS(st.cikti, 2500)}\nBurak şu düzeltmeyi istedi: ${hS(duzeltme, 800)}\nBuna göre yeniden hazırla.` : ""}
+
+JSON: {"metin":"rapor","eylemler":[]}
+${ag.ey.length ? `"eylemler" Burak'ın onayına sunulacak hazır işlerdir; gerek yoksa boş dizi bırak, en fazla 3 tane. Kullanabileceğin biçimler:\n${ag.ey.map(k => H_EY_TARIF[k]).join("\n")}` : `"eylemler" boş dizi kalsın.`}`);
+    st.cikti = hS(r && r.metin, 6000) || "(Ajan boş yanıt verdi.)";
+    const yeni = hClean(r && r.eylemler, ag, job.metin + "\n" + once + "\n" + ctx);
+    st.eylemler = [...(st.eylemler || []).filter(e => e.durum === "yapildi"), ...yeni];
+    st.eylemler.filter(e => e.tur === "gorev" && e.durum === "bekliyor").forEach(e => { e.liste.forEach(t => A.addTask({ text: t, project: "Holding" })); e.durum = "yapildi"; e.sonuc = e.liste.length + " görev listene eklendi."; });
+    st.durum = "tamam";
+  } catch (e) { st.durum = "hata"; st.hata = e.message === "NOKEY" ? "Gemini anahtarı girilmemiş (Ayarlar → Beyin)." : friendlyErr(e); throw e; }
+}
+async function hRun(job) {
+  if (HOLD.run.has(job.id)) return; HOLD.run.add(job.id);
+  try {
+    for (let i = 0; i < job.adimlar.length; i++) { if (job.adimlar[i].durum === "tamam") continue; await hStep(job, i); save(); hDraw(); }
+    const n = job.adimlar.reduce((a, s) => a + (s.eylemler || []).filter(e => e.durum === "bekliyor").length, 0);
+    const msg = `"${(job.ozet || job.metin).slice(0, 70)}" bitti` + (n ? `; ${n} onay bekliyor.` : ".");
+    if (!$("#v-holding.on")) { bubble("sys", "🏛 Holding: " + msg); if (n || job.oto) notifyNow("Tunçbilek Holding", msg); }
+  } catch {} finally { HOLD.run.delete(job.id); save(); hDraw(); }
+}
+async function hStart(metin, hazirPlan) {
+  metin = hS(metin, 8000).trim(); if (!metin) throw new Error("İş boş.");
+  const plan = hazirPlan || await hPlan(metin);
+  const job = { id: uid(), metin, at: Date.now(), ozet: plan.ozet, adimlar: plan.adimlar, oto: !!hazirPlan };
+  const l = hJobs(); l.push(job); if (l.length > 30) l.splice(0, l.length - 30);
+  save(); hDraw(); hRun(job);
+  return job;
+}
+
+/* ---------- onay: eylemi gerçekten yap ---------- */
+async function hCopy(t) { try { await navigator.clipboard.writeText(t); return true; } catch { return false; } }
+async function hExec(job, si, ei) {
+  const st = job.adimlar[si], e = st.eylemler[ei]; if (!e || e.durum === "yapildi" || e.is) return;
+  e.is = true; hDraw();
+  try {
+    if (e.tur === "mail" || e.tur === "basvuru") {
+      const all = accounts(); const acc = st.ajan === "menajer" ? all[0] : (all.find(a => /recast/i.test(a.name + " " + (a.email || ""))) || all[0]);
+      const m = { to: e.to || "", subject: e.subject || "(konu yok)", body: e.body };
+      if (!acc) { const ok = await hCopy(`${m.subject}\n\n${m.body}`); e.sonuc = "Gmail bağlı değil (Ayarlar → Google)." + (ok ? " Metin kopyalandı; kendin gönderebilirsin." : ""); }
+      else if (!m.to) { await scriptAt(acc, "gmailDraft", m); e.sonuc = `Alıcı adresi bulunamadı. Taslak Gmail'de (${acc.name}); adresi yazıp gönder.`; }
+      else {
+        try { await scriptAt(acc, "gmailSend", m); e.sonuc = `Gönderildi: ${m.to} (${acc.name}).`; }
+        catch (er) { if (!/Bilinmeyen işlem/i.test(er.message)) throw er; await scriptAt(acc, "gmailDraft", m); e.sonuc = `Taslak Gmail'de (${acc.name}). Otomatik gönderim için Apps Script'i güncelle (README → Holding).`; }
+      }
+      if (e.tur === "basvuru" && acc) { A.addApplication({ project: e.project || job.ozet || "Başvuru", role: e.role, contact: e.contact, status: "başvuruldu" }); e.sonuc += " Başvuru takibine eklendi."; }
+    } else if (e.tur === "paylasim") {
+      e.sonuc = (await hCopy(e.metin)) ? `Metin kopyalandı. ${e.platform} paylaşımını sen yaparsın.` : "Kopyalanamadı; metni elle seçip kopyala.";
+    } else if (e.tur === "kayit") {
+      e.kayitlar.forEach(k => XL("hledger").push({ id: uid(), date: today(), ...k }));
+      e.sonuc = e.kayitlar.length + " kayıt holding defterine işlendi.";
+    }
+    e.durum = "yapildi";
+  } catch (er) { e.durum = "hata"; e.sonuc = friendlyErr(er); }
+  delete e.is; save(); hDraw();
+}
+function hAsk(label, ph = "") {
+  return new Promise(res => {
+    $("#modalBox").innerHTML = `<h2>${esc(label)}</h2><textarea id="hAskIn" rows="4" placeholder="${esc(ph)}" style="width:100%;margin-bottom:12px"></textarea><div class="row"><button class="btn ghost" id="mNo">Vazgeç</button><button class="btn" id="mYes">Tamam</button></div>`;
+    $("#modal").classList.add("on"); setTimeout(() => { const i = $("#hAskIn"); if (i) i.focus(); }, 50);
+    $("#mNo").onclick = () => { $("#modal").classList.remove("on"); res(null); };
+    $("#mYes").onclick = () => { const v = $("#hAskIn").value.trim(); $("#modal").classList.remove("on"); res(v || null); };
+  });
+}
+
+/* ---------- ekran ---------- */
+const hPre = t => `<div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45;background:rgba(0,0,0,.25);border-radius:8px;padding:10px;margin-top:8px">${esc(t)}</div>`;
+function hEyHTML(x) {
+  const { j, s, si, e, ei } = x; const key = `${j.id}:${si}:${ei}`;
+  const govde = e.tur === "paylasim" ? `<div class="meta">${esc(e.platform)}</div>${hPre(e.metin)}`
+    : e.tur === "kayit" ? hPre(e.kayitlar.map(k => `${k.tip === "gelir" ? "+" : "−"} ${money(k.tutar)} · ${k.aciklama}`).join("\n"))
+    : `<div class="meta">${e.tur === "basvuru" ? esc([e.project, e.role, e.contact].filter(Boolean).join(" · ")) + "<br>" : ""}Alıcı: ${e.to ? esc(e.to) : "<b>adres bulunamadı (taslak olur)</b>"}<br>Konu: ${esc(e.subject)}</div>${hPre(e.body)}`;
+  const yes = e.tur === "paylasim" ? "Onayla ve kopyala" : e.tur === "kayit" ? "Onayla ve kaydet" : e.to ? "Onayla ve gönder" : "Onayla (taslak oluştur)";
+  return `<div class="card" style="border-left:3px solid var(--gold)"><h3>${H_EY[e.tur]} · ${esc(H_AG[s.ajan].ad)}</h3>${govde}${e.durum === "hata" ? `<div class="hint err">${esc(e.sonuc)}</div>` : ""}
+    <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-hok="${key}" ${e.is ? "disabled" : ""}>${e.is ? "⏳" : yes}</button><button class="btn ghost sm" data-hfix="${key}">Düzelt</button><button class="btn ghost sm" data-hno="${key}">Reddet</button>${e.link ? `<button class="btn ghost sm" data-open="${esc(e.link)}">İlanı aç</button>` : ""}</div></div>`;
+}
+function hJobHTML(j) {
+  const calisiyor = HOLD.run.has(j.id), yarim = !calisiyor && j.adimlar.some(s => s.durum !== "tamam");
+  const steps = j.adimlar.map((s, si) => `<div style="border-left:2px solid ${s.durum === "tamam" ? "var(--green)" : s.durum === "hata" ? "var(--red)" : "var(--line)"};padding-left:10px;margin-top:10px">
+      <div><span class="meta" style="font-family:monospace">${H_AG[s.ajan].kod}</span> <b>${esc(H_AG[s.ajan].ad)}</b> <span class="pill ${s.durum === "tamam" ? "ok" : ""}">${H_ST[s.durum] || s.durum}</span></div>
+      <div class="meta" style="color:var(--dim)">${esc(s.gorev)}</div>${s.hata ? `<div class="hint err">${esc(s.hata)}</div>` : ""}
+      ${s.cikti ? `<details><summary class="meta" style="cursor:pointer;color:var(--cyan2)">Raporu göster</summary>${hPre(s.cikti)}</details>` : ""}
+      ${(s.eylemler || []).filter(e => e.durum === "yapildi" || e.durum === "reddedildi").map(e => `<div class="meta">${H_EY[e.tur]}: ${e.durum === "reddedildi" ? "reddedildi" : esc(e.sonuc)}</div>`).join("")}
+    </div>`).join("");
+  return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b style="overflow-wrap:anywhere">${esc((j.ozet || j.metin).slice(0, 160))}</b><span class="pill ${!calisiyor && !yarim ? "ok" : ""}">${calisiyor ? "⏳ Çalışıyor" : yarim ? "Yarıda kaldı" : "Bitti"}</span></div>
+    <div class="meta" style="color:var(--dim)">${fmtWhen(localISO(new Date(j.at)))}${j.oto ? " · otomatik tarama" : ""}</div>${steps}
+    <div class="row" style="margin-top:10px">${yarim && !calisiyor ? `<button class="btn sm" data-hgo="${j.id}">Devam et</button>` : ""}${!calisiyor ? `<button class="btn ghost sm" data-hdel="${j.id}">Sil</button>` : ""}</div></div>`;
+}
+function hView() {
+  let v = $("#v-holding"); if (v) return v;
+  v = document.createElement("section"); v.className = "view"; v.id = "v-holding"; v.innerHTML = `<div class="secbody" id="b-holding">
+    <div class="card"><div class="row"><h3 style="margin:0;flex:1">🏛 TUNÇBİLEK HOLDİNG</h3><button class="btn ghost sm" id="hBack">← Titus</button></div>
+      <div class="hint" style="margin-top:6px">İşi yaz; Genel Müdür böler, ajanlar sırayla yapar. Mail, başvuru ve paylaşımlar onayın olmadan gönderilmez.</div>
+      <div class="form"><textarea id="hIn" rows="3" placeholder="Ne yapılsın? İlan ya da brief varsa metnini ya da linkini ekle." style="width:100%;min-height:84px"></textarea>
+        <div class="row" style="flex-wrap:wrap"><button class="btn" id="hGo">İşi ver</button><button class="btn ghost" id="hScan">🎬 Bana iş tara</button></div>
+        <label class="toggle" style="margin-top:8px"><span>Her gün otomatik iş taraması</span><input type="checkbox" id="hAuto" style="width:auto;flex:none"></label></div></div>
+    <div id="hOnay"></div><div id="hIsler"></div>
+    <div class="card"><details><summary style="cursor:pointer"><b>KADRO</b> <span class="meta">11 ajan</span></summary>
+      <div class="item"><div class="t"><div class="h">Genel Müdür <span class="meta" style="font-family:monospace">YÖN-01</span></div><div class="meta">İşi böler, doğru ajana dağıtır.</div></div></div>
+      ${Object.values(H_AG).map(a => `<div class="item"><div class="t"><div class="h">${a.ad} <span class="meta" style="font-family:monospace">${a.kod}</span></div><div class="meta">${a.rol}</div></div></div>`).join("")}
+      <div class="hint">APEX bu ekibe bağlı değil; ajanlar ona iş veremez.</div></details></div></div>`;
+  $("#views").appendChild(v); $("#hAuto").checked = SET.holdAuto !== false; return v;
+}
+function hDraw() {
+  const pend = hPending();
+  const chip = $("#hChip"); if (chip) chip.textContent = "🏛 Holding" + (pend.length ? ` (${pend.length})` : "");
+  const o = $("#hOnay"), l = $("#hIsler"); if (!o || !l) return;
+  o.innerHTML = `<div class="card"><h3 style="margin:0">ONAY KUTUSU · ${pend.length}</h3>${pend.length ? "" : `<div class="hint">Bekleyen onay yok.</div>`}</div>` + pend.map(hEyHTML).join("");
+  const jobs = [...hJobs()].reverse();
+  l.innerHTML = jobs.length ? jobs.map(hJobHTML).join("") : `<div class="empty">Henüz iş verilmedi. Örnek: "Bana uygun oyunculuk işlerini bul ve başvuru hazırla."</div>`;
+}
+const H_SCAN = () => ({ ozet: "Günlük iş taraması", adimlar: [{ ajan: "menajer", gorev: "Radar ve internetten bana uygun güncel oyunculuk ilanlarını bul, uygunluğa göre sırala; en uygun en fazla 3 ilan için başvuru hazırla.", durum: "bekliyor", cikti: "", eylemler: [] }] });
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("#hChip,#hBack,#hGo,#hScan,[data-hok],[data-hfix],[data-hno],[data-hgo],[data-hdel]"); if (!t) return;
+  if (t.id === "hChip") { go("holding"); return; }
+  if (t.id === "hBack") { go("home"); return; }
+  if (t.id === "hGo" || t.id === "hScan") {
+    const inp = $("#hIn"), metin = t.id === "hScan" ? "Bana uygun güncel oyunculuk işlerini bul ve başvuru hazırla." : inp.value.trim();
+    if (!metin) { inp.focus(); return; }
+    if (!SET.geminiKey) { toast("Önce Ayarlar → Beyin'e Gemini anahtarını gir."); return; }
+    t.disabled = true; const eski = t.textContent; t.textContent = t.id === "hScan" ? "⏳ Başlıyor…" : "⏳ Genel Müdür bölüyor…";
+    try { await hStart(metin, t.id === "hScan" ? H_SCAN() : null); if (t.id === "hGo") inp.value = ""; } catch (e) { toast("✗ " + friendlyErr(e), 5000); }
+    t.disabled = false; t.textContent = eski; return;
+  }
+  if (t.dataset.hgo || t.dataset.hdel) {
+    const id = t.dataset.hgo || t.dataset.hdel, l = hJobs(), j = l.find(x => x.id === id); if (!j) return;
+    if (t.dataset.hgo) { j.adimlar.forEach(s => { if (s.durum !== "tamam") s.durum = "bekliyor"; }); hRun(j); }
+    else if (await confirmBox("Bu iş ve bekleyen onayları silinsin mi?", "Sil")) { l.splice(l.indexOf(j), 1); save(); hDraw(); }
+    return;
+  }
+  const [jid, si, ei] = (t.dataset.hok || t.dataset.hfix || t.dataset.hno).split(":"); const j = hJobs().find(x => x.id === jid); if (!j) return;
+  const e = j.adimlar[+si] && j.adimlar[+si].eylemler[+ei]; if (!e) return;
+  if (t.dataset.hok) return hExec(j, +si, +ei);
+  if (t.dataset.hno) { e.durum = "reddedildi"; save(); hDraw(); return; }
+  if (HOLD.run.has(j.id)) { toast("Bu iş hâlâ çalışıyor; bitince düzeltebilirsin."); return; }
+  const notu = await hAsk("Neyi değiştirsin?", "Örnek: daha kısa ve samimi olsun."); if (!notu) return;
+  HOLD.run.add(j.id);
+  try { await hStep(j, +si, notu); } catch (er) { toast("✗ " + friendlyErr(er), 5000); }
+  HOLD.run.delete(j.id); save(); hDraw();
+});
+document.addEventListener("change", ev => { if (ev.target.id === "hAuto") { SET.holdAuto = ev.target.checked; saveSet(); toast(ev.target.checked ? "✓ Her gün bir kez taranacak" : "Otomatik tarama kapatıldı"); } });
+{
+  const baseGoH = go;
+  go = function (v) { if (v === "holding") hView(); baseGoH(v); if (v === "holding") hDraw(); };
+}
+
+/* ---------- sohbetten ve sesle: "Holdinge şu işi ver" ---------- */
+TOOLS.push(
+  T("holding_is", "Tunçbilek Holding ajan ekibine iş verir. Genel Müdür işi böler; Sekreter, Kadro, Casting, İletişim, Sosyal Medya, Yazılım, Test, Satış, Muhasebe ve Menajer ajanları sırayla yapar. Dışarı gidecek her şey (mail, başvuru, paylaşım) Holding ekranındaki onay kutusuna düşer. 'Holdinge şu işi ver', 'ajanlar şunu yapsın', 'bana iş bul ve başvur' gibi isteklerde kullan.", { is: str("Yapılacak işin tam tarifi") }, ["is"],
+    async a => { const j = await hStart(a.is); return { ok: true, adimlar: j.adimlar.map(s => H_AG[s.ajan].ad + ": " + s.gorev), not: "İş başladı ve arka planda yürüyor. Raporlar ve onay bekleyenler Holding ekranında; onaylar yalnızca oradan verilir." }; }),
+  T("holding_durum", "Holding'deki son işlerin durumunu ve onay bekleyenleri söyler.", {}, [],
+    () => ({ isler: [...hJobs()].reverse().slice(0, 6).map(j => ({ is: (j.ozet || j.metin).slice(0, 100), durum: HOLD.run.has(j.id) ? "çalışıyor" : j.adimlar.every(s => s.durum === "tamam") ? "bitti" : "yarıda kaldı" })), onayBekleyen: hPending().map(x => `${H_EY[x.e.tur]} (${H_AG[x.s.ajan].ad}): ${x.e.subject || x.e.project || (x.e.metin || "").slice(0, 60) || "kayıt"}`) }))
+);
+Object.assign(ACT_TR, { holding_is: "🏛 holding", holding_durum: "🏛 holding durumu" });
+TOOL_GROUPS.push([/holding|ajanlar|ajan ekibi|genel müdür|genel mudur|onay kutusu|menajer ajan|bana iş bul|bana is bul|iş tara/, ["holding_is", "holding_durum"]]);
+FN.holding = { input: "Holdinge verilecek iş (boş bırakırsan Holding ekranı açılır)", run: async g => { if (!g) { go("holding"); return { metin: "Holding ekranı açıldı." }; } const j = await hStart(g); return { ok: true, metin: "İş holdinge verildi:\n" + j.adimlar.map((s, i) => `${i + 1}. ${H_AG[s.ajan].ad}: ${s.gorev}`).join("\n") + "\n\nRaporlar ve onaylar Holding ekranında." }; } };
+
+/* ---------- açılış: ana ekran düğmesi ve günlük otomatik tarama ---------- */
+setTimeout(() => {
+  try { const chips = $("#chips"); if (chips && !$("#hChip")) chips.insertAdjacentHTML("afterbegin", `<button class="chip" id="hChip">🏛 Holding</button>`); hDraw(); } catch {}
+  // uygulama kapanırken yarıda kalan adımlar: "çalışıyor" görünmesin
+  hJobs().forEach(j => j.adimlar.forEach(s => { if (s.durum === "calisiyor") s.durum = "bekliyor"; (s.eylemler || []).forEach(e => { delete e.is; }); }));
+  setTimeout(() => {
+    if (SET.holdAuto === false || !SET.geminiKey || !navigator.onLine || META.holdScan === today()) return;
+    META.holdScan = today(); saveMeta();
+    hStart("Bana uygun güncel oyunculuk işlerini bul ve başvuru hazırla.", H_SCAN()).catch(() => {});
+  }, 15000);
+}, 3200);
+
 /* =================== açılış işleri =================== */
 setTimeout(async () => {
   await SKILLS_READY;

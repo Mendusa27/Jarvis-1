@@ -107,6 +107,15 @@ Vivo, arka plandaki uygulamaları agresif kapatır. Titus'un sürekli çalışma
 2. Ayarlar → Uygulamalar → **Otomatik başlatma** → Titus'u aç.
 3. Son uygulamalar ekranında Titus'u aşağı çekip **kilitle** (asma kilit simgesi).
 
+## Tunçbilek Holding (ajan ekibi)
+Ana ekrandaki **🏛 Holding** düğmesi ya da "Titus, holdinge şu işi ver: …" komutu ile açılır.
+- **Akış:** İşi yazarsın, Genel Müdür en fazla 5 adıma böler. Sekreter, Kadro, Casting, İletişim, Sosyal Medya, Yazılım, Test, Satış, Muhasebe ve Menajer ajanları sırayla çalışır, her biri öncekinin çıktısını görür.
+- **Gerçek veriler:** Menajer radarı ve interneti tarar; Satış internette müşteri adayı arar; Kadro KADRO tablosunu, Sekreter takvim ve görevleri, Muhasebe harcama ve fatura kayıtlarını okur. İşe link eklersen sayfa okunur.
+- **Onay kutusu:** Mail, başvuru, paylaşım ve muhasebe kaydı önce buraya düşer. Onaylamadan hiçbir şey gönderilmez. Alıcı adresi verilerde geçmiyorsa mail gönderilmez, Gmail'de taslak olur.
+- **Otomatik tarama:** "Her gün otomatik iş taraması" açıkken Titus günde bir kez Menajer'i çalıştırır ve bulduğu başvuruları onay kutusuna koyar. Holding ekranından kapatılır.
+- **Onaydan sonra otomatik gönderim için:** `apps-script/Code.gs` dosyasının yeni halini yapıştırıp **Dağıt → Dağıtımları yönet → Düzenle → Yeni sürüm** de. Güncellemezsen onayladığın mailler gönderilmez, Gmail'de taslak olarak bekler.
+- **Sınırlar:** Ajanlar yalnızca Titus açıkken çalışır. Instagram'a kendisi paylaşım yapmaz, metni kopyalar. Form ya da DM ile başvurulan ilanlarda başvuruyu "İlanı aç" ile sen tamamlarsın. APEX bu ekibe bağlı değildir.
+
 ## Bilinen sınırlar
 - Canlı modda hoparlörden konuşurken Titus'un sözünü kesmek için biraz yüksek sesle konuşman gerekir (kendi sesini duymasın diye). Kulaklıkla bu ayarı açabilirsin.
 - Kulaklık tuşu, başka bir müzik/podcast uygulaması çalarken o uygulamaya gider.
