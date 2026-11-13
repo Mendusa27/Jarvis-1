@@ -2638,7 +2638,7 @@ TOOLS.push(
   T("fotograf_duzenle", "Stüdyo'da açık fotoğrafı düzenleyip kaydeder.", { oran: str("Oran", ["orig", "1:1", "4:5", "9:16", "16:9", "8x10"]), filtre: str("Filtre", ["none", "bw", "warm", "cool", "cine"]), parlaklik: num("50-150"), kontrast: num("50-150"), doygunluk: num("0-200"), yazi: str("Üstüne yazı"), arka_plan: str("Arka plan", ["none", "blur", "white", "black", "grey", "remove"]) }, [],
     async a => { if (!ED.img) return { hata: "Önce Stüdyo → Fotoğraf'tan bir fotoğraf seç." }; Object.assign(ED, { aspect: a.oran || ED.aspect, filter: a.filtre || ED.filter, bri: a.parlaklik || ED.bri, con: a.kontrast || ED.con, sat: a.doygunluk ?? ED.sat, text: a.yazi ?? ED.text, bg: a.arka_plan || ED.bg }); await previewPhoto(); const r = await savePhoto(); return { ok: true, yer: r.yer }; }),
   T("portfolyo_sitesi", "Burak için oyuncu portfolyo web sayfası (HTML) hazırlar.", {}, [], () => portfolioSite()),
-  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files", "seed", "kesit"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
+  T("studyo_ac", "Stüdyo ekranını açar (fotoğraf, video, kart, sunum bölümleri).", { bolum: str("Bölüm", ["doc", "photo", "image", "video", "card", "files", "seed", "kesit", "anim"]) }, [], a => { go("studio"); openSec("studio", a.bolum || "doc"); return { ok: true }; })
 );
 Object.assign(ACT_TR, { sunum_hazirla: "📊 sunum", belge_hazirla: "📄 belge", gorsel_uret: "🎨 görsel", fotograf_duzenle: "🖼 fotoğraf", portfolyo_sitesi: "🌐 portfolyo" });
 let STUDIO_LAST = null;
@@ -3887,7 +3887,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.2", APP_RUN = "__RUN__";
+const APP_VER = "4.3", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6439,6 +6439,190 @@ TOOLS.push(
 Object.assign(ACT_TR, { kesit_kurgu: "✂️ kurgu", kesit_not: "📝 kurgu notu", kesit_ac: "✂️ Kesit" });
 TOOL_GROUPS.push([/kurgu|kesit|klip|videoyu (düzenle|kes|birleştir|kısalt|hızlandır)|geçiş|altyazı|showreel|self.?tape (kurgu|düzenle)|dışa aktar|müzik ekle/, ["kesit_kurgu", "kesit_not", "kesit_ac"]]);
 FN.kesit = { input: "Kurgu talimatı (boş bırakırsan Kesit ekranı açılır)", run: async g => { if (!g) { go("studio"); openSec("studio", "kesit"); return { metin: "Kesit ekranı açıldı." }; } const r = await ksRun({ talimat: g, files: [], devam: true }); return { metin: `${r.ozet || "Kurgu yapıldı."}${r.yer ? "\n✓ " + r.yer : ""}${r.hatalar && r.hatalar.length ? "\n⚠️ " + r.hatalar.join(" · ") : ""}` }; } };
+
+/* ================= ANİMASYON STÜDYOSU (v4.3) =================
+   Hikâye → Gemini "senaryo" JSON'u yazar (karakter kiti, pozlar, eylemler, kamera, yazılar) → anim.js motoru çizer.
+   Önizleme, kendi kendini kontrol (Gemini kareleri görür, sorunları düzeltir), seslendirme + dudak senkronu,
+   telifsiz müzik üretimi ve MP4/WebM kayıt. Karakterler "oyuncu kadrosu"nda saklanır ve sonraki hikâyelerde aynı görünür. */
+const AN = { open: null, busy: "", raf: 0, playing: false, t: 0, t0: 0, last: null };
+const anAll = () => (S.anim = S.anim || []);
+const anGet = id => anAll().find(p => p.id === id);
+const anCast = () => (S.animCast = S.animCast || {});
+function anStat(t) { AN.busy = t || ""; const e = $("#anStat"); if (e) e.textContent = t ? "⏳ " + t : ""; }
+function anSchema() {
+  const C = TitusAnim.CAT;
+  return `SENARYO DİLİ (JSON):
+{"baslik":"","format":"16:9|9:16|1:1","renk":{"vurgu":"#hex"},"muzik":"barok|neseli|gerilim|duygusal|yok",
+ "karakterler":[{"id":"kisa_ascii","ad":"Görünen ad","gorunum":{"ten":"acik|orta|esmer|koyu","sac":"${C.sac.join("|")}","sac_renk":"#hex","sapka":"${C.sapka.join("|")}","sapka_renk":"#hex","kiyafet":"${C.kiyafet.join("|")}","kiyafet_renk":"#hex","pantolon_renk":"#hex","yaka":"${C.yaka.join("|")}","vucut":"${C.vucut.join("|")}","boy":0.8-1.15,"gozluk":false,"biyik":false,"sakal":false,"elinde":"(eşya adı, 'tut' pozunda elde görünür)"}}],
+ "sahneler":[{"sure":3-8,"gecis":"${C.gecis.join("|")}","arka":{"tip":"${C.arka.join("|")}","renk":"#hex(duvar/gökyüzü)","zemin":"#hex"},
+   "konusan":"karakter id | anlatici","ses":"Türkçe seslendirme (konuşan karakterin ağzı otomatik oynar)",
+   "esyalar":[{"ad":"${C.esya.join("|")}","x":0-1,"y":0,"olcek":0.6-1.4,"renk":"#hex"}],
+   "oyuncular":[{"id":"","x":0-1,"olcek":1,"yon":1|-1,"poz":"${C.poz.join("|")}","ifade":"${C.ifade.join("|")}",
+     "eylemler":[{"t":sn,"sure":sn,"tur":"${C.eylem.join("|")}","x":hedef(yuru/kos/gir/cik),"ifade":"","poz":""}]}],
+   "yazilar":[{"t":sn,"sure":sn,"metin":"","stil":"${C.yazi.join("|")}","konum":"ust|orta|alt","kim":"balon için karakter id","alt":"kart için alt satır"}],
+   "kamera":[{"t":sn,"zoom":1-1.8,"x":0-1,"y":0-1}]}]}
+NOTLAR: x yatay konum (0 sol, 1 sağ), karakterler zeminde durur. "yatakta" pozu için aynı x'e "yatak" eşyası koy (yorgan önden örter); "yat" yatağa uzanır. "gir" kadraj dışından x'e yürür, "cik" kadrajdan çıkar. "yon":-1 sola bakar. Eylem süreleri sahne içinde kalmalı. "kart" stili tam ekran başlık kartıdır.`;
+}
+function anClean(j) {
+  const C = TitusAnim.CAT; const sp = { baslik: String(j.baslik || "Animasyon"), format: ["16:9", "9:16", "1:1"].includes(j.format) ? j.format : "16:9", renk: { vurgu: /^#[0-9a-f]{6}$/i.test((j.renk || {}).vurgu || "") ? j.renk.vurgu : "#E0A526" }, muzik: ["barok", "neseli", "gerilim", "duygusal", "yok"].includes(j.muzik) ? j.muzik : "barok", karakterler: [], sahneler: [] };
+  const ids = new Set();
+  for (const c of (j.karakterler || []).slice(0, 8)) { const id = String(c.id || c.ad || "k" + ids.size).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 20) || "k" + ids.size; if (ids.has(id)) continue; ids.add(id); sp.karakterler.push({ id, ad: String(c.ad || id), gorunum: c.gorunum || {} }); }
+  const remap = {}; (j.karakterler || []).forEach((c, i) => { if (sp.karakterler[i]) remap[c.id] = sp.karakterler[i].id; });
+  for (const s of (j.sahneler || []).slice(0, 20)) {
+    const sc = { sure: Math.max(2, Math.min(12, Number(s.sure) || 4)), gecis: C.gecis.includes(s.gecis) ? s.gecis : "solma", arka: s.arka || { tip: "oda" }, konusan: remap[s.konusan] || s.konusan || "", ses: String(s.ses || "").slice(0, 220),
+      esyalar: (s.esyalar || []).filter(e => C.esya.includes(e.ad)).slice(0, 10), oyuncular: (s.oyuncular || []).map(o => Object.assign({}, o, { id: remap[o.id] || o.id })).filter(o => ids.has(o.id)).slice(0, 5),
+      yazilar: (s.yazilar || []).map(y => Object.assign({}, y, y.kim ? { kim: remap[y.kim] || y.kim } : {})).slice(0, 6), kamera: (s.kamera || []).slice(0, 4) };
+    sp.sahneler.push(sc);
+  }
+  if (!sp.sahneler.length) throw new Error("Senaryo boş çıktı, hikâyeyi biraz aç");
+  return sp;
+}
+async function anPlan({ hikaye, format = "16:9", sure = 40, muzik = "" }) {
+  if (!hikaye || hikaye.trim().length < 12) throw new Error("Hikâyeyi biraz daha anlat");
+  const cast = anCast();
+  const j = await seedJSON(`Sen Titus'sun: komik ve sıcak karikatür animasyonların yönetmeni, senaristi ve kurgucususun. Burak'ın hikâyesini Titus animasyon motorunun senaryo diline çevir. Motor çizimi kendisi yapar; sen sahneleri, oyunculuğu, zamanlamayı ve kamerayı yönet.
+HİKÂYE: """${hikaye}"""
+FORMAT: ${format} · HEDEF SÜRE: ~${sure} sn${muzik ? " · MÜZİK: " + muzik : ""}
+KAYITLI OYUNCU KADROSU (hikâyede aynı ad geçerse görünümü AYNEN kullan): ${JSON.stringify(cast).slice(0, 3000)}
+${anSchema()}
+YÖNETMEN KURALLARI:
+- 5-9 sahne; ilk sahne "perde" ya da "solma" ile açılış (başlık/yer-zaman), son sahne "kart" stilinde başlık kartı.
+- Her sahnede bir komik vuruş: önce kurulum (baslik ya da balon), sonra 1-2 sn sonra "cip" ile espri. Yazılar kısa (en çok 6 kelime).
+- Karakterleri canlı tut: her oyuncuya en az bir eylem (yürüme, zıplama, el sallama, baş sallama, ifade değişimi). İfadeler duyguya uysun.
+- Karakterler arası x mesafesi en az 0.22; kimse yazının ya da balonun altında kalmasın; "cip" ve "balon" aynı anda üst üste gelmesin.
+- Kamerayı ölçülü kullan: duygusal ya da komik anda yavaş yakınlaşma (zoom 1.15-1.4).
+- "ses": o sahnenin seslendirmesi, sahne süresine sığsın (saniyede ~2.3 kelime). Konuşan karakterin id'si ya da "anlatici".
+- Gerçek ünlü, marka ya da telifli karakter yok. Karakter görünümleri birbirinden ayırt edilsin (renk, şapka, saç).
+SADECE senaryo JSON'unu döndür.`, 12000);
+  const sp = anClean(j); sp.format = format || sp.format; if (muzik) sp.muzik = muzik;
+  for (const c of sp.karakterler) cast[c.ad.toLocaleLowerCase("tr")] = c.gorunum; S.animCast = cast;
+  const p = { id: uid(), title: sp.baslik, story: hikaye, spec: sp, at: localISO(new Date()), puan: null };
+  anAll().unshift(p); S.anim = S.anim.slice(0, 20); save(); return p;
+}
+async function anRevise(p, istek) {
+  const j = await seedJSON(`Titus animasyon senaryosunu Burak'ın isteğine göre düzenle. Değişmesi istenmeyen her şeyi aynen koru, karakter id'lerini değiştirme.
+İSTEK: """${istek}"""
+${anSchema()}
+MEVCUT SENARYO: ${JSON.stringify(p.spec)}
+SADECE güncel senaryo JSON'unu döndür.`, 12000);
+  p.spec = anClean(j); for (const c of p.spec.karakterler) anCast()[c.ad.toLocaleLowerCase("tr")] = c.gorunum; p.puan = null; save(); return p;
+}
+function anFrames(spec, n = 6, scale = 0.42) {
+  const [W, H] = TitusAnim.size(spec.format); const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale; const g = cv.getContext("2d"); const L = TitusAnim.layout(spec);
+  const pick = L.scenes.slice(0, n); return pick.map(s => { TitusAnim.render(g, spec, s.start + s.dur * 0.62, { layout: L, scale }); return { sahne: s.i + 1, b64: cv.toDataURL("image/jpeg", 0.7).split(",")[1] }; });
+}
+async function anCheck(p, { fix = true } = {}) {
+  anStat("Titus kareleri inceliyor");
+  const fr = anFrames(p.spec, 8);
+  const parts = fr.map(f => ({ inlineData: { mimeType: "image/jpeg", data: f.b64 } }));
+  const t = await plainGemini(`Bunlar bir karikatür animasyonun sırayla ${fr.length} sahnesinden birer kare (1. görsel = 1. sahne). Senaryo: ${JSON.stringify(p.spec).slice(0, 6000)}
+Bir animasyon yönetmeni gibi değerlendir: üst üste binen yazı/balon/karakter, kadraj dışında kalan ya da kesilen karakter, okunmayan yazı, mantıksız konum, sahnede boşluk, karakterlerin ayırt edilememesi, hikâyeyi anlatmayan kare. 1-10 puan ver.
+SADECE JSON: {"puan":7,"sorunlar":[{"sahne":2,"sorun":"…","duzeltme":"senaryoda ne değişmeli (somut: x, t, konum, stil…)"}]}`, parts, null, { json: true, max: 2500, temperature: 0.3 });
+  let j = {}; try { j = JSON.parse(String(t).match(/\{[\s\S]*\}/)[0]); } catch {}
+  const sor = (j.sorunlar || []).filter(x => x && x.duzeltme).slice(0, 8); p.puan = Number(j.puan) || null;
+  if (fix && sor.length) { anStat("Bulduğu sorunları düzeltiyor"); await anRevise(p, "Şu sorunları düzelt: " + sor.map(x => `Sahne ${x.sahne}: ${x.sorun} → ${x.duzeltme}`).join(" | ")); p.puan = null; }
+  save(); anStat(""); return { puan: Number(j.puan) || null, sorunlar: sor, duzeltildi: fix && sor.length > 0 };
+}
+async function anAudio(spec, { vo = true, muzik = null } = {}) {
+  const tts = []; if (vo) for (let i = 0; i < spec.sahneler.length; i++) { const s = spec.sahneler[i]; if (!s.ses) { tts.push(null); continue; } anStat(`Seslendirme ${i + 1}/${spec.sahneler.length}`); try { tts.push(await geminiTtsBuffer(s.ses)); } catch (e) { tts.push(null); toast("Seslendirme: " + friendlyErr(e), 4000); } } else spec.sahneler.forEach(() => tts.push(null));
+  const durs = spec.sahneler.map((s, i) => Math.max(s.sure, tts[i] ? tts[i].duration + 0.9 : 0));
+  const L = TitusAnim.layout(spec, durs); const env = tts.map(b => (b ? TitusAnim.envelope(b) : null));
+  const st = muzik || spec.muzik; let mus = null; if (st && st !== "yok") { anStat("Müzik besteleniyor"); mus = await TitusAnim.music(st, L.total, (spec.baslik || "").length + 3); }
+  return { L, durs, tts, env, mus };
+}
+async function anRecord(p, { vo = true, muzik = null, onP } = {}) {
+  const spec = p.spec; const A = await anAudio(spec, { vo, muzik }); const [W, H] = TitusAnim.size(spec.format);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
+  try { await document.fonts.load('900 64px "Fraunces"'); await document.fonts.load('800 32px "Nunito"'); } catch {}
+  const ac = new (window.AudioContext || window.webkitAudioContext)(); await ac.resume(); const dest = ac.createMediaStreamDestination();
+  const voG = ac.createGain(); voG.connect(dest); voG.connect(ac.destination); const muG = ac.createGain(); muG.gain.value = 1.0; muG.connect(dest); muG.connect(ac.destination);
+  const mime = ["video/mp4;codecs=avc1,mp4a", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : {}); const chunks = []; rec.ondataavailable = e => e.data && e.data.size && chunks.push(e.data);
+  let lock = null; try { lock = await navigator.wakeLock.request("screen"); } catch {}
+  TitusAnim.render(g, spec, 0, { layout: A.L, env: A.env });
+  const T0 = ac.currentTime + 0.25;
+  A.tts.forEach((b, i) => { if (!b) return; const s = ac.createBufferSource(); s.buffer = b; s.connect(voG); const at = T0 + A.L.scenes[i].start + 0.3; s.start(at); muG.gain.setTargetAtTime(0.3, at - 0.1, 0.08); muG.gain.setTargetAtTime(1.0, at + b.duration + 0.1, 0.25); });
+  if (A.mus) { const s = ac.createBufferSource(); s.buffer = A.mus; s.connect(muG); s.start(T0); }
+  rec.start(250);
+  await new Promise(res => { const step = () => { const T = ac.currentTime - T0; if (T >= A.L.total + 0.15) return res(); TitusAnim.render(g, spec, Math.max(0, T), { layout: A.L, env: A.env }); if (onP) onP(Math.max(0, T) / A.L.total); AN.raf = requestAnimationFrame(step); }; step(); });
+  await new Promise(r => { rec.onstop = r; rec.stop(); }); try { lock && lock.release(); } catch {} ac.close();
+  const blob = new Blob(chunks, { type: (mime || "video/webm").split(";")[0] }); if (!blob.size) throw new Error("Kayıt boş çıktı");
+  return { blob, ext: (mime || "").includes("mp4") ? "mp4" : "webm", sure: A.L.total };
+}
+
+/* ---------- önizleme oynatıcı ---------- */
+function anStop() { AN.playing = false; cancelAnimationFrame(AN.raf); const b = $("#anPlay"); if (b) b.textContent = "▶"; }
+function anDraw(T) { const p = anGet(AN.open); const cv = $("#anCv"); if (!p || !cv) return; const [W, H] = TitusAnim.size(p.spec.format); const sc = cv.width / W; const L = TitusAnim.layout(p.spec); AN.t = Math.max(0, Math.min(T, L.total)); TitusAnim.render(cv.getContext("2d"), p.spec, AN.t, { layout: L, scale: sc }); const r = $("#anSeek"); if (r) { r.max = L.total; r.value = AN.t; } const tl = $("#anTime"); if (tl) tl.textContent = `${AN.t.toFixed(1)} / ${L.total.toFixed(1)} sn`; }
+function anPlay() { const p = anGet(AN.open); if (!p) return; const L = TitusAnim.layout(p.spec); if (AN.t >= L.total - 0.05) AN.t = 0; AN.playing = true; const b = $("#anPlay"); if (b) b.textContent = "⏸"; const start = performance.now() - AN.t * 1000; const step = () => { if (!AN.playing || !$("#anCv")) return anStop(); const T = (performance.now() - start) / 1000; if (T >= L.total) { anDraw(L.total); return anStop(); } anDraw(T); AN.raf = requestAnimationFrame(step); }; step(); }
+function anListHTML() {
+  const ps = anAll(); const cast = Object.keys(anCast());
+  return `<div class="card"><h3>ANİMASYON STÜDYOSU</h3><div class="hint" style="margin-top:0">Hikâyeni anlat: Titus senaryoyu yazar, karakterleri kendi kitinden giydirir, oynatır, konuşturur (seslendirmeye göre ağız hareketi), müziği besteler ve video olarak kaydeder. Karakterler kadroya kaydolur; sonraki hikâyelerde aynı görünürler.</div>
+  <div class="form" style="margin-top:8px"><textarea id="anStory" placeholder="Hikâyen… (ör. 'Molière'in Hastalık Hastası: hastalık hastası Argan, kurnaz hizmetçi Toinette, faturacı Dr. Purgon, mirasçı karısı Béline…')" style="min-height:110px"></textarea>
+  <div class="row"><select id="anFmt"><option value="16:9">Yatay 16:9</option><option value="9:16">Dikey 9:16</option><option value="1:1">Kare 1:1</option></select><select id="anMus"><option value="">Müzik: Titus seçsin</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="yok">Müzik yok</option></select><input id="anSure" type="number" min="15" max="120" value="40" title="Süre (sn)"></div>
+  <label class="hint" style="margin:0"><input type="checkbox" id="anAuto" checked style="width:auto"> yazınca kendi kontrol edip düzeltsin</label>
+  <button class="btn" id="anGo">🎬 Senaryoyu yaz ve canlandır</button><div class="hint" id="anStat">${esc(AN.busy ? "⏳ " + AN.busy : "")}</div></div></div>
+  ${ps.length ? `<div class="card"><h3>ANİMASYONLAR</h3>${ps.map(p => `<div class="item"><div class="ic">🎭</div><div class="t"><div class="h">${esc(p.title)}</div><div class="meta">${p.spec.sahneler.length} sahne · ${p.spec.karakterler.map(c => esc(c.ad)).join(", ")}${p.puan ? " · kontrol puanı " + p.puan + "/10" : ""}</div></div><button class="btn ghost sm" data-anopen="${p.id}">Aç</button><button class="x" data-andel="${p.id}">✕</button></div>`).join("")}</div>` : ""}
+  ${cast.length ? `<div class="card"><h3>OYUNCU KADROSU</h3><div class="hint" style="margin-top:0">${cast.map(n => `<span style="display:inline-block;margin:2px 6px 2px 0">🎭 ${esc(n)} <button class="x" data-ancast="${esc(n)}" style="display:inline">✕</button></span>`).join("")}</div></div>` : ""}`;
+}
+function anProjHTML(p) {
+  const [W, H] = TitusAnim.size(p.spec.format); const cw = 640, ch = Math.round(cw * H / W);
+  return `<div class="card"><div class="row" style="align-items:center"><button class="btn ghost sm" id="anBack" style="flex:0 0 auto">← Liste</button><h3 style="flex:1;margin:0 0 0 8px">${esc(p.title)}</h3></div>
+  <canvas id="anCv" width="${cw}" height="${ch}" style="width:100%;border-radius:12px;margin-top:8px;background:#1E1A17"></canvas>
+  <div class="row" style="align-items:center;margin-top:6px"><button class="btn sm" id="anPlay" style="flex:0 0 auto;min-width:48px">▶</button><input type="range" id="anSeek" min="0" max="1" step="0.05" value="0" style="flex:1"><span class="hint" id="anTime" style="flex:0 0 auto;margin:0"></span></div>
+  <div class="hint">Önizleme sessizdir; seslendirme, dudak senkronu ve müzik videoyu üretirken eklenir.${p.puan ? ` Son kontrol puanı: ${p.puan}/10.` : ""}</div>
+  <div class="form" style="margin-top:6px"><input id="anEdit" placeholder="Değiştir… (ör. '3. sahnede Purgon koşarak girsin, Argan bayılsın')"><div class="row"><button class="btn ghost sm" id="anRev">✏️ Değiştir</button><button class="btn ghost sm" id="anChk">🔍 Kontrol et ve düzelt</button></div>
+  <div class="row"><select id="anMus2"><option value="">Müzik: ${esc(p.spec.muzik)}</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="yok">Müzik yok</option></select><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="anVo" checked style="width:auto"> seslendirme</label></div>
+  <button class="btn" id="anRec">🎞 Videoyu üret ve kaydet</button><button class="btn ghost" id="anKesit">✂️ Videoyu üret ve Kesit'te aç</button><div class="hint" id="anStat">${esc(AN.busy ? "⏳ " + AN.busy : "")}</div><div class="hint">Video gerçek zamanlı kaydedilir (süresi kadar sürer); bu sırada ekranı açık tut.</div></div></div>
+  <div class="card"><h3>SAHNELER</h3>${p.spec.sahneler.map((s, i) => `<div class="step"><span style="flex:1"><b>${i + 1}.</b> ${esc((s.yazilar || []).map(y => y.metin).filter(Boolean).join(" · ").slice(0, 80) || (s.arka && s.arka.tip) || "")}${s.ses ? `<br><span class="hint">🎙 ${esc(s.ses)}</span>` : ""}</span><button class="btn ghost sm" data-anseek="${i}" style="flex:0 0 auto">▶</button></div>`).join("")}</div>`;
+}
+{
+  const base = listHTML;
+  listHTML = function (sec) {
+    if (sec !== "anim") return base(sec);
+    anStop(); const p = AN.open && anGet(AN.open);
+    if (!p) return anListHTML();
+    setTimeout(() => { try { document.fonts.load('900 40px "Fraunces"').then(() => anDraw(AN.t)); } catch {} anDraw(AN.t); }, 0);
+    return anProjHTML(p);
+  };
+}
+document.addEventListener("input", e => { if (e.target.id === "anSeek") { anStop(); anDraw(Number(e.target.value)); } });
+document.addEventListener("click", async e => {
+  const t = e.target.closest("#anGo,[data-anopen],[data-andel],[data-ancast],#anBack,#anPlay,[data-anseek],#anRev,#anChk,#anRec,#anKesit");
+  if (!t) return; const p = AN.open && anGet(AN.open);
+  try {
+    if (t.id === "anGo") { if (AN.busy) return toast("Titus meşgul"); t.disabled = true;
+      try { anStat("Senaryo yazılıyor"); const np = await anPlan({ hikaye: $("#anStory").value.trim(), format: $("#anFmt").value, sure: +$("#anSure").value || 40, muzik: $("#anMus").value }); const auto = $("#anAuto") && $("#anAuto").checked; AN.open = np.id; AN.t = 0;
+        if (auto) { const r = await anCheck(np); toast(r.duzeltildi ? `✓ Kontrol edildi (${r.puan || "?"}/10), ${r.sorunlar.length} sorun düzeltildi` : `✓ Hazır (${r.puan || "?"}/10)`, 5000); }
+        renderSec("studio"); } finally { t.disabled = false; anStat(""); } }
+    else if (t.dataset.anopen) { AN.open = t.dataset.anopen; AN.t = 0; renderSec("studio"); }
+    else if (t.dataset.andel) { if (await confirmBox("Animasyon silinsin mi? (Kadro kalır)", "Sil")) { S.anim = anAll().filter(x => x.id !== t.dataset.andel); save(); renderSec("studio"); } }
+    else if (t.dataset.ancast) { const c = anCast(); delete c[t.dataset.ancast]; save(); renderSec("studio"); }
+    else if (t.id === "anBack") { anStop(); AN.open = null; renderSec("studio"); }
+    else if (!p) return;
+    else if (t.id === "anPlay") { AN.playing ? anStop() : anPlay(); }
+    else if (t.dataset.anseek !== undefined) { anStop(); const L = TitusAnim.layout(p.spec); AN.t = L.scenes[+t.dataset.anseek].start; anPlay(); }
+    else if (t.id === "anRev") { const ist = $("#anEdit").value.trim(); if (!ist) return toast("Ne değişsin?"); if (AN.busy) return; anStop(); t.disabled = true; try { anStat("Senaryo düzenleniyor"); await anRevise(p, ist); toast("✓ Güncellendi"); renderSec("studio"); } finally { t.disabled = false; anStat(""); } }
+    else if (t.id === "anChk") { if (AN.busy) return; anStop(); t.disabled = true; try { const r = await anCheck(p); toast(r.sorunlar.length ? `${r.puan || "?"}/10 · ${r.sorunlar.length} sorun düzeltildi` : `${r.puan || "?"}/10 · sorun bulunmadı`, 6000); renderSec("studio"); } finally { t.disabled = false; anStat(""); } }
+    else if (t.id === "anRec" || t.id === "anKesit") { if (AN.busy) return; anStop(); t.disabled = true;
+      try { const r = await anRecord(p, { vo: $("#anVo").checked, muzik: $("#anMus2").value || null, onP: x => anStat(`Kaydediliyor %${Math.round(x * 100)}`) }); anStat("Kaydediliyor");
+        const f = await saveFile(r.blob, fname(p.title, r.ext), "movies"); toast("✓ Video kaydedildi → " + f.yer, 6000);
+        if (t.id === "anKesit") { const file = new File([r.blob], fname(p.title, r.ext), { type: r.blob.type }); const api = await ksApi(); await api.run([{ op: "clear" }, { op: "settings", aspect: p.spec.format, name: p.title }, { op: "add", file: 0 }], [file], {}); toast("✓ Kesit'te açıldı", 4000); }
+      } finally { t.disabled = false; anStat(""); } }
+  } catch (er) { anStat(""); toast("✗ " + friendlyErr(er), 6000); }
+});
+
+/* ---------- sohbet / ses aracı + yetenek ---------- */
+TOOLS.push(
+  T("animasyon_yap", "Burak'ın anlattığı hikâyeden karikatür animasyon video hazırlar: senaryoyu yazar, karakterleri kitten giydirir, kendi kendini kontrol edip düzeltir, Stüdyo → Animasyon ekranında önizlemeyi açar. 'kaydet' true ise seslendirme + müzikle videoyu üretip kaydeder.", { hikaye: str("Hikâye, tüm ayrıntılarla"), format: str("Oran", ["16:9", "9:16", "1:1"]), sure: num("Hedef süre (sn), varsayılan 40"), muzik: str("Müzik", ["barok", "neseli", "gerilim", "duygusal", "yok"]), kaydet: { type: "boolean", description: "Hemen video olarak üretip kaydet" } }, ["hikaye"],
+    async a => { const p = await anPlan({ hikaye: a.hikaye, format: a.format || "16:9", sure: a.sure || 40, muzik: a.muzik || "" }); let k = null; try { k = await anCheck(p); } catch {} AN.open = p.id; AN.t = 0; go("studio"); openSec("studio", "anim");
+      let yer = null; if (a.kaydet) { const r = await anRecord(p, { onP: x => anStat(`Kaydediliyor %${Math.round(x * 100)}`) }); yer = (await saveFile(r.blob, fname(p.title, r.ext), "movies")).yer; anStat(""); }
+      return { ok: true, baslik: p.title, sahne: p.spec.sahneler.length, karakterler: p.spec.karakterler.map(c => c.ad), kontrol_puani: k && k.puan, duzeltilen: k ? k.sorunlar.length : 0, yer }; }),
+  T("animasyon_degistir", "Açık animasyonun senaryosunu Burak'ın isteğine göre değiştirir (sahne, eylem, yazı, karakter görünümü, kamera, müzik).", { istek: str("Ne değişsin") }, ["istek"], async a => { const p = anGet(AN.open) || anAll()[0]; if (!p) return { hata: "Açık animasyon yok" }; await anRevise(p, a.istek); AN.open = p.id; go("studio"); openSec("studio", "anim"); return { ok: true, baslik: p.title }; })
+);
+Object.assign(ACT_TR, { animasyon_yap: "🎭 animasyon", animasyon_degistir: "🎭 düzenle" });
+TOOL_GROUPS.push([/animasyon|karikatür|çizgi film|canlandır|teaser|kısa film|hikâye.*video|hikaye.*video/, ["animasyon_yap", "animasyon_degistir", "seedance_video"]]);
+FN.anim = { input: "Hikâyen (boş bırakırsan Animasyon stüdyosu açılır)", run: async g => { go("studio"); openSec("studio", "anim"); if (!g) return { metin: "Animasyon stüdyosu açıldı." }; const p = await anPlan({ hikaye: g }); let k = null; try { k = await anCheck(p); } catch {} AN.open = p.id; AN.t = 0; renderSec("studio"); return { ok: true, metin: `"${p.title}" hazır: ${p.spec.sahneler.length} sahne${k && k.puan ? `, kontrol puanı ${k.puan}/10` : ""}. Önizleyip 'Videoyu üret' ile kaydedebilirsin.` }; } };
 
 boot();
 })();
