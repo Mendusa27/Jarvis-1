@@ -1,5 +1,7 @@
 # T.I.T.U.S. — Burak'ın Kişisel Asistanı
 
+**v4.6:** 24 video tarzı: Stüdyo → Animasyon ve Sinegöz Medya'da "Tarz" seçimi (karikatür, kinetik tipografi, belgesel, Karagöz, sessiz film, çizgi roman, beyaz tahta, bilgi grafiği, oyuncu tanıtım (kendi fotoğraflarınla), kâğıt kesik, kil, piksel, minyatür, sulu boya, neon, korku, haber bülteni, mesajlaşma, ses dalgası, monolog, harita, geri sayım, quiz, masal). Belgesel sahne görselleri ücretsiz üretilir ve önbelleğe alınır; yeni müzikler: piyano, 8-bit, elektronik, müzik kutusu, haber, lo-fi.
+
 **v4.5:** Seslendirme temizleyici: Gemini sesinin başındaki cızırtı/telsiz patlaması ve sessizlik otomatik kesilir, uğultu ve DC silinir, yumuşak giriş; WAV başlığı ses gibi çalınmaz; canlı sohbette cümle başlarına küçük tampon ve yumuşak giriş.
 
 **v4.4:** Sinegöz Medya (Tunçbilek Holding alt şirketi): konu ve tarza göre video üretir (animasyon, Seedance ya da Kesit kurgusu), YouTube/Instagram/TikTok açıklamalarını yazar, Onay Kutusu'na koyar; onaydan sonra her uygulamayı videoyla ve kopyalanmış açıklamayla açar.

@@ -3924,7 +3924,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.5", APP_RUN = "__RUN__";
+const APP_VER = "4.6", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -5772,7 +5772,7 @@ function hClean(list, ag, kaynak) {
     if (e.tur === "basvuru") return { ...b, project: hS(e.project, 160), role: hS(e.role, 160), contact: hS(e.contact, 160), link: /^https?:\/\//i.test(e.link || "") ? hS(e.link, 600) : "", to: mail(e.to), subject: hS(e.subject, 200), body: hS(e.body) };
     if (e.tur === "paylasim") return { ...b, platform: hS(e.platform || "Instagram", 40), metin: hS(e.metin) };
     if (e.tur === "gorev") return { ...b, liste: (Array.isArray(e.liste) ? e.liste : []).map(x => hS(x, 200)).filter(Boolean).slice(0, 8) };
-    if (e.tur === "video") return { ...b, konu: hS(e.konu, 2000), tarz: ["animasyon", "seedance", "kendi"].includes(e.tarz) ? e.tarz : "animasyon", ton: hS(e.ton, 200), format: ["9:16", "16:9", "1:1"].includes(e.format) ? e.format : "9:16", sure: Math.max(10, Math.min(120, Number(e.sure) || 30)), platformlar: (Array.isArray(e.platformlar) ? e.platformlar : ["youtube", "instagram", "tiktok"]).filter(p => ["youtube", "instagram", "tiktok"].includes(p)) };
+    if (e.tur === "video") return { ...b, konu: hS(e.konu, 2000), tarz: (e.tarz === "animasyon" || e.tarz === "seedance" || e.tarz === "kendi" || (window.TitusAnim && TitusAnim.STYLES[e.tarz])) ? e.tarz : "karikatur", ton: hS(e.ton, 200), format: ["9:16", "16:9", "1:1"].includes(e.format) ? e.format : "9:16", sure: Math.max(10, Math.min(120, Number(e.sure) || 30)), platformlar: (Array.isArray(e.platformlar) ? e.platformlar : ["youtube", "instagram", "tiktok"]).filter(p => ["youtube", "instagram", "tiktok"].includes(p)) };
     if (e.tur === "kayit") return { ...b, kayitlar: (Array.isArray(e.kayitlar) ? e.kayitlar : []).map(k => ({ tip: /gelir/i.test(k && k.tip) ? "gelir" : "gider", tutar: Math.abs(Number(k && k.tutar)) || 0, aciklama: hS(k && k.aciklama, 200) })).filter(k => k.tutar > 0).slice(0, 10) };
     return b;
   }).filter(e => (e.tur === "gorev" ? e.liste.length : e.tur === "kayit" ? e.kayitlar.length : e.tur === "paylasim" ? e.metin : e.tur === "video" ? e.konu : e.body));
@@ -6504,8 +6504,58 @@ function anSchema() {
    "kamera":[{"t":sn,"zoom":1-1.8,"x":0-1,"y":0-1}]}]}
 NOTLAR: x yatay konum (0 sol, 1 sağ), karakterler zeminde durur. "yatakta" pozu için aynı x'e "yatak" eşyası koy (yorgan önden örter); "yat" yatağa uzanır. "gir" kadraj dışından x'e yürür, "cik" kadrajdan çıkar. "yon":-1 sola bakar. Eylem süreleri sahne içinde kalmalı. "kart" stili tam ekran başlık kartıdır.`;
 }
-function anClean(j) {
-  const C = TitusAnim.CAT; const sp = { baslik: String(j.baslik || "Animasyon"), format: ["16:9", "9:16", "1:1"].includes(j.format) ? j.format : "16:9", renk: { vurgu: /^#[0-9a-f]{6}$/i.test((j.renk || {}).vurgu || "") ? j.renk.vurgu : "#E0A526" }, muzik: ["barok", "neseli", "gerilim", "duygusal", "yok"].includes(j.muzik) ? j.muzik : "barok", karakterler: [], sahneler: [] };
+const AN_STIL_TARIF = {
+  karikatur: "Karakterli komik karikatür. Her sahnede bir komik vuruş: önce kurulum (baslik ya da balon), 1-2 sn sonra 'cip' ile espri. Karakterlere eylem ver.",
+  kinetik: "KARAKTER YOK. Her sahne: arka {tip:'duz', renk koyu ya da canlı}, 'kinetik':{'vurgu':[1-2 vurgulanacak kelime]}, 'ses' zorunlu (ekrandaki kelimeler seslendirmeden gelir), 4-7 sn. Kısa, vurucu cümleler.",
+  belgesel: "KARAKTER YOK. Her sahne: 'gorsel':{'prompt':'İngilizce, fotoğraf gerçekliğinde ayrıntılı sinematik sahne tarifi (kişi yüzü yakın plan değil)','hareket':'yaklas|uzaklas|sola|saga'}, anlatıcı 'ses', gerekirse 'alt' stilinde yer/tarih yazısı. 5-8 sn.",
+  karagoz: "Karagöz-Hacivat gibi iki karakterin atışması; karakterler renkli kıyafetli, arka perde otomatik. Balonlarla laf sokma, el sallama, zıplama.",
+  sessiz: "1920'ler sessiz film: 'ses' ve 'konusan' BOŞ. Abartılı jestler (zipla, bayil, titre, kos). Her 1-2 sahnede bir 'kart' stilinde ara yazı (\"— Ah, ölüyorum!\").",
+  cizgiroman: "Çizgi roman: karakterli; her sahnede bir 'efekt' stili yazı (PAT!, ÇAT!, VAY!, HIŞŞ!) ve balonlar; dinamik kamera.",
+  tahta: "Beyaz tahta anlatımı: sade karakterler ve 'grafik' öğeleri (liste/ikonlar) ile açıklayıcı; anlatıcı 'ses'.",
+  bilgi: "KARAKTER YOK. Her sahne bir 'grafik': {'tur':'liste|bar|sayi|ikonlar','baslik':'','birim':'','ogeler':[{'metin':'','deger':0,'ikon':''}]}; arka duz açık renk; anlatıcı 'ses'. Rakam uydurma; konuda verilmediyse 'liste' ya da 'ikonlar' kullan.",
+  tanitim: "Oyuncu tanıtımı: KARAKTER YOK. Her sahne 'foto':{'i':fotoğraf sırası,'hareket':''}; 'alt' stilinde ad, rol, beceri yazıları; son sahne 'kart' (ad + iletişim). Anlatıcı 'ses' kısa ve profesyonel.",
+  kagit: "Kâğıt kesik kolaj: karakterli, sade arka planlar, hareketler kısa ve kesik.", kil: "Stop-motion kil: karakterli, sevimli ve fiziksel komedi.",
+  piksel: "Retro 8-bit oyun: karakterli, zıplama ve koşma bol, oyun dünyası esprileri; yazılar kısa.",
+  minyatur: "Osmanlı minyatürü: tarihi/masalsı konu, karakterler dönem kıyafetli, arka otomatik parşömen.",
+  suluboya: "Sulu boya: sakin, duygusal, şiirsel anlatım; yumuşak renkler; anlatıcı 'ses'.",
+  neon: "Neon/siberpunk: gece şehri otomatik, gelecek temalı, enerjik; karakterler parlak renkli.",
+  korku: "Gerilim/korku: arka 'gece' ya da 'sokak', ürkütücü ama aşırı şiddet yok; 'korkmus' ifadeler, ani 'cip' sürprizleri.",
+  haber: "Haber bülteni: arka 'studyo'; bir spiker karakter (ceket+kravat) ortada, 'konusan' spiker; her sahnede 'haber':{'baslik':'','bant':'kayan yazı','etiket':'SON DAKİKA'}.",
+  mesaj: "KARAKTER YOK. Telefon mesajlaşma: her sahne 'mesajlar':[{'kim':'sol|sag','ad':'','metin':'','t':sn}] (sırayla 1-1.5 sn arayla, sahne başına 3-6 mesaj), 'sohbet_adi'; arka duz açık renk; 'ses' genelde boş.",
+  audiogram: "KARAKTER YOK. Ses dalgası: her sahne 'audiogram':{'baslik':'','alt':''}, arka duz koyu renk, 'ses' anlatıcı uzun cümleler (altyazı otomatik).",
+  monolog: "KARAKTER YOK. Monolog/replik: her sahne 'monolog':{'satirlar':['…'],'kim':'karakter adı'}; 'ses' satırların okunuşu.",
+  harita: "KARAKTER YOK. Harita: 'harita':{'baslik':'','noktalar':[{'ad':'','x':0-1,'y':0-1}],'rota':[sıra numaraları]}; anlatıcı 'ses'.",
+  siralama: "KARAKTER YOK. Geri sayım: her sahne 'sira':{'no':N (büyükten küçüğe),'baslik':'','aciklama':'','ikon':''}; anlatıcı 'ses'; son sahne 'kart'.",
+  quiz: "KARAKTER YOK. Yarışma: her sahne 'quiz':{'soru':'','siklar':[3-4 şık],'dogru':doğru şık sırası (0'dan),'t_cevap':sn}; 6-8 sn; anlatıcı 'ses' soruyu okur.",
+  masal: "Çocuk masalı: yumuşak pastel renkli karakterler, sıcak anlatıcı 'ses', 'sayfa' geçişleri; korkutucu öğe yok."
+};
+function anElems() {
+  const IC = TitusAnim.ICONS.join("|");
+  return `EK SAHNE ÖĞELERİ (tarza göre kullan): "kinetik":{"vurgu":["kelime"]} · "grafik":{"tur":"liste|bar|sayi|ikonlar","baslik":"","birim":"","ogeler":[{"metin":"","deger":0,"ikon":"${IC}"}]} · "sira":{"no":3,"baslik":"","aciklama":"","ikon":""} · "quiz":{"soru":"","siklar":[""],"dogru":0,"t_cevap":4} · "mesajlar":[{"kim":"sol|sag","ad":"","metin":"","t":1}],"sohbet_adi":"" · "haber":{"baslik":"","bant":"","etiket":"SON DAKİKA"} · "harita":{"baslik":"","noktalar":[{"ad":"","x":0.5,"y":0.5}],"rota":[0,1]} · "monolog":{"satirlar":[""],"kim":""} · "audiogram":{"baslik":"","alt":""} · "gorsel":{"prompt":"English","hareket":"yaklas|uzaklas|sola|saga"} · "foto":{"i":0,"hareket":""} · yazı stili "efekt" (çizgi roman sesi) · geçiş "sayfa" · arka tipleri ayrıca perde|tahta|parsomen|neon|studyo · müzik: barok, neseli, gerilim, duygusal, piyano, cip, elektronik, masal, haber, lofi, yok`;
+}
+const AN_EXTRA = ["kinetik", "grafik", "sira", "quiz", "mesajlar", "sohbet_adi", "haber", "harita", "monolog", "audiogram", "gorsel", "foto", "renk_sag"];
+const anIDB = () => new Promise((res, rej) => { const q = indexedDB.open("titus_animimg", 1); q.onupgradeneeded = () => q.result.createObjectStore("i"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+async function anImgPut(k, v) { try { const db = await anIDB(); await new Promise(r => { const tx = db.transaction("i", "readwrite"); tx.objectStore("i").put(v, k); tx.oncomplete = r; tx.onerror = r; }); } catch {} }
+async function anImgGet(k) { try { const db = await anIDB(); return await new Promise(r => { const q = db.transaction("i").objectStore("i").get(k); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); }); } catch { return null; } }
+const anHash = str => { let h = 2166136261; for (const c of String(str)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0).toString(36); };
+const AN_MEDIA = {};
+const anLoad = src => loadImg(src).catch(() => null);
+async function anSavePhotos(p, files) { p.fotoN = 0; for (let i = 0; i < Math.min(files.length, 12); i++) { try { const d = "data:image/jpeg;base64," + await toJpegB64("data:" + (files[i].type || "image/jpeg") + ";base64," + await blobToB64(files[i]), 1600); await anImgPut(`${p.id}:foto:${i}`, d); p.fotoN = i + 1; } catch {} } save(); }
+async function anMedia(p, { gen = true } = {}) {
+  const m = AN_MEDIA[p.id] = AN_MEDIA[p.id] || { images: [], photos: [] };
+  for (let i = 0; i < (p.fotoN || 0); i++) if (!m.photos[i]) { const d = await anImgGet(`${p.id}:foto:${i}`); if (d) m.photos[i] = await anLoad(d); }
+  const sc = p.spec.sahneler; const [W, H] = { "9:16": [768, 1344], "1:1": [1024, 1024] }[p.spec.format] || [1344, 768];
+  for (let i = 0; i < sc.length; i++) {
+    const gz = sc[i].gorsel; if (!gz || !gz.prompt) { m.images[i] = null; continue; }
+    const key = `${p.id}:g:${anHash(gz.prompt)}`; if (m.images[i] && m.images[i]._k === key) continue;
+    let d = await anImgGet(key);
+    if (!d && gen) { anStat(`Görsel ${i + 1}/${sc.length} üretiliyor`); try { const src = await anyImage(gz.prompt + ", cinematic documentary photograph, natural light, high detail, no text, no watermark", W, H); d = "data:image/jpeg;base64," + await toJpegB64(src, 1400); await anImgPut(key, d); } catch (e) { toast("Görsel: " + friendlyErr(e), 4000); } }
+    if (d) { const im = await anLoad(d); if (im) { im._k = key; m.images[i] = im; } }
+  }
+  anStat(""); return m;
+}
+function anClean(j, stil) {
+  const C = TitusAnim.CAT; const sp = { baslik: String(j.baslik || "Animasyon"), format: ["16:9", "9:16", "1:1"].includes(j.format) ? j.format : "16:9", renk: { vurgu: /^#[0-9a-f]{6}$/i.test((j.renk || {}).vurgu || "") ? j.renk.vurgu : "#E0A526" }, muzik: ["barok", "neseli", "gerilim", "duygusal", "piyano", "cip", "elektronik", "masal", "haber", "lofi", "yok"].includes(j.muzik) ? j.muzik : ((TitusAnim.STYLES[stil || j.stil] || {}).muzik || "barok"), stil: TitusAnim.STYLES[j.stil] ? j.stil : (TitusAnim.STYLES[stil] ? stil : "karikatur"), karakterler: [], sahneler: [] };
   const ids = new Set();
   for (const c of (j.karakterler || []).slice(0, 8)) { const id = String(c.id || c.ad || "k" + ids.size).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 20) || "k" + ids.size; if (ids.has(id)) continue; ids.add(id); sp.karakterler.push({ id, ad: String(c.ad || id), gorunum: c.gorunum || {} }); }
   const remap = {}; (j.karakterler || []).forEach((c, i) => { if (sp.karakterler[i]) remap[c.id] = sp.karakterler[i].id; });
@@ -6513,50 +6563,60 @@ function anClean(j) {
     const sc = { sure: Math.max(2, Math.min(12, Number(s.sure) || 4)), gecis: C.gecis.includes(s.gecis) ? s.gecis : "solma", arka: s.arka || { tip: "oda" }, konusan: remap[s.konusan] || s.konusan || "", ses: String(s.ses || "").slice(0, 220),
       esyalar: (s.esyalar || []).filter(e => C.esya.includes(e.ad)).slice(0, 10), oyuncular: (s.oyuncular || []).map(o => Object.assign({}, o, { id: remap[o.id] || o.id })).filter(o => ids.has(o.id)).slice(0, 5),
       yazilar: (s.yazilar || []).map(y => Object.assign({}, y, y.kim ? { kim: remap[y.kim] || y.kim } : {})).slice(0, 6), kamera: (s.kamera || []).slice(0, 4) };
+    for (const k of AN_EXTRA) if (s[k] != null && s[k] !== "") sc[k] = s[k];
     sp.sahneler.push(sc);
   }
   if (!sp.sahneler.length) throw new Error("Senaryo boş çıktı, hikâyeyi biraz aç");
   return sp;
 }
-async function anPlan({ hikaye, format = "16:9", sure = 40, muzik = "" }) {
+async function anPlan({ hikaye, format = "16:9", sure = 40, muzik = "", stil = "karikatur", fotolar = [] }) {
+  if (!TitusAnim.STYLES[stil]) stil = stil === "animasyon" ? "karikatur" : "karikatur"; const STL = TitusAnim.STYLES[stil];
   if (!hikaye || hikaye.trim().length < 12) throw new Error("Hikâyeyi biraz daha anlat");
   const cast = anCast();
-  const j = await seedJSON(`Sen Titus'sun: komik ve sıcak karikatür animasyonların yönetmeni, senaristi ve kurgucususun. Burak'ın hikâyesini Titus animasyon motorunun senaryo diline çevir. Motor çizimi kendisi yapar; sen sahneleri, oyunculuğu, zamanlamayı ve kamerayı yönet.
+  const j = await seedJSON(`Sen Titus'sun: kısa video ve animasyonların yönetmeni, senaristi ve kurgucususun. Burak'ın hikâyesini Titus video motorunun senaryo diline çevir. Motor çizimi kendisi yapar; sen sahneleri, oyunculuğu, zamanlamayı ve kamerayı yönet.
 HİKÂYE: """${hikaye}"""
-FORMAT: ${format} · HEDEF SÜRE: ~${sure} sn${muzik ? " · MÜZİK: " + muzik : ""}
+TARZ: ${STL.ad} ("stil":"${stil}") — ${AN_STIL_TARIF[stil]}
+FORMAT: ${format} · HEDEF SÜRE: ~${sure} sn${muzik ? " · MÜZİK: " + muzik : ""}${fotolar.length ? ` · FOTOĞRAFLAR: ${fotolar.length} adet (i = 0..${fotolar.length - 1}; dosyalar: ${fotolar.map(f => f.name).join(", ").slice(0, 300)})` : ""}
 KAYITLI OYUNCU KADROSU (hikâyede aynı ad geçerse görünümü AYNEN kullan): ${JSON.stringify(cast).slice(0, 3000)}
 ${anSchema()}
+${anElems()}
 YÖNETMEN KURALLARI:
-- 5-9 sahne; ilk sahne "perde" ya da "solma" ile açılış (başlık/yer-zaman), son sahne "kart" stilinde başlık kartı.
-- Her sahnede bir komik vuruş: önce kurulum (baslik ya da balon), sonra 1-2 sn sonra "cip" ile espri. Yazılar kısa (en çok 6 kelime).
-- Karakterleri canlı tut: her oyuncuya en az bir eylem (yürüme, zıplama, el sallama, baş sallama, ifade değişimi). İfadeler duyguya uysun.
+- JSON'a "stil":"${stil}" yaz. TARZ tarifine mutlaka uy; tarif "KARAKTER YOK" diyorsa "karakterler" boş dizi ve "oyuncular" yok.
+- 5-9 sahne; ilk sahne dikkat çeken bir açılış (ilk 2 saniyede kanca), son sahne "kart" stilinde başlık kartı.
+- Yazılar kısa (en çok 6 kelime); karakterli tarzlarda her sahnede bir vuruş (kurulum, sonra "cip").
+- Karakterli tarzlarda karakterleri canlı tut: her oyuncuya en az bir eylem (yürüme, zıplama, el sallama, baş sallama, ifade değişimi). İfadeler duyguya uysun.
 - Karakterler arası x mesafesi en az 0.22; kimse yazının ya da balonun altında kalmasın; "cip" ve "balon" aynı anda üst üste gelmesin.
 - Kamerayı ölçülü kullan: duygusal ya da komik anda yavaş yakınlaşma (zoom 1.15-1.4).
 - "ses": o sahnenin seslendirmesi, sahne süresine sığsın (saniyede ~2.3 kelime). Konuşan karakterin id'si ya da "anlatici".
 - Gerçek ünlü, marka ya da telifli karakter yok. Karakter görünümleri birbirinden ayırt edilsin (renk, şapka, saç).
 SADECE senaryo JSON'unu döndür.`, 12000);
-  const sp = anClean(j); sp.format = format || sp.format; if (muzik) sp.muzik = muzik;
+  const sp = anClean(j, stil); sp.stil = stil; sp.format = format || sp.format; if (muzik) sp.muzik = muzik;
   for (const c of sp.karakterler) cast[c.ad.toLocaleLowerCase("tr")] = c.gorunum; S.animCast = cast;
-  const p = { id: uid(), title: sp.baslik, story: hikaye, spec: sp, at: localISO(new Date()), puan: null };
-  anAll().unshift(p); S.anim = S.anim.slice(0, 20); save(); return p;
+  const p = { id: uid(), title: sp.baslik, story: hikaye, spec: sp, at: localISO(new Date()), puan: null, fotoN: 0 };
+  anAll().unshift(p); S.anim = S.anim.slice(0, 20); save();
+  if (fotolar.length) { anStat("Fotoğraflar hazırlanıyor"); await anSavePhotos(p, fotolar); }
+  if (sp.sahneler.some(x => x.gorsel)) await anMedia(p);
+  return p;
 }
 async function anRevise(p, istek) {
   const j = await seedJSON(`Titus animasyon senaryosunu Burak'ın isteğine göre düzenle. Değişmesi istenmeyen her şeyi aynen koru, karakter id'lerini değiştirme.
 İSTEK: """${istek}"""
 ${anSchema()}
+${anElems()}
+TARZ: ${(TitusAnim.STYLES[p.spec.stil] || {}).ad || "Karikatür"} — ${AN_STIL_TARIF[p.spec.stil] || ""} (istek tarzı değiştirmeyi istemiyorsa "stil" aynı kalsın)
 MEVCUT SENARYO: ${JSON.stringify(p.spec)}
 SADECE güncel senaryo JSON'unu döndür.`, 12000);
-  p.spec = anClean(j); for (const c of p.spec.karakterler) anCast()[c.ad.toLocaleLowerCase("tr")] = c.gorunum; p.puan = null; save(); return p;
+  p.spec = anClean(j, p.spec.stil); for (const c of p.spec.karakterler) anCast()[c.ad.toLocaleLowerCase("tr")] = c.gorunum; p.puan = null; save(); if (p.spec.sahneler.some(x => x.gorsel)) await anMedia(p); return p;
 }
-function anFrames(spec, n = 6, scale = 0.42) {
+function anFrames(spec, n = 6, scale = 0.42, media = {}) {
   const [W, H] = TitusAnim.size(spec.format); const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale; const g = cv.getContext("2d"); const L = TitusAnim.layout(spec);
-  const pick = L.scenes.slice(0, n); return pick.map(s => { TitusAnim.render(g, spec, s.start + s.dur * 0.62, { layout: L, scale }); return { sahne: s.i + 1, b64: cv.toDataURL("image/jpeg", 0.7).split(",")[1] }; });
+  const pick = L.scenes.slice(0, n); return pick.map(s => { TitusAnim.render(g, spec, s.start + s.dur * 0.62, { layout: L, scale, images: media.images, photos: media.photos }); return { sahne: s.i + 1, b64: cv.toDataURL("image/jpeg", 0.7).split(",")[1] }; });
 }
 async function anCheck(p, { fix = true } = {}) {
   anStat("Titus kareleri inceliyor");
-  const fr = anFrames(p.spec, 8);
+  const fr = anFrames(p.spec, 8, 0.42, await anMedia(p, { gen: false }));
   const parts = fr.map(f => ({ inlineData: { mimeType: "image/jpeg", data: f.b64 } }));
-  const t = await plainGemini(`Bunlar bir karikatür animasyonun sırayla ${fr.length} sahnesinden birer kare (1. görsel = 1. sahne). Senaryo: ${JSON.stringify(p.spec).slice(0, 6000)}
+  const t = await plainGemini(`Bunlar "${(TitusAnim.STYLES[p.spec.stil] || {}).ad || "karikatür"}" tarzındaki bir videonun sırayla ${fr.length} sahnesinden birer kare (1. görsel = 1. sahne). Senaryo: ${JSON.stringify(p.spec).slice(0, 6000)}
 Bir animasyon yönetmeni gibi değerlendir: üst üste binen yazı/balon/karakter, kadraj dışında kalan ya da kesilen karakter, okunmayan yazı, mantıksız konum, sahnede boşluk, karakterlerin ayırt edilememesi, hikâyeyi anlatmayan kare. 1-10 puan ver.
 SADECE JSON: {"puan":7,"sorunlar":[{"sahne":2,"sorun":"…","duzeltme":"senaryoda ne değişmeli (somut: x, t, konum, stil…)"}]}`, parts, null, { json: true, max: 2500, temperature: 0.3 });
   let j = {}; try { j = JSON.parse(String(t).match(/\{[\s\S]*\}/)[0]); } catch {}
@@ -6569,10 +6629,10 @@ async function anAudio(spec, { vo = true, muzik = null } = {}) {
   const durs = spec.sahneler.map((s, i) => Math.max(s.sure, tts[i] ? tts[i].duration + 0.9 : 0));
   const L = TitusAnim.layout(spec, durs); const env = tts.map(b => (b ? TitusAnim.envelope(b) : null));
   const st = muzik || spec.muzik; let mus = null; if (st && st !== "yok") { anStat("Müzik besteleniyor"); mus = await TitusAnim.music(st, L.total, (spec.baslik || "").length + 3); }
-  return { L, durs, tts, env, mus };
+  return { L, durs, tts, env, mus, voDur: tts.map(b => (b ? b.duration : 0)) };
 }
 async function anRecord(p, { vo = true, muzik = null, onP } = {}) {
-  const spec = p.spec; const A = await anAudio(spec, { vo, muzik }); const [W, H] = TitusAnim.size(spec.format);
+  const spec = p.spec; const MD = await anMedia(p); const A = await anAudio(spec, { vo, muzik }); const [W, H] = TitusAnim.size(spec.format); const RO = { layout: A.L, env: A.env, voDur: A.voDur, images: MD.images, photos: MD.photos };
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const g = cv.getContext("2d");
   try { await document.fonts.load('900 64px "Fraunces"'); await document.fonts.load('800 32px "Nunito"'); } catch {}
   const ac = new (window.AudioContext || window.webkitAudioContext)(); await ac.resume(); const dest = ac.createMediaStreamDestination();
@@ -6581,12 +6641,12 @@ async function anRecord(p, { vo = true, muzik = null, onP } = {}) {
   const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : {}); const chunks = []; rec.ondataavailable = e => e.data && e.data.size && chunks.push(e.data);
   let lock = null; try { lock = await navigator.wakeLock.request("screen"); } catch {}
-  TitusAnim.render(g, spec, 0, { layout: A.L, env: A.env });
+  TitusAnim.render(g, spec, 0, RO);
   const T0 = ac.currentTime + 0.25;
   A.tts.forEach((b, i) => { if (!b) return; const s = ac.createBufferSource(); s.buffer = b; s.connect(voG); const at = T0 + A.L.scenes[i].start + 0.3; s.start(at); muG.gain.setTargetAtTime(0.3, at - 0.1, 0.08); muG.gain.setTargetAtTime(1.0, at + b.duration + 0.1, 0.25); });
   if (A.mus) { const s = ac.createBufferSource(); s.buffer = A.mus; s.connect(muG); s.start(T0); }
   rec.start(250);
-  await new Promise(res => { const step = () => { const T = ac.currentTime - T0; if (T >= A.L.total + 0.15) return res(); TitusAnim.render(g, spec, Math.max(0, T), { layout: A.L, env: A.env }); if (onP) onP(Math.max(0, T) / A.L.total); AN.raf = requestAnimationFrame(step); }; step(); });
+  await new Promise(res => { const step = () => { const T = ac.currentTime - T0; if (T >= A.L.total + 0.15) return res(); TitusAnim.render(g, spec, Math.max(0, T), RO); if (onP) onP(Math.max(0, T) / A.L.total); AN.raf = requestAnimationFrame(step); }; step(); });
   await new Promise(r => { rec.onstop = r; rec.stop(); }); try { lock && lock.release(); } catch {} ac.close();
   const blob = new Blob(chunks, { type: (mime || "video/webm").split(";")[0] }); if (!blob.size) throw new Error("Kayıt boş çıktı");
   return { blob, ext: (mime || "").includes("mp4") ? "mp4" : "webm", sure: A.L.total };
@@ -6594,13 +6654,15 @@ async function anRecord(p, { vo = true, muzik = null, onP } = {}) {
 
 /* ---------- önizleme oynatıcı ---------- */
 function anStop() { AN.playing = false; cancelAnimationFrame(AN.raf); const b = $("#anPlay"); if (b) b.textContent = "▶"; }
-function anDraw(T) { const p = anGet(AN.open); const cv = $("#anCv"); if (!p || !cv) return; const [W, H] = TitusAnim.size(p.spec.format); const sc = cv.width / W; const L = TitusAnim.layout(p.spec); AN.t = Math.max(0, Math.min(T, L.total)); TitusAnim.render(cv.getContext("2d"), p.spec, AN.t, { layout: L, scale: sc }); const r = $("#anSeek"); if (r) { r.max = L.total; r.value = AN.t; } const tl = $("#anTime"); if (tl) tl.textContent = `${AN.t.toFixed(1)} / ${L.total.toFixed(1)} sn`; }
+function anDraw(T) { const p = anGet(AN.open); const cv = $("#anCv"); if (!p || !cv) return; const [W, H] = TitusAnim.size(p.spec.format); const sc = cv.width / W; const L = TitusAnim.layout(p.spec); AN.t = Math.max(0, Math.min(T, L.total)); const md = AN_MEDIA[p.id] || {}; TitusAnim.render(cv.getContext("2d"), p.spec, AN.t, { layout: L, scale: sc, images: md.images, photos: md.photos }); const r = $("#anSeek"); if (r) { r.max = L.total; r.value = AN.t; } const tl = $("#anTime"); if (tl) tl.textContent = `${AN.t.toFixed(1)} / ${L.total.toFixed(1)} sn`; }
 function anPlay() { const p = anGet(AN.open); if (!p) return; const L = TitusAnim.layout(p.spec); if (AN.t >= L.total - 0.05) AN.t = 0; AN.playing = true; const b = $("#anPlay"); if (b) b.textContent = "⏸"; const start = performance.now() - AN.t * 1000; const step = () => { if (!AN.playing || !$("#anCv")) return anStop(); const T = (performance.now() - start) / 1000; if (T >= L.total) { anDraw(L.total); return anStop(); } anDraw(T); AN.raf = requestAnimationFrame(step); }; step(); }
 function anListHTML() {
   const ps = anAll(); const cast = Object.keys(anCast());
   return `<div class="card"><h3>ANİMASYON STÜDYOSU</h3><div class="hint" style="margin-top:0">Hikâyeni anlat: Titus senaryoyu yazar, karakterleri kendi kitinden giydirir, oynatır, konuşturur (seslendirmeye göre ağız hareketi), müziği besteler ve video olarak kaydeder. Karakterler kadroya kaydolur; sonraki hikâyelerde aynı görünürler.</div>
   <div class="form" style="margin-top:8px"><textarea id="anStory" placeholder="Hikâyen… (ör. 'Molière'in Hastalık Hastası: hastalık hastası Argan, kurnaz hizmetçi Toinette, faturacı Dr. Purgon, mirasçı karısı Béline…')" style="min-height:110px"></textarea>
-  <div class="row"><select id="anFmt"><option value="16:9">Yatay 16:9</option><option value="9:16">Dikey 9:16</option><option value="1:1">Kare 1:1</option></select><select id="anMus"><option value="">Müzik: Titus seçsin</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="yok">Müzik yok</option></select><input id="anSure" type="number" min="15" max="120" value="40" title="Süre (sn)"></div>
+  <select id="anStil">${Object.entries(TitusAnim.STYLES).map(([k, v]) => `<option value="${k}" ${AN.stil === k ? "selected" : ""}>${esc(v.ad)}</option>`).join("")}</select>
+  <div class="row" id="anFotoRow" style="${AN.stil === "tanitim" ? "" : "display:none"}"><button class="btn ghost sm" id="anFoto">📷 Fotoğraflarını seç ${AN.fotos && AN.fotos.length ? "(" + AN.fotos.length + ")" : ""}</button></div>
+  <div class="row"><select id="anFmt"><option value="16:9">Yatay 16:9</option><option value="9:16">Dikey 9:16</option><option value="1:1">Kare 1:1</option></select><select id="anMus"><option value="">Müzik: tarza göre</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="piyano">Piyano (eski film)</option><option value="cip">8-bit çip</option><option value="elektronik">Elektronik</option><option value="masal">Müzik kutusu</option><option value="haber">Haber</option><option value="lofi">Lo-fi</option><option value="yok">Müzik yok</option></select><input id="anSure" type="number" min="15" max="120" value="40" title="Süre (sn)"></div>
   <label class="hint" style="margin:0"><input type="checkbox" id="anAuto" checked style="width:auto"> yazınca kendi kontrol edip düzeltsin</label>
   <button class="btn" id="anGo">🎬 Senaryoyu yaz ve canlandır</button><div class="hint" id="anStat">${esc(AN.busy ? "⏳ " + AN.busy : "")}</div></div></div>
   ${ps.length ? `<div class="card"><h3>ANİMASYONLAR</h3>${ps.map(p => `<div class="item"><div class="ic">🎭</div><div class="t"><div class="h">${esc(p.title)}</div><div class="meta">${p.spec.sahneler.length} sahne · ${p.spec.karakterler.map(c => esc(c.ad)).join(", ")}${p.puan ? " · kontrol puanı " + p.puan + "/10" : ""}</div></div><button class="btn ghost sm" data-anopen="${p.id}">Aç</button><button class="x" data-andel="${p.id}">✕</button></div>`).join("")}</div>` : ""}
@@ -6611,9 +6673,9 @@ function anProjHTML(p) {
   return `<div class="card"><div class="row" style="align-items:center"><button class="btn ghost sm" id="anBack" style="flex:0 0 auto">← Liste</button><h3 style="flex:1;margin:0 0 0 8px">${esc(p.title)}</h3></div>
   <canvas id="anCv" width="${cw}" height="${ch}" style="width:100%;border-radius:12px;margin-top:8px;background:#1E1A17"></canvas>
   <div class="row" style="align-items:center;margin-top:6px"><button class="btn sm" id="anPlay" style="flex:0 0 auto;min-width:48px">▶</button><input type="range" id="anSeek" min="0" max="1" step="0.05" value="0" style="flex:1"><span class="hint" id="anTime" style="flex:0 0 auto;margin:0"></span></div>
-  <div class="hint">Önizleme sessizdir; seslendirme, dudak senkronu ve müzik videoyu üretirken eklenir.${p.puan ? ` Son kontrol puanı: ${p.puan}/10.` : ""}</div>
+  <div class="hint">Tarz: <b>${esc((TitusAnim.STYLES[p.spec.stil] || TitusAnim.STYLES.karikatur).ad)}</b>. Önizleme sessizdir; seslendirme, dudak senkronu ve müzik videoyu üretirken eklenir.${p.puan ? ` Son kontrol puanı: ${p.puan}/10.` : ""}</div>
   <div class="form" style="margin-top:6px"><input id="anEdit" placeholder="Değiştir… (ör. '3. sahnede Purgon koşarak girsin, Argan bayılsın')"><div class="row"><button class="btn ghost sm" id="anRev">✏️ Değiştir</button><button class="btn ghost sm" id="anChk">🔍 Kontrol et ve düzelt</button></div>
-  <div class="row"><select id="anMus2"><option value="">Müzik: ${esc(p.spec.muzik)}</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="yok">Müzik yok</option></select><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="anVo" checked style="width:auto"> seslendirme</label></div>
+  <div class="row"><select id="anMus2"><option value="">Müzik: ${esc(p.spec.muzik)}</option><option value="barok">Barok</option><option value="neseli">Neşeli</option><option value="gerilim">Gerilim</option><option value="duygusal">Duygusal</option><option value="piyano">Piyano (eski film)</option><option value="cip">8-bit çip</option><option value="elektronik">Elektronik</option><option value="masal">Müzik kutusu</option><option value="haber">Haber</option><option value="lofi">Lo-fi</option><option value="yok">Müzik yok</option></select><label class="hint" style="flex:0 0 auto;margin:0"><input type="checkbox" id="anVo" checked style="width:auto"> seslendirme</label></div>
   <button class="btn" id="anRec">🎞 Videoyu üret ve kaydet</button><button class="btn ghost" id="anKesit">✂️ Videoyu üret ve Kesit'te aç</button><div class="hint" id="anStat">${esc(AN.busy ? "⏳ " + AN.busy : "")}</div><div class="hint">Video gerçek zamanlı kaydedilir (süresi kadar sürer); bu sırada ekranı açık tut.</div></div></div>
   <div class="card"><h3>SAHNELER</h3>${p.spec.sahneler.map((s, i) => `<div class="step"><span style="flex:1"><b>${i + 1}.</b> ${esc((s.yazilar || []).map(y => y.metin).filter(Boolean).join(" · ").slice(0, 80) || (s.arka && s.arka.tip) || "")}${s.ses ? `<br><span class="hint">🎙 ${esc(s.ses)}</span>` : ""}</span><button class="btn ghost sm" data-anseek="${i}" style="flex:0 0 auto">▶</button></div>`).join("")}</div>`;
 }
@@ -6623,17 +6685,19 @@ function anProjHTML(p) {
     if (sec !== "anim") return base(sec);
     anStop(); const p = AN.open && anGet(AN.open);
     if (!p) return anListHTML();
-    setTimeout(() => { try { document.fonts.load('900 40px "Fraunces"').then(() => anDraw(AN.t)); } catch {} anDraw(AN.t); }, 0);
+    setTimeout(() => { try { document.fonts.load('900 40px "Fraunces"').then(() => anDraw(AN.t)); } catch {} anDraw(AN.t); anMedia(p, { gen: false }).then(() => anDraw(AN.t)); }, 0);
     return anProjHTML(p);
   };
 }
 document.addEventListener("input", e => { if (e.target.id === "anSeek") { anStop(); anDraw(Number(e.target.value)); } });
+document.addEventListener("change", e => { if (e.target.id === "anStil") { AN.stil = e.target.value; const r = $("#anFotoRow"); if (r) r.style.display = AN.stil === "tanitim" ? "" : "none"; } if (e.target.id === "sgTarz") { const r = $("#sgFotoHint"); if (r) r.style.display = e.target.value === "tanitim" ? "" : "none"; } });
 document.addEventListener("click", async e => {
-  const t = e.target.closest("#anGo,[data-anopen],[data-andel],[data-ancast],#anBack,#anPlay,[data-anseek],#anRev,#anChk,#anRec,#anKesit");
+  const t = e.target.closest("#anFoto,#anGo,[data-anopen],[data-andel],[data-ancast],#anBack,#anPlay,[data-anseek],#anRev,#anChk,#anRec,#anKesit");
   if (!t) return; const p = AN.open && anGet(AN.open);
   try {
+    if (t.id === "anFoto") { const fs = await pickFiles("image/*", true); if (fs.length) { AN.fotos = fs; t.textContent = `📷 Fotoğraflarını seç (${fs.length})`; } return; }
     if (t.id === "anGo") { if (AN.busy) return toast("Titus meşgul"); t.disabled = true;
-      try { anStat("Senaryo yazılıyor"); const np = await anPlan({ hikaye: $("#anStory").value.trim(), format: $("#anFmt").value, sure: +$("#anSure").value || 40, muzik: $("#anMus").value }); const auto = $("#anAuto") && $("#anAuto").checked; AN.open = np.id; AN.t = 0;
+      try { const stil = $("#anStil").value; if (stil === "tanitim" && !(AN.fotos && AN.fotos.length)) { toast("Önce fotoğraflarını seç"); return; } anStat("Senaryo yazılıyor"); const np = await anPlan({ hikaye: $("#anStory").value.trim(), format: $("#anFmt").value, sure: +$("#anSure").value || 40, muzik: $("#anMus").value, stil, fotolar: stil === "tanitim" ? AN.fotos : [] }); AN.fotos = []; const auto = $("#anAuto") && $("#anAuto").checked; AN.open = np.id; AN.t = 0;
         if (auto) { const r = await anCheck(np); toast(r.duzeltildi ? `✓ Kontrol edildi (${r.puan || "?"}/10), ${r.sorunlar.length} sorun düzeltildi` : `✓ Hazır (${r.puan || "?"}/10)`, 5000); }
         renderSec("studio"); } finally { t.disabled = false; anStat(""); } }
     else if (t.dataset.anopen) { AN.open = t.dataset.anopen; AN.t = 0; renderSec("studio"); }
@@ -6655,8 +6719,8 @@ document.addEventListener("click", async e => {
 
 /* ---------- sohbet / ses aracı + yetenek ---------- */
 TOOLS.push(
-  T("animasyon_yap", "Burak'ın anlattığı hikâyeden karikatür animasyon video hazırlar: senaryoyu yazar, karakterleri kitten giydirir, kendi kendini kontrol edip düzeltir, Stüdyo → Animasyon ekranında önizlemeyi açar. 'kaydet' true ise seslendirme + müzikle videoyu üretip kaydeder.", { hikaye: str("Hikâye, tüm ayrıntılarla"), format: str("Oran", ["16:9", "9:16", "1:1"]), sure: num("Hedef süre (sn), varsayılan 40"), muzik: str("Müzik", ["barok", "neseli", "gerilim", "duygusal", "yok"]), kaydet: { type: "boolean", description: "Hemen video olarak üretip kaydet" } }, ["hikaye"],
-    async a => { const p = await anPlan({ hikaye: a.hikaye, format: a.format || "16:9", sure: a.sure || 40, muzik: a.muzik || "" }); let k = null; try { k = await anCheck(p); } catch {} AN.open = p.id; AN.t = 0; go("studio"); openSec("studio", "anim");
+  T("animasyon_yap", "Burak'ın anlattığı hikâyeden kodla video hazırlar (24 tarz: karikatür, kinetik tipografi, belgesel, Karagöz, sessiz film, çizgi roman, beyaz tahta, bilgi grafiği, oyuncu tanıtım, kâğıt, kil, piksel, minyatür, sulu boya, neon, korku, haber, mesajlaşma, ses dalgası, monolog, harita, sıralama, quiz, masal): senaryoyu yazar, karakterleri kitten giydirir, kendi kendini kontrol edip düzeltir, Stüdyo → Animasyon ekranında önizlemeyi açar. 'kaydet' true ise seslendirme + müzikle videoyu üretip kaydeder.", { hikaye: str("Hikâye, tüm ayrıntılarla"), stil: str("Tarz", Object.keys(TitusAnim.STYLES)), format: str("Oran", ["16:9", "9:16", "1:1"]), sure: num("Hedef süre (sn), varsayılan 40"), muzik: str("Müzik (boşsa tarza göre)", ["barok", "neseli", "gerilim", "duygusal", "piyano", "cip", "elektronik", "masal", "haber", "lofi", "yok"]), kaydet: { type: "boolean", description: "Hemen video olarak üretip kaydet" } }, ["hikaye"],
+    async a => { if (a.stil === "tanitim") return { hata: "Oyuncu tanıtım tarzı için fotoğraf gerekiyor: Stüdyo → Animasyon'da tarzı seçip fotoğraflarını ekle." }; const p = await anPlan({ hikaye: a.hikaye, stil: a.stil || "karikatur", format: a.format || "16:9", sure: a.sure || 40, muzik: a.muzik || "" }); let k = null; try { k = await anCheck(p); } catch {} AN.open = p.id; AN.t = 0; go("studio"); openSec("studio", "anim");
       let yer = null; if (a.kaydet) { const r = await anRecord(p, { onP: x => anStat(`Kaydediliyor %${Math.round(x * 100)}`) }); yer = (await saveFile(r.blob, fname(p.title, r.ext), "movies")).yer; anStat(""); }
       return { ok: true, baslik: p.title, sahne: p.spec.sahneler.length, karakterler: p.spec.karakterler.map(c => c.ad), kontrol_puani: k && k.puan, duzeltilen: k ? k.sorunlar.length : 0, yer }; }),
   T("animasyon_degistir", "Açık animasyonun senaryosunu Burak'ın isteğine göre değiştirir (sahne, eylem, yazı, karakter görünümü, kamera, müzik).", { istek: str("Ne değişsin") }, ["istek"], async a => { const p = anGet(AN.open) || anAll()[0]; if (!p) return { hata: "Açık animasyon yok" }; await anRevise(p, a.istek); AN.open = p.id; go("studio"); openSec("studio", "anim"); return { ok: true, baslik: p.title }; })
@@ -6677,7 +6741,7 @@ const SG_PLAT = {
   instagram: { ad: "Instagram", ic: "📸", pkg: "com.instagram.android" },
   tiktok: { ad: "TikTok", ic: "🎵", pkg: "com.zhiliaoapp.musically,com.ss.android.ugc.trill" }
 };
-const SG_TARZ = { animasyon: "Karikatür animasyon (Titus çizer)", seedance: "Gerçekçi video (Seedance / Dreamina)", kendi: "Kendi videolarım (Kesit kurgular)" };
+const SG_TARZ = Object.assign({ animasyon: "Karikatür animasyon" }, Object.fromEntries(Object.entries(TitusAnim.STYLES).map(([k, v]) => [k, v.ad])), { seedance: "Gerçekçi video (Seedance / Dreamina)", kendi: "Kendi videolarım (Kesit kurgular)" });
 const SG_DUR = { plan: "📝 Yazılıyor", uretim: "⏳ Üretiliyor", dreamina: "🎬 Dreamina'da üretim bekliyor", onay: "🟡 Onay bekliyor", onaylandi: "✅ Onaylandı", reddedildi: "✗ Reddedildi", hata: "✗ Hata" };
 function sgStat(it, t) { it.adim = t || ""; const e = document.querySelector(`[data-sgstat="${it.id}"]`); if (e) e.textContent = t ? "⏳ " + t : ""; }
 async function sgMeta({ konu, tarz, ton, format, sure, platformlar }) {
@@ -6711,8 +6775,10 @@ async function sgProduce(it) {
   try {
     if (!it.meta) { it.durum = "plan"; sgStat(it, "Hikâye ve paylaşım metinleri yazılıyor"); hDraw(); it.meta = await sgMeta(it); save(); }
     it.durum = "uretim"; hDraw();
-    if (it.tarz === "animasyon") {
-      sgStat(it, "Animasyon senaryosu yazılıyor"); const p = await anPlan({ hikaye: it.meta.hikaye, format: it.format, sure: it.sure, muzik: it.muzik || "" }); it.animId = p.id;
+    if (it.tarz === "animasyon") it.tarz = "karikatur";
+    if (TitusAnim.STYLES[it.tarz]) {
+      if (it.tarz === "tanitim" && !(it.files && it.files.length)) { sgStat(it, "Fotoğraflarını seç"); save(); return; }
+      sgStat(it, `${SG_TARZ[it.tarz]} senaryosu yazılıyor`); const p = await anPlan({ hikaye: it.meta.hikaye, stil: it.tarz, format: it.format, sure: it.sure, muzik: it.muzik || "", fotolar: it.tarz === "tanitim" ? it.files : [] }); it.animId = p.id;
       sgStat(it, "Titus kareleri kontrol ediyor"); try { await anCheck(p); } catch {}
       const r = await anRecord(p, { onP: x => sgStat(it, `Video kaydediliyor %${Math.round(x * 100)} (ekranı açık tut)`) });
       await sgSetVideo(it, r.blob, r.ext);
@@ -6728,7 +6794,7 @@ async function sgProduce(it) {
   finally { SG.busy.delete(it.id); save(); hDraw(); }
 }
 function sgCreate(o) {
-  const it = { id: uid(), at: Date.now(), konu: hS(o.konu, 2000), tarz: SG_TARZ[o.tarz] ? o.tarz : "animasyon", ton: hS(o.ton || "", 200), format: ["9:16", "16:9", "1:1"].includes(o.format) ? o.format : "9:16", sure: Math.max(10, Math.min(120, Number(o.sure) || 30)), muzik: o.muzik || "", platformlar: (o.platformlar || ["youtube", "instagram", "tiktok"]).filter(p => SG_PLAT[p]), talimat: hS(o.talimat || "", 800), files: o.files || null, durum: "plan", paylasim: {} };
+  const it = { id: uid(), at: Date.now(), konu: hS(o.konu, 2000), tarz: SG_TARZ[o.tarz] ? (o.tarz === "animasyon" ? "karikatur" : o.tarz) : "karikatur", ton: hS(o.ton || "", 200), format: ["9:16", "16:9", "1:1"].includes(o.format) ? o.format : "9:16", sure: Math.max(10, Math.min(120, Number(o.sure) || 30)), muzik: o.muzik || "", platformlar: (o.platformlar || ["youtube", "instagram", "tiktok"]).filter(p => SG_PLAT[p]), talimat: hS(o.talimat || "", 800), files: o.files || null, durum: "plan", paylasim: {} };
   if (!it.platformlar.length) it.platformlar = ["youtube", "instagram", "tiktok"];
   const l = sgAll(); l.unshift(it); if (l.length > 25) l.length = 25; save(); return it;
 }
@@ -6755,20 +6821,21 @@ function sgItemHTML(it) {
   const run = SG.busy.has(it.id);
   const share = it.durum === "onaylandi" ? `<div class="row" style="margin-top:8px;flex-wrap:wrap">${it.platformlar.map(p => `<button class="btn ${it.paylasim[p] ? "ghost" : ""} sm" data-sgshare="${it.id}:${p}">${SG_PLAT[p].ic} ${SG_PLAT[p].ad}${it.paylasim[p] ? " ✓" : ""}</button>`).join("")}</div><div class="hint">Düğme açıklamayı kopyalar ve uygulamayı videoyla açar; yapıştırıp Paylaş'a bas.${it.tarz === "seedance" ? " Gerçekçi yapay zekâ videosu olduğu için uygulamadaki 'Yapay zekâ ile oluşturuldu' etiketini aç." : ""}</div>` : "";
   const dream = it.durum === "dreamina" ? `<div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-sgseed="${it.id}">🎬 Seedance çekimlerini aç</button><button class="btn ghost sm" data-sgadd="${it.id}">📎 Bitmiş videoyu ekle</button></div>` : "";
-  const pick = it.tarz === "kendi" && it.durum === "uretim" && !run ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-sgfiles="${it.id}">📎 Videoları seç ve kurgula</button></div>` : "";
+  const pick = (it.tarz === "kendi" || it.tarz === "tanitim") && it.durum === "uretim" && !run ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-sgfiles="${it.id}">${it.tarz === "tanitim" ? "📷 Fotoğrafları seç ve üret" : "📎 Videoları seç ve kurgula"}</button></div>` : "";
   return `<div class="item" style="align-items:flex-start"><div class="ic">🎬</div><div class="t"><div class="h">${esc((it.meta && it.meta.baslik) || it.konu.slice(0, 70))}</div>
     <div class="meta">${SG_DUR[it.durum] || it.durum} · ${esc(SG_TARZ[it.tarz])} · ${it.platformlar.map(p => SG_PLAT[p].ad).join(", ")}</div>
     <div class="hint" data-sgstat="${it.id}" style="margin:2px 0 0">${it.adim ? "⏳ " + esc(it.adim) : ""}</div>${it.hata ? `<div class="hint err">${esc(it.hata)}</div>` : ""}
     ${it.durum === "onaylandi" ? sgThumbHTML(it) : ""}${share}${dream}${pick}
-    <div class="row" style="margin-top:6px">${(it.durum === "hata" || (it.durum === "uretim" && !run && it.tarz !== "kendi")) ? `<button class="btn ghost sm" data-sgretry="${it.id}">Yeniden dene</button>` : ""}${!run ? `<button class="btn ghost sm" data-sgdel="${it.id}">Sil</button>` : ""}</div></div></div>`;
+    <div class="row" style="margin-top:6px">${(it.durum === "hata" || (it.durum === "uretim" && !run && it.tarz !== "kendi" && !(it.tarz === "tanitim" && !(it.files && it.files.length)))) ? `<button class="btn ghost sm" data-sgretry="${it.id}">Yeniden dene</button>` : ""}${!run ? `<button class="btn ghost sm" data-sgdel="${it.id}">Sil</button>` : ""}</div></div></div>`;
 }
 function sgCardHTML() {
   const l = sgAll();
   return `<div class="card" id="sgCard"><h3 style="margin:0">🎬 SİNEGÖZ MEDYA <span class="meta" style="font-family:monospace">MDY-01</span></h3>
     <div class="hint" style="margin-top:6px">Konu ve tarzı ver: Titus metni yazar, videoyu üretir, platform açıklamalarını hazırlar. Video Onay Kutusu'na düşer; onaylayınca YouTube, Instagram ve TikTok'u videoyla açar, son Paylaş dokunuşu senin.</div>
     <div class="form"><textarea id="sgKonu" rows="3" placeholder="Konu… (ör. 'Oyuncuların seçmelerde yaptığı 3 komik hata')" style="width:100%;min-height:70px"></textarea>
-      <div class="row"><select id="sgTarz"><option value="animasyon">Karikatür animasyon</option><option value="seedance">Gerçekçi (Seedance)</option><option value="kendi">Kendi videolarım</option></select><select id="sgFmt"><option value="9:16">Dikey 9:16</option><option value="16:9">Yatay 16:9</option><option value="1:1">Kare 1:1</option></select><input id="sgSure" type="number" min="10" max="120" value="30" title="Süre (sn)"></div>
-      <input id="sgTon" placeholder="Tarz/ton (ör. esprili, samimi, dramatik, bilgilendirici)">
+      <div class="row"><select id="sgTarz"><optgroup label="Titus kodla üretir">${Object.entries(TitusAnim.STYLES).map(([k, v]) => `<option value="${k}">${esc(v.ad)}</option>`).join("")}</optgroup><optgroup label="Diğer"><option value="seedance">Gerçekçi (Seedance / Dreamina)</option><option value="kendi">Kendi videolarım (Kesit)</option></optgroup></select><select id="sgFmt"><option value="9:16">Dikey 9:16</option><option value="16:9">Yatay 16:9</option><option value="1:1">Kare 1:1</option></select><input id="sgSure" type="number" min="10" max="120" value="30" title="Süre (sn)"></div>
+      <div class="hint" id="sgFotoHint" style="display:none;margin:0">Oyuncu tanıtım: "Video üret"ten sonra Yayın masasında fotoğraflarını seçeceksin.</div>
+      <input id="sgTon" placeholder="Ton (ör. esprili, samimi, dramatik, bilgilendirici)">
       <div class="row" style="flex-wrap:wrap">${Object.entries(SG_PLAT).map(([k, p]) => `<label class="hint" style="flex:0 0 auto;margin:0 10px 0 0"><input type="checkbox" data-sgp="${k}" checked style="width:auto"> ${p.ad}</label>`).join("")}</div>
       <button class="btn" id="sgGo">🎬 Video üret</button></div>
     ${l.length ? `<div style="margin-top:10px"><b class="meta">YAYIN MASASI</b>${l.map(sgItemHTML).join("")}</div>` : ""}</div>`;
@@ -6807,7 +6874,7 @@ document.addEventListener("click", async ev => {
     else if (t.dataset.sgfix) {
       const notu = await hAsk("Neyi değiştirsin?", "Ör: 'açıklamalar daha esprili olsun' ya da 'videoda 2. sahne daha hızlı olsun'"); if (!notu) return;
       const video = /video|sahne|karakter|müzik|muzik|kurgu|hız|hiz|renk|ses/i.test(notu);
-      if (video && it.tarz === "animasyon" && it.animId && anGet(it.animId)) {
+      if (video && TitusAnim.STYLES[it.tarz] && it.animId && anGet(it.animId)) {
         it.durum = "uretim"; hDraw(); SG.busy.add(it.id);
         try { sgStat(it, "Animasyon düzeltiliyor"); const pr = anGet(it.animId); await anRevise(pr, notu); const r = await anRecord(pr, { onP: x => sgStat(it, `Yeniden kaydediliyor %${Math.round(x * 100)}`) }); SG.busy.delete(it.id); await sgSetVideo(it, r.blob, r.ext); }
         catch (e) { it.durum = "hata"; it.hata = friendlyErr(e); } finally { SG.busy.delete(it.id); save(); hDraw(); }
@@ -6821,7 +6888,7 @@ document.addEventListener("click", async ev => {
     else if (t.dataset.sgshare) await sgShare(it, p);
     else if (t.dataset.sgseed) { SEED.open = it.seedId; SEED.clips = []; go("studio"); openSec("studio", "seed"); }
     else if (t.dataset.sgadd) { const [f] = await pickFiles("video/*"); if (f) await sgSetVideo(it, f, (f.name.split(".").pop() || "mp4").toLowerCase()); }
-    else if (t.dataset.sgfiles) { const fs = await pickFiles("video/*,image/*,audio/*", true); if (fs.length) { it.files = fs; sgProduce(it); } }
+    else if (t.dataset.sgfiles) { const fs = await pickFiles(it.tarz === "tanitim" ? "image/*" : "video/*,image/*,audio/*", true); if (fs.length) { it.files = fs; sgProduce(it); } }
     else if (t.dataset.sgretry) sgProduce(it);
     else if (t.dataset.sgdel) { if (await confirmBox("Bu video Yayın masasından silinsin mi? (Galerideki dosya kalır)", "Sil")) { S.sinegoz = sgAll().filter(x => x.id !== it.id); delete SG.blobs[it.id]; save(); hDraw(); } }
   } catch (er) { toast("✗ " + friendlyErr(er), 6000); }
@@ -6830,10 +6897,10 @@ document.addEventListener("click", async ev => {
 /* ---------- Genel Müdür'e yeni şirket + sohbet aracı ---------- */
 H_AG.sinegoz = { ad: "Sinegöz Medya", kod: "MDY-01", ey: ["video"], rol: "Holding'in medya şirketi: verilen konu ve tarza göre YouTube, Instagram ve TikTok için video üretim planı çıkarır (animasyon, gerçekçi Seedance ya da kendi videolarından kurgu). Paylaşım Burak'ın onayından sonra yapılır." };
 H_EY.video = "🎬 Video";
-H_EY_TARIF.video = `{"tur":"video","konu":"videonun konusu, ayrıntılı","tarz":"animasyon | seedance | kendi","ton":"esprili/samimi/…","format":"9:16 | 16:9 | 1:1","sure":30,"platformlar":["youtube","instagram","tiktok"]}`;
+H_EY_TARIF.video = `{"tur":"video","konu":"videonun konusu, ayrıntılı","tarz":"${Object.keys(TitusAnim.STYLES).join(" | ")} | seedance | kendi","ton":"esprili/samimi/…","format":"9:16 | 16:9 | 1:1","sure":30,"platformlar":["youtube","instagram","tiktok"]}`;
 TOOLS.push(
-  T("sinegoz_video", "Tunçbilek Holding'in Sinegöz Medya şirketine video ürettirir: konu ve tarza göre metni ve platform açıklamalarını yazar, videoyu üretir (animasyon / Seedance / kendi videolarından Kesit kurgusu), bitince Holding Onay Kutusu'na koyar. Onaydan sonra YouTube, Instagram ve TikTok uygulamaları videoyla açılır. 'Sinegöz şu konuda video yapsın', 'YouTube/TikTok için video üret' gibi isteklerde kullan.", { konu: str("Videonun konusu, tüm ayrıntılarla"), tarz: str("Üretim tarzı", ["animasyon", "seedance", "kendi"]), ton: str("Ton/tarz (esprili, samimi, dramatik…)"), format: str("Oran", ["9:16", "16:9", "1:1"]), sure: num("Süre sn (varsayılan 30)"), platformlar: { type: "array", items: { type: "string", enum: ["youtube", "instagram", "tiktok"] }, description: "Paylaşılacak platformlar (varsayılan üçü)" } }, ["konu"],
-    async a => { const it = sgCreate(a); go("holding"); hDraw(); sgProduce(it); return { ok: true, not: `Sinegöz Medya üretime başladı (${SG_TARZ[it.tarz]}). ${it.tarz === "animasyon" ? "Video kaydı sırasında ekran açık kalmalı." : it.tarz === "seedance" ? "Çekim prompt'ları hazırlanınca Dreamina'da üretmen gerekecek." : "Kurgulanacak videoları seçmen gerekecek."} Bitince Holding Onay Kutusu'na düşer; onaysız paylaşılmaz.` }; }),
+  T("sinegoz_video", "Tunçbilek Holding'in Sinegöz Medya şirketine video ürettirir: konu ve tarza göre metni ve platform açıklamalarını yazar, videoyu üretir (animasyon / Seedance / kendi videolarından Kesit kurgusu), bitince Holding Onay Kutusu'na koyar. Onaydan sonra YouTube, Instagram ve TikTok uygulamaları videoyla açılır. 'Sinegöz şu konuda video yapsın', 'YouTube/TikTok için video üret' gibi isteklerde kullan.", { konu: str("Videonun konusu, tüm ayrıntılarla"), tarz: str("Üretim tarzı", [...Object.keys(TitusAnim.STYLES), "seedance", "kendi"]), ton: str("Ton/tarz (esprili, samimi, dramatik…)"), format: str("Oran", ["9:16", "16:9", "1:1"]), sure: num("Süre sn (varsayılan 30)"), platformlar: { type: "array", items: { type: "string", enum: ["youtube", "instagram", "tiktok"] }, description: "Paylaşılacak platformlar (varsayılan üçü)" } }, ["konu"],
+    async a => { const it = sgCreate(a); go("holding"); hDraw(); sgProduce(it); return { ok: true, not: `Sinegöz Medya üretime başladı (${SG_TARZ[it.tarz]}). ${TitusAnim.STYLES[it.tarz] ? (it.tarz === "tanitim" ? "Yayın masasında fotoğraflarını seçmen gerekecek." : "Video kaydı sırasında ekran açık kalmalı.") : it.tarz === "seedance" ? "Çekim prompt'ları hazırlanınca Dreamina'da üretmen gerekecek." : "Kurgulanacak videoları seçmen gerekecek."} Bitince Holding Onay Kutusu'na düşer; onaysız paylaşılmaz.` }; }),
   T("sinegoz_durum", "Sinegöz Medya'daki videoların durumunu söyler (üretimde, onay bekleyen, paylaşılan).", {}, [], () => ({ videolar: sgAll().slice(0, 10).map(x => ({ baslik: (x.meta && x.meta.baslik) || x.konu.slice(0, 60), durum: SG_DUR[x.durum] || x.durum, paylasilan: Object.keys(x.paylasim || {}).map(p => SG_PLAT[p].ad) })) }))
 );
 Object.assign(ACT_TR, { sinegoz_video: "🎬 Sinegöz", sinegoz_durum: "🎬 Sinegöz durumu" });
