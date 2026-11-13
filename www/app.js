@@ -1965,9 +1965,44 @@ const bytesToB64 = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x800
 let OUT_CTX = null;
 function outCtx() { if (!OUT_CTX || OUT_CTX.state === "closed") OUT_CTX = new (window.AudioContext || window.webkitAudioContext)(); if (OUT_CTX.state === "suspended") OUT_CTX.resume(); return OUT_CTX; }
 function pcm16ToBuffer(ctx, u8, rate = 24000) {
-  const n = Math.floor(u8.length / 2), dv = new DataView(u8.buffer, u8.byteOffset, n * 2), buf = ctx.createBuffer(1, n, rate), ch = buf.getChannelData(0);
+  // WAV başlığıyla gelirse (RIFF) başlığı ses sanıp "cızırt" diye çalmamak için data bölümüne atla
+  if (u8.length > 44 && u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46) {
+    const hv = new DataView(u8.buffer, u8.byteOffset, u8.length); let o = 12;
+    while (o + 8 <= u8.length) { const id = String.fromCharCode(u8[o], u8[o + 1], u8[o + 2], u8[o + 3]), sz = hv.getUint32(o + 4, true); if (id === "fmt ") rate = hv.getUint32(o + 12, true) || rate; if (id === "data") { u8 = u8.subarray(o + 8, Math.min(u8.length, o + 8 + sz)); break; } o += 8 + sz + (sz & 1); }
+  }
+  const n = Math.floor(u8.length / 2), dv = new DataView(u8.buffer, u8.byteOffset, n * 2), buf = ctx.createBuffer(1, Math.max(1, n), rate), ch = buf.getChannelData(0);
   for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
   return buf;
+}
+/* TTS temizleyici: baştaki cızırtı/telsiz patlamasını ve sessizliği keser, DC + uğultuyu siler, yumuşak giriş/çıkış */
+function ttsCleanData(d, sr) {
+  const n = d.length; if (n < sr * 0.08) return { start: 0, end: n };
+  let mean = 0; for (let i = 0; i < n; i++) mean += d[i]; mean /= n;
+  const a = Math.exp(-2 * Math.PI * 70 / sr); let px = 0, py = 0;
+  for (let i = 0; i < n; i++) { const x = d[i] - mean; const y = a * (py + x - px); px = x; py = y; d[i] = y; }
+  const F = Math.max(1, Math.round(sr * 0.01)), nf = Math.floor(n / F), rms = new Float32Array(nf), zcr = new Float32Array(nf);
+  let peak = 0;
+  for (let k = 0; k < nf; k++) { let s = 0, z = 0; const o = k * F; for (let i = 0; i < F; i++) { const v = d[o + i]; s += v * v; if (i && (v >= 0) !== (d[o + i - 1] >= 0)) z++; } rms[k] = Math.sqrt(s / F); zcr[k] = z / F; if (rms[k] > peak) peak = rms[k]; }
+  if (!peak) return { start: 0, end: n };
+  const thr = Math.max(0.012, peak * 0.12), quiet = thr * 0.3, look = Math.min(nf - 3, Math.round(1.2 / 0.01));
+  let onset = -1;
+  for (let k = 0; k < look; k++) if (rms[k] > thr && rms[k + 1] > thr && rms[k + 2] > thr && (zcr[k] + zcr[k + 1] + zcr[k + 2]) / 3 < 0.22) { onset = k; break; }
+  let cutF = 0;
+  if (onset > 0) {
+    let noisy = false; for (let k = 0; k < onset; k++) if (rms[k] > quiet && zcr[k] > 0.25) { noisy = true; break; }
+    let gapEnd = -1, run = 0; for (let k = 0; k < onset; k++) { if (rms[k] < quiet) { run++; if (run >= 3) gapEnd = k + 1; } else run = 0; }
+    if (noisy) cutF = gapEnd > 0 ? gapEnd - 1 : Math.max(0, onset - 10); // cızırtı: son sessizlikten ya da sesli başlangıçtan 100 ms önce kes
+    else { let k = onset; while (k > 0 && rms[k - 1] > quiet) k--; cutF = Math.max(0, k - 4); } // yalnızca sessizlik: 40 ms pay bırak
+  }
+  let endF = nf; while (endF > cutF + 5 && rms[endF - 1] < quiet) endF--; endF = Math.min(nf, endF + 8);
+  const start = cutF * F, end = Math.min(n, endF * F), fi = Math.round(sr * (cutF > 0 ? 0.03 : 0.012)), fo = Math.round(sr * 0.025);
+  for (let i = 0; i < fi && start + i < end; i++) d[start + i] *= i / fi;
+  for (let i = 0; i < fo && end - 1 - i > start; i++) d[end - 1 - i] *= i / fo;
+  return { start, end };
+}
+function ttsClean(ctx, buf) {
+  try { const d = buf.getChannelData(0); const r = ttsCleanData(d, buf.sampleRate); if (r.end - r.start < buf.sampleRate * 0.05) return buf;
+    const out = ctx.createBuffer(1, r.end - r.start, buf.sampleRate); out.getChannelData(0).set(d.subarray(r.start, r.end)); return out; } catch { return buf; }
 }
 
 /* ================= 1) CANLI KONUŞMA (Gemini Live API) ================= */
@@ -2065,8 +2100,10 @@ class LiveSession {
   stopAudio() { for (const s of this.playing) { try { s.stop(); } catch {} } this.playing = []; this.nextT = 0; }
   play(b64) {
     const ctx = outCtx(); const buf = pcm16ToBuffer(ctx, b64ToBytes(b64), 24000);
+    const fresh = this.nextT < ctx.currentTime + 0.01; // yeni cümlenin ilk parçası
+    if (fresh) { const d = buf.getChannelData(0), fi = Math.min(d.length, Math.round(buf.sampleRate * 0.015)); for (let i = 0; i < fi; i++) d[i] *= i / fi; }
     const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination);
-    const t = Math.max(ctx.currentTime + 0.02, this.nextT); s.start(t); this.nextT = t + buf.duration;
+    const t = Math.max(ctx.currentTime + (fresh ? 0.09 : 0.02), this.nextT); s.start(t); this.nextT = t + buf.duration; // küçük tampon: parçalar arası kopma ve telsiz etkisi olmasın
     this.playing.push(s); s.onended = () => { this.playing = this.playing.filter(x => x !== s); };
     setMode("speak", "Canlı · konuşuyor");
   }
@@ -2150,7 +2187,7 @@ async function geminiTtsBuffer(text) {
       const part = (((j.candidates || [])[0] || {}).content || {}).parts?.find(p => p.inlineData);
       if (!part) throw new Error("ses yok");
       const rate = Number((part.inlineData.mimeType.match(/rate=(\d+)/) || [])[1] || 24000);
-      const buf = pcm16ToBuffer(outCtx(), b64ToBytes(part.inlineData.data), rate);
+      const buf = ttsClean(outCtx(), pcm16ToBuffer(outCtx(), b64ToBytes(part.inlineData.data), rate)); // baştaki cızırtı/sessizlik kesilir
       if (SET.ttsModel !== models[i]) { SET.ttsModel = models[i]; saveSet(); }
       if (text.length < 80) { TTS_CACHE.set(key, buf); if (TTS_CACHE.size > 40) TTS_CACHE.delete(TTS_CACHE.keys().next().value); }
       return buf;
@@ -3887,7 +3924,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.4", APP_RUN = "__RUN__";
+const APP_VER = "4.5", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
