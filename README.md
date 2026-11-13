@@ -1,5 +1,7 @@
 # T.I.T.U.S. — Burak'ın Kişisel Asistanı
 
+**v4.7:** 3D animasyon tarzı (three.js; kodla kurulan 3D karakterler, dekorlar, ışık-gölge, yürüme/oturma/yatma/bayılma, dudak senkronu). Karakterler artık birbirine benzemiyor: yaş (çocuk/genç/yetişkin/yaşlı), cinsiyet, yüz şekli, göz, burun, kaş, çil, ruj, yeni saç ve kıyafet tipleri; çakışan görünümleri Titus kendisi ayırır. Stop-motion kil yeniden yazıldı: hamur dokusu ve gölgeleri, kare kare titreşim, alan derinliği, ışık oynaması; kâğıt kesik tarzına beyaz kesim kenarı ve gölge.
+
 **v4.6:** 24 video tarzı: Stüdyo → Animasyon ve Sinegöz Medya'da "Tarz" seçimi (karikatür, kinetik tipografi, belgesel, Karagöz, sessiz film, çizgi roman, beyaz tahta, bilgi grafiği, oyuncu tanıtım (kendi fotoğraflarınla), kâğıt kesik, kil, piksel, minyatür, sulu boya, neon, korku, haber bülteni, mesajlaşma, ses dalgası, monolog, harita, geri sayım, quiz, masal). Belgesel sahne görselleri ücretsiz üretilir ve önbelleğe alınır; yeni müzikler: piyano, 8-bit, elektronik, müzik kutusu, haber, lo-fi.
 
 **v4.5:** Seslendirme temizleyici: Gemini sesinin başındaki cızırtı/telsiz patlaması ve sessizlik otomatik kesilir, uğultu ve DC silinir, yumuşak giriş; WAV başlığı ses gibi çalınmaz; canlı sohbette cümle başlarına küçük tampon ve yumuşak giriş.

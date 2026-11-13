@@ -3924,7 +3924,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.6", APP_RUN = "__RUN__";
+const APP_VER = "4.7", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6494,7 +6494,7 @@ function anSchema() {
   const C = TitusAnim.CAT;
   return `SENARYO DİLİ (JSON):
 {"baslik":"","format":"16:9|9:16|1:1","renk":{"vurgu":"#hex"},"muzik":"barok|neseli|gerilim|duygusal|yok",
- "karakterler":[{"id":"kisa_ascii","ad":"Görünen ad","gorunum":{"ten":"acik|orta|esmer|koyu","sac":"${C.sac.join("|")}","sac_renk":"#hex","sapka":"${C.sapka.join("|")}","sapka_renk":"#hex","kiyafet":"${C.kiyafet.join("|")}","kiyafet_renk":"#hex","pantolon_renk":"#hex","yaka":"${C.yaka.join("|")}","vucut":"${C.vucut.join("|")}","boy":0.8-1.15,"gozluk":false,"biyik":false,"sakal":false,"elinde":"(eşya adı, 'tut' pozunda elde görünür)"}}],
+ "karakterler":[{"id":"kisa_ascii","ad":"Görünen ad","gorunum":{"ten":"acik|orta|esmer|koyu","sac":"${C.sac.join("|")}","sac_renk":"#hex","sapka":"${C.sapka.join("|")}","sapka_renk":"#hex","kiyafet":"${C.kiyafet.join("|")}","kiyafet_renk":"#hex","pantolon_renk":"#hex","yaka":"${C.yaka.join("|")}","vucut":"${C.vucut.join("|")}","boy":0.6-1.2,"yas":"${C.yas.join("|")}","cinsiyet":"kadin|erkek","yuz":"${C.yuz.join("|")}","goz":"${C.goz.join("|")}","burun":"${C.burun.join("|")}","kas":"${C.kas.join("|")}","cil":false,"ruj":false,"gozluk":false,"biyik":false,"sakal":false,"elinde":"(eşya adı, 'tut' pozunda elde görünür)"}}],
  "sahneler":[{"sure":3-8,"gecis":"${C.gecis.join("|")}","arka":{"tip":"${C.arka.join("|")}","renk":"#hex(duvar/gökyüzü)","zemin":"#hex"},
    "konusan":"karakter id | anlatici","ses":"Türkçe seslendirme (konuşan karakterin ağzı otomatik oynar)",
    "esyalar":[{"ad":"${C.esya.join("|")}","x":0-1,"y":0,"olcek":0.6-1.4,"renk":"#hex"}],
@@ -6505,6 +6505,7 @@ function anSchema() {
 NOTLAR: x yatay konum (0 sol, 1 sağ), karakterler zeminde durur. "yatakta" pozu için aynı x'e "yatak" eşyası koy (yorgan önden örter); "yat" yatağa uzanır. "gir" kadraj dışından x'e yürür, "cik" kadrajdan çıkar. "yon":-1 sola bakar. Eylem süreleri sahne içinde kalmalı. "kart" stili tam ekran başlık kartıdır.`;
 }
 const AN_STIL_TARIF = {
+  "3d": "3D animasyon (oyuncak/çizgi film gibi kodla kurulan 3D karakterler ve dekor). Karakterli; her karaktere ayrıntılı görünüm (yas, cinsiyet, yuz, goz, burun, sac, renkler) ver; eylemler bol (yuru, kos, zipla, el_salla, bayil, otur, yatakta). Arka: oda, sokak, park, sahne, tiyatro, gece, ofis, studyo, neon, duz. Eşyaları kullan (masa, sandalye, yatak, pencere, kapi, agac, sokak_lambasi). Kamera yakınlaşmalarını duygusal anlarda kullan.",
   karikatur: "Karakterli komik karikatür. Her sahnede bir komik vuruş: önce kurulum (baslik ya da balon), 1-2 sn sonra 'cip' ile espri. Karakterlere eylem ver.",
   kinetik: "KARAKTER YOK. Her sahne: arka {tip:'duz', renk koyu ya da canlı}, 'kinetik':{'vurgu':[1-2 vurgulanacak kelime]}, 'ses' zorunlu (ekrandaki kelimeler seslendirmeden gelir), 4-7 sn. Kısa, vurucu cümleler.",
   belgesel: "KARAKTER YOK. Her sahne: 'gorsel':{'prompt':'İngilizce, fotoğraf gerçekliğinde ayrıntılı sinematik sahne tarifi (kişi yüzü yakın plan değil)','hareket':'yaklas|uzaklas|sola|saga'}, anlatıcı 'ses', gerekirse 'alt' stilinde yer/tarih yazısı. 5-8 sn.",
@@ -6554,11 +6555,29 @@ async function anMedia(p, { gen = true } = {}) {
   }
   anStat(""); return m;
 }
+// İki karakter aynı görünmesin: saç, yüz ve kıyafet rengi çakışırsa ikinciyi değiştir
+function anDistinct(list) {
+  const C = TitusAnim.CAT, PAL = ["#C0392B", "#2E86C1", "#27AE60", "#8E44AD", "#E67E22", "#16A085", "#D35400", "#2C3E50", "#B7950B", "#7B241C"], HAIR = ["#2B2420", "#6B4426", "#B5793F", "#D9B26F", "#7A2E1E", "#1E1A17"];
+  const seen = []; const sig = g => [g.sac || "kisa", (g.sac_renk || "").toLowerCase(), (g.kiyafet_renk || "").toLowerCase(), g.yuz || "", g.sapka || "yok"].join("|");
+  list.forEach((c, i) => {
+    const g = c.gorunum = Object.assign({}, c.gorunum || {});
+    for (let tries = 0; tries < 4; tries++) {
+      const clash = seen.find(o => (o.sac || "kisa") === (g.sac || "kisa") && (o.kiyafet_renk || "").toLowerCase() === (g.kiyafet_renk || "").toLowerCase() && (o.sapka || "yok") === (g.sapka || "yok"));
+      if (!clash) break;
+      g.kiyafet_renk = PAL.find(p => !seen.some(o => (o.kiyafet_renk || "").toLowerCase() === p.toLowerCase())) || PAL[(i * 3) % PAL.length];
+      if ((clash.sac_renk || "") === (g.sac_renk || "")) g.sac_renk = HAIR[(i * 2 + tries) % HAIR.length];
+      if ((clash.yuz || "") === (g.yuz || "")) g.yuz = C.yuz[(C.yuz.indexOf(clash.yuz) + 1 + i) % C.yuz.length];
+    }
+    seen.push(g);
+  });
+  return list;
+}
 function anClean(j, stil) {
   const C = TitusAnim.CAT; const sp = { baslik: String(j.baslik || "Animasyon"), format: ["16:9", "9:16", "1:1"].includes(j.format) ? j.format : "16:9", renk: { vurgu: /^#[0-9a-f]{6}$/i.test((j.renk || {}).vurgu || "") ? j.renk.vurgu : "#E0A526" }, muzik: ["barok", "neseli", "gerilim", "duygusal", "piyano", "cip", "elektronik", "masal", "haber", "lofi", "yok"].includes(j.muzik) ? j.muzik : ((TitusAnim.STYLES[stil || j.stil] || {}).muzik || "barok"), stil: TitusAnim.STYLES[j.stil] ? j.stil : (TitusAnim.STYLES[stil] ? stil : "karikatur"), karakterler: [], sahneler: [] };
   const ids = new Set();
   for (const c of (j.karakterler || []).slice(0, 8)) { const id = String(c.id || c.ad || "k" + ids.size).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 20) || "k" + ids.size; if (ids.has(id)) continue; ids.add(id); sp.karakterler.push({ id, ad: String(c.ad || id), gorunum: c.gorunum || {} }); }
   const remap = {}; (j.karakterler || []).forEach((c, i) => { if (sp.karakterler[i]) remap[c.id] = sp.karakterler[i].id; });
+  anDistinct(sp.karakterler);
   for (const s of (j.sahneler || []).slice(0, 20)) {
     const sc = { sure: Math.max(2, Math.min(12, Number(s.sure) || 4)), gecis: C.gecis.includes(s.gecis) ? s.gecis : "solma", arka: s.arka || { tip: "oda" }, konusan: remap[s.konusan] || s.konusan || "", ses: String(s.ses || "").slice(0, 220),
       esyalar: (s.esyalar || []).filter(e => C.esya.includes(e.ad)).slice(0, 10), oyuncular: (s.oyuncular || []).map(o => Object.assign({}, o, { id: remap[o.id] || o.id })).filter(o => ids.has(o.id)).slice(0, 5),
@@ -6588,7 +6607,8 @@ YÖNETMEN KURALLARI:
 - Karakterler arası x mesafesi en az 0.22; kimse yazının ya da balonun altında kalmasın; "cip" ve "balon" aynı anda üst üste gelmesin.
 - Kamerayı ölçülü kullan: duygusal ya da komik anda yavaş yakınlaşma (zoom 1.15-1.4).
 - "ses": o sahnenin seslendirmesi, sahne süresine sığsın (saniyede ~2.3 kelime). Konuşan karakterin id'si ya da "anlatici".
-- Gerçek ünlü, marka ya da telifli karakter yok. Karakter görünümleri birbirinden ayırt edilsin (renk, şapka, saç).
+- Gerçek ünlü, marka ya da telifli karakter yok.
+- KARAKTERLER BİRBİRİNE BENZEMESİN: her karaktere yas, cinsiyet, yuz, goz, burun, kas, sac, sac_renk, kiyafet ve kiyafet_renk yaz; iki karakter aynı saç + aynı yüz + aynı kıyafet rengini paylaşmasın. Çocuklar "yas":"cocuk", yaşlılar "yasli" (saçı ağarmış). Kişiliği görünüme yansıt (ör. sinsi → "badem" göz, "kanca" burun, "catik" kaş; neşeli → "iri" göz, "yuvarlak" yüz).
 SADECE senaryo JSON'unu döndür.`, 12000);
   const sp = anClean(j, stil); sp.stil = stil; sp.format = format || sp.format; if (muzik) sp.muzik = muzik;
   for (const c of sp.karakterler) cast[c.ad.toLocaleLowerCase("tr")] = c.gorunum; S.animCast = cast;
