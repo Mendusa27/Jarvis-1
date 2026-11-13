@@ -3887,7 +3887,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.3", APP_RUN = "__RUN__";
+const APP_VER = "4.4", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -5735,9 +5735,10 @@ function hClean(list, ag, kaynak) {
     if (e.tur === "basvuru") return { ...b, project: hS(e.project, 160), role: hS(e.role, 160), contact: hS(e.contact, 160), link: /^https?:\/\//i.test(e.link || "") ? hS(e.link, 600) : "", to: mail(e.to), subject: hS(e.subject, 200), body: hS(e.body) };
     if (e.tur === "paylasim") return { ...b, platform: hS(e.platform || "Instagram", 40), metin: hS(e.metin) };
     if (e.tur === "gorev") return { ...b, liste: (Array.isArray(e.liste) ? e.liste : []).map(x => hS(x, 200)).filter(Boolean).slice(0, 8) };
+    if (e.tur === "video") return { ...b, konu: hS(e.konu, 2000), tarz: ["animasyon", "seedance", "kendi"].includes(e.tarz) ? e.tarz : "animasyon", ton: hS(e.ton, 200), format: ["9:16", "16:9", "1:1"].includes(e.format) ? e.format : "9:16", sure: Math.max(10, Math.min(120, Number(e.sure) || 30)), platformlar: (Array.isArray(e.platformlar) ? e.platformlar : ["youtube", "instagram", "tiktok"]).filter(p => ["youtube", "instagram", "tiktok"].includes(p)) };
     if (e.tur === "kayit") return { ...b, kayitlar: (Array.isArray(e.kayitlar) ? e.kayitlar : []).map(k => ({ tip: /gelir/i.test(k && k.tip) ? "gelir" : "gider", tutar: Math.abs(Number(k && k.tutar)) || 0, aciklama: hS(k && k.aciklama, 200) })).filter(k => k.tutar > 0).slice(0, 10) };
     return b;
-  }).filter(e => (e.tur === "gorev" ? e.liste.length : e.tur === "kayit" ? e.kayitlar.length : e.tur === "paylasim" ? e.metin : e.body));
+  }).filter(e => (e.tur === "gorev" ? e.liste.length : e.tur === "kayit" ? e.kayitlar.length : e.tur === "paylasim" ? e.metin : e.tur === "video" ? e.konu : e.body));
 }
 
 /* ---------- bir ajanı çalıştır ---------- */
@@ -5804,6 +5805,8 @@ async function hExec(job, si, ei) {
       if (e.tur === "basvuru" && acc) { A.addApplication({ project: e.project || job.ozet || "Başvuru", role: e.role, contact: e.contact, status: "başvuruldu" }); e.sonuc += " Başvuru takibine eklendi."; }
     } else if (e.tur === "paylasim") {
       e.sonuc = (await hCopy(e.metin)) ? `Metin kopyalandı. ${e.platform} paylaşımını sen yaparsın.` : "Kopyalanamadı; metni elle seçip kopyala.";
+    } else if (e.tur === "video") {
+      const it = sgCreate(e); sgProduce(it); e.sonuc = `Sinegöz Medya'da üretime başladı (${SG_TARZ[it.tarz]}). Video bitince yayın onayına düşecek.`;
     } else if (e.tur === "kayit") {
       e.kayitlar.forEach(k => XL("hledger").push({ id: uid(), date: today(), ...k }));
       e.sonuc = e.kayitlar.length + " kayıt holding defterine işlendi.";
@@ -5825,10 +5828,11 @@ function hAsk(label, ph = "") {
 const hPre = t => `<div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45;background:rgba(0,0,0,.25);border-radius:8px;padding:10px;margin-top:8px">${esc(t)}</div>`;
 function hEyHTML(x) {
   const { j, s, si, e, ei } = x; const key = `${j.id}:${si}:${ei}`;
-  const govde = e.tur === "paylasim" ? `<div class="meta">${esc(e.platform)}</div>${hPre(e.metin)}`
+  const govde = e.tur === "video" ? `<div class="meta">${esc(SG_TARZ[e.tarz] || e.tarz)} · ${esc(e.format)} · ~${e.sure} sn · ${esc((e.platformlar || []).join(", "))}${e.ton ? " · " + esc(e.ton) : ""}</div>${hPre(e.konu)}`
+    : e.tur === "paylasim" ? `<div class="meta">${esc(e.platform)}</div>${hPre(e.metin)}`
     : e.tur === "kayit" ? hPre(e.kayitlar.map(k => `${k.tip === "gelir" ? "+" : "−"} ${money(k.tutar)} · ${k.aciklama}`).join("\n"))
     : `<div class="meta">${e.tur === "basvuru" ? esc([e.project, e.role, e.contact].filter(Boolean).join(" · ")) + "<br>" : ""}Alıcı: ${e.to ? esc(e.to) : "<b>adres bulunamadı (taslak olur)</b>"}<br>Konu: ${esc(e.subject)}</div>${hPre(e.body)}`;
-  const yes = e.tur === "paylasim" ? "Onayla ve kopyala" : e.tur === "kayit" ? "Onayla ve kaydet" : e.to ? "Onayla ve gönder" : "Onayla (taslak oluştur)";
+  const yes = e.tur === "video" ? "Onayla ve üret" : e.tur === "paylasim" ? "Onayla ve kopyala" : e.tur === "kayit" ? "Onayla ve kaydet" : e.to ? "Onayla ve gönder" : "Onayla (taslak oluştur)";
   return `<div class="card" style="border-left:3px solid var(--gold)"><h3>${H_EY[e.tur]} · ${esc(H_AG[s.ajan].ad)}</h3>${govde}${e.durum === "hata" ? `<div class="hint err">${esc(e.sonuc)}</div>` : ""}
     <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-hok="${key}" ${e.is ? "disabled" : ""}>${e.is ? "⏳" : yes}</button><button class="btn ghost sm" data-hfix="${key}">Düzelt</button><button class="btn ghost sm" data-hno="${key}">Reddet</button>${e.link ? `<button class="btn ghost sm" data-open="${esc(e.link)}">İlanı aç</button>` : ""}</div></div>`;
 }
@@ -5853,7 +5857,7 @@ function hView() {
         <div class="row" style="flex-wrap:wrap"><button class="btn" id="hGo">İşi ver</button><button class="btn ghost" id="hScan">🎬 Bana iş tara</button></div>
         <label class="toggle" style="margin-top:8px"><span>Her gün otomatik iş taraması</span><input type="checkbox" id="hAuto" style="width:auto;flex:none"></label></div></div>
     <div id="hOnay"></div><div id="hIsler"></div>
-    <div class="card"><details><summary style="cursor:pointer"><b>KADRO</b> <span class="meta">11 ajan</span></summary>
+    <div class="card"><details><summary style="cursor:pointer"><b>KADRO</b> <span class="meta">12 ajan</span></summary>
       <div class="item"><div class="t"><div class="h">Genel Müdür <span class="meta" style="font-family:monospace">YÖN-01</span></div><div class="meta">İşi böler, doğru ajana dağıtır.</div></div></div>
       ${Object.values(H_AG).map(a => `<div class="item"><div class="t"><div class="h">${a.ad} <span class="meta" style="font-family:monospace">${a.kod}</span></div><div class="meta">${a.rol}</div></div></div>`).join("")}
       <div class="hint">APEX bu ekibe bağlı değil; ajanlar ona iş veremez.</div></details></div></div>`;
@@ -6335,7 +6339,7 @@ ${notes ? "BURAK'IN KURGU NOTLARI (her zaman uygula, talimatla çelişirse talim
 ${ex ? "ÖNCEKİ KURGULARDAN ÖRNEKLER:\n" + ex : ""}
 JSON: {"ozet":"Türkçe 1-2 cümle: ne yaptın","ops":[...]}`, 8000);
 }
-async function ksRun({ talimat, files = [], disaAktar = true, devam = null, res = 1920 }) {
+async function ksRun({ talimat, files = [], disaAktar = true, devam = null, res = 1920, kaydet = true }) {
   if (KS.busy) throw new Error("Titus zaten kurguluyor");
   if (!talimat) throw new Error("Nasıl bir kurgu istediğini yaz");
   const cont = devam ?? !files.length;
@@ -6348,10 +6352,10 @@ async function ksRun({ talimat, files = [], disaAktar = true, devam = null, res 
     ksStat("Kesit'te kurguluyorum");
     const r = await api.run(ops, files, { onStep: s => ksStat("Kurgu: " + s), onProgress: p => ksStat(`Dışa aktarılıyor %${Math.round(p * 100)}`), export: disaAktar ? res : null });
     let kayit = null;
-    if (r.blob) { ksStat("Kaydediliyor"); kayit = await saveFile(r.blob, fname(r.name || "kesit", r.ext), "movies"); }
+    if (r.blob && kaydet) { ksStat("Kaydediliyor"); kayit = await saveFile(r.blob, fname(r.name || "kesit", r.ext), "movies"); }
     KS.last = { istek: talimat, ozet: plan.ozet || "", ops, hatalar: r.errors || [], yer: kayit && kayit.yer, at: localISO(new Date()) };
     ksLog().push({ istek: talimat.slice(0, 300), ops: ops.slice(0, 40), at: KS.last.at }); S.kesitLog = ksLog().slice(-12); save();
-    return { ok: true, ozet: plan.ozet, komut: ops.length, hatalar: r.errors, yer: kayit && kayit.yer, sure: r.dur || (r.state && r.state.total) };
+    return { ok: true, ozet: plan.ozet, komut: ops.length, hatalar: r.errors, yer: kayit && kayit.yer, uri: kayit && kayit.uri, sure: r.dur || (r.state && r.state.total), blob: kaydet ? undefined : r.blob, ext: r.ext };
   } finally { ksStat(""); if (CUR.studio === "kesit") renderSec("studio"); }
 }
 async function ksExportNow(res = 1920) {
@@ -6623,6 +6627,181 @@ TOOLS.push(
 Object.assign(ACT_TR, { animasyon_yap: "🎭 animasyon", animasyon_degistir: "🎭 düzenle" });
 TOOL_GROUPS.push([/animasyon|karikatür|çizgi film|canlandır|teaser|kısa film|hikâye.*video|hikaye.*video/, ["animasyon_yap", "animasyon_degistir", "seedance_video"]]);
 FN.anim = { input: "Hikâyen (boş bırakırsan Animasyon stüdyosu açılır)", run: async g => { go("studio"); openSec("studio", "anim"); if (!g) return { metin: "Animasyon stüdyosu açıldı." }; const p = await anPlan({ hikaye: g }); let k = null; try { k = await anCheck(p); } catch {} AN.open = p.id; AN.t = 0; renderSec("studio"); return { ok: true, metin: `"${p.title}" hazır: ${p.spec.sahneler.length} sahne${k && k.puan ? `, kontrol puanı ${k.puan}/10` : ""}. Önizleyip 'Videoyu üret' ile kaydedebilirsin.` }; } };
+
+/* ================= SİNEGÖZ MEDYA (v4.4) — Tunçbilek Holding alt şirketi =================
+   Konu + tarz → Titus metni ve platform açıklamalarını yazar → videoyu üretir (Animasyon stüdyosu / Seedance / Kesit)
+   → Onay Kutusu'na düşer → Burak onaylayınca her platform için açıklamayı kopyalayıp YouTube / Instagram / TikTok
+   uygulamasını videoyla açar; son "Paylaş" dokunuşu Burak'ındır. Onaysız hiçbir şey paylaşılmaz. */
+const SG = { blobs: {}, busy: new Set() };
+const sgAll = () => (S.sinegoz = S.sinegoz || []);
+const sgGet = id => sgAll().find(x => x.id === id);
+const SG_PLAT = {
+  youtube: { ad: "YouTube", ic: "▶", pkg: "com.google.android.youtube" },
+  instagram: { ad: "Instagram", ic: "📸", pkg: "com.instagram.android" },
+  tiktok: { ad: "TikTok", ic: "🎵", pkg: "com.zhiliaoapp.musically,com.ss.android.ugc.trill" }
+};
+const SG_TARZ = { animasyon: "Karikatür animasyon (Titus çizer)", seedance: "Gerçekçi video (Seedance / Dreamina)", kendi: "Kendi videolarım (Kesit kurgular)" };
+const SG_DUR = { plan: "📝 Yazılıyor", uretim: "⏳ Üretiliyor", dreamina: "🎬 Dreamina'da üretim bekliyor", onay: "🟡 Onay bekliyor", onaylandi: "✅ Onaylandı", reddedildi: "✗ Reddedildi", hata: "✗ Hata" };
+function sgStat(it, t) { it.adim = t || ""; const e = document.querySelector(`[data-sgstat="${it.id}"]`); if (e) e.textContent = t ? "⏳ " + t : ""; }
+async function sgMeta({ konu, tarz, ton, format, sure, platformlar }) {
+  const j = await seedJSON(`Sen Tunçbilek Holding'in Sinegöz Medya şirketinin içerik yönetmenisin. ${userCtx()}
+KONU: """${konu}"""
+TARZ: ${SG_TARZ[tarz] || tarz}${ton ? " · TON: " + ton : ""} · FORMAT: ${format} · SÜRE: ~${sure} sn · PLATFORMLAR: ${platformlar.join(", ")}
+Görevin: 1) Videonun hikâyesini/senaryo özünü yaz (Türkçe, sahneleri, karakterleri ve esprileri anlatan 6-12 cümle; ilk 2 saniyede merak uyandıran bir kanca ile başlasın). 2) Her platform için paylaşım metni yaz.
+Kurallar: Gerçek kişi, marka ya da telifli karakter kullanma; yanıltıcı ya da tık tuzağı başlık yazma. Etiketler Türkçe ağırlıklı ve konuyla ilgili olsun.
+JSON: {"baslik":"kısa iç başlık","hikaye":"…","youtube":{"baslik":"en fazla 90 karakter${format === "9:16" && sure <= 60 ? ", sonuna #Shorts" : ""}","aciklama":"2-4 cümle + 3-6 etiket","etiketler":["…"]},"instagram":{"metin":"çekici açıklama + 6-10 hashtag"},"tiktok":{"metin":"kısa açıklama + 3-6 hashtag"}}`, 4000);
+  return { baslik: hS(j.baslik || konu, 120), hikaye: hS(j.hikaye || konu, 3000), youtube: { baslik: hS(j.youtube && j.youtube.baslik, 100), aciklama: hS(j.youtube && j.youtube.aciklama, 4000), etiketler: ((j.youtube && j.youtube.etiketler) || []).map(x => hS(x, 40)).slice(0, 15) }, instagram: { metin: hS(j.instagram && j.instagram.metin, 2100) }, tiktok: { metin: hS(j.tiktok && j.tiktok.metin, 2100) } };
+}
+function sgCaption(it, p) {
+  const m = it.meta || {};
+  if (p === "youtube") return [m.youtube && m.youtube.baslik, "", m.youtube && m.youtube.aciklama, (m.youtube && m.youtube.etiketler || []).length ? "\n" + m.youtube.etiketler.map(t => "#" + t.replace(/^#/, "").replace(/\s+/g, "")).join(" ") : ""].filter(x => x !== undefined).join("\n").trim();
+  return ((m[p] && m[p].metin) || "").trim();
+}
+async function sgThumbFromBlob(blob) {
+  try {
+    const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.src = URL.createObjectURL(blob);
+    await new Promise((r, j) => { v.onloadeddata = r; v.onerror = j; setTimeout(r, 4000); }); v.currentTime = Math.min(2, (v.duration || 4) / 3); await new Promise(r => { v.onseeked = r; setTimeout(r, 2500); });
+    const c = document.createElement("canvas"); const k = 320 / Math.max(v.videoWidth || 320, v.videoHeight || 320); c.width = Math.round((v.videoWidth || 320) * k); c.height = Math.round((v.videoHeight || 180) * k); c.getContext("2d").drawImage(v, 0, 0, c.width, c.height); URL.revokeObjectURL(v.src); return c.toDataURL("image/jpeg", 0.65);
+  } catch { return ""; }
+}
+async function sgSetVideo(it, blob, ext) {
+  sgStat(it, "Kaydediliyor"); const f = await saveFile(blob, fname("Sinegoz-" + (it.meta.baslik || "video"), ext || "mp4"), "movies");
+  SG.blobs[it.id] = blob; it.video = { uri: f.uri || "", yer: f.yer, mime: blob.type || "video/mp4", boyut: blob.size }; it.thumb = await sgThumbFromBlob(blob);
+  it.durum = "onay"; sgStat(it, ""); save(); hDraw(); notifyNow("Sinegöz Medya", `"${it.meta.baslik}" hazır, onayını bekliyor.`);
+}
+async function sgProduce(it) {
+  if (SG.busy.has(it.id)) return; SG.busy.add(it.id); it.hata = "";
+  try {
+    if (!it.meta) { it.durum = "plan"; sgStat(it, "Hikâye ve paylaşım metinleri yazılıyor"); hDraw(); it.meta = await sgMeta(it); save(); }
+    it.durum = "uretim"; hDraw();
+    if (it.tarz === "animasyon") {
+      sgStat(it, "Animasyon senaryosu yazılıyor"); const p = await anPlan({ hikaye: it.meta.hikaye, format: it.format, sure: it.sure, muzik: it.muzik || "" }); it.animId = p.id;
+      sgStat(it, "Titus kareleri kontrol ediyor"); try { await anCheck(p); } catch {}
+      const r = await anRecord(p, { onP: x => sgStat(it, `Video kaydediliyor %${Math.round(x * 100)} (ekranı açık tut)`) });
+      await sgSetVideo(it, r.blob, r.ext);
+    } else if (it.tarz === "seedance") {
+      sgStat(it, "Seedance çekim planı yazılıyor"); const p = await seedPlan({ hikaye: it.meta.hikaye, stil: "gercekci", format: it.format, sure: it.sure, ad: it.meta.baslik }); it.seedId = p.id;
+      it.durum = "dreamina"; sgStat(it, ""); save(); notifyNow("Sinegöz Medya", `"${it.meta.baslik}": çekimler Dreamina'da üretilmeyi bekliyor.`);
+    } else {
+      if (!it.files || !it.files.length) { it.durum = "uretim"; sgStat(it, "Kurgulanacak videoları seç"); save(); return; }
+      sgStat(it, "Kesit kurguluyor"); const r = await ksRun({ talimat: `${it.meta.hikaye}\nFormat ${it.format}, yaklaşık ${it.sure} saniye, sosyal medya için ilk saniyede dikkat çekici.${it.talimat ? "\nBurak'ın notu: " + it.talimat : ""}`, files: it.files, disaAktar: true, devam: false, kaydet: false });
+      ksOverlay(false); if (!r.blob) throw new Error("Kesit dışa aktaramadı"); await sgSetVideo(it, r.blob, r.ext);
+    }
+  } catch (e) { it.durum = "hata"; it.hata = friendlyErr(e); sgStat(it, ""); toast("✗ Sinegöz: " + it.hata, 6000); }
+  finally { SG.busy.delete(it.id); save(); hDraw(); }
+}
+function sgCreate(o) {
+  const it = { id: uid(), at: Date.now(), konu: hS(o.konu, 2000), tarz: SG_TARZ[o.tarz] ? o.tarz : "animasyon", ton: hS(o.ton || "", 200), format: ["9:16", "16:9", "1:1"].includes(o.format) ? o.format : "9:16", sure: Math.max(10, Math.min(120, Number(o.sure) || 30)), muzik: o.muzik || "", platformlar: (o.platformlar || ["youtube", "instagram", "tiktok"]).filter(p => SG_PLAT[p]), talimat: hS(o.talimat || "", 800), files: o.files || null, durum: "plan", paylasim: {} };
+  if (!it.platformlar.length) it.platformlar = ["youtube", "instagram", "tiktok"];
+  const l = sgAll(); l.unshift(it); if (l.length > 25) l.length = 25; save(); return it;
+}
+async function sgShare(it, p) {
+  const P = SG_PLAT[p]; if (!it.video || !it.video.uri) { toast("Video dosyası telefonda bulunamadı"); return; }
+  const cap = sgCaption(it, p); await hCopy(cap);
+  if (!Jarvis) { toast(`${P.ad} metni kopyalandı (paylaşım telefonda çalışır)`); return; }
+  const r = await Jarvis.share({ uri: it.video.uri, mime: it.video.mime || "video/mp4", text: cap, pkg: P.pkg });
+  it.paylasim[p] = { at: Date.now(), app: r && r.app }; save(); hDraw();
+  toast(r && r.app === "secici" ? `${P.ad} yüklü değil; seçiciden uygulamayı seç. Metin kopyalandı.` : `✓ ${P.ad} açıldı. Açıklama kopyalandı: yapıştır ve Paylaş'a bas.`, 6000);
+}
+
+/* ---------- ekran parçaları ---------- */
+function sgCapHTML(it) {
+  return it.platformlar.map(p => `<details style="margin-top:6px"><summary class="meta" style="cursor:pointer">${SG_PLAT[p].ic} ${SG_PLAT[p].ad} metni</summary>${hPre(sgCaption(it, p) || "(boş)")}</details>`).join("");
+}
+function sgThumbHTML(it) { return it.thumb ? `<img src="${it.thumb}" data-sgplay="${it.id}" style="max-width:${it.format === "9:16" ? 140 : 260}px;border-radius:10px;margin-top:8px;cursor:pointer;display:block" alt="Video önizleme">` : ""; }
+function sgOnayHTML(it) {
+  return `<div class="card" style="border-left:3px solid var(--gold)"><h3>🎬 Video · Sinegöz Medya</h3><div class="meta">${esc(it.meta.baslik)} · ${esc(SG_TARZ[it.tarz])} · ${esc(it.format)}</div>${sgThumbHTML(it)}
+    <div class="hint">${esc(it.video && it.video.yer ? "Dosya: " + it.video.yer : "")}</div>${sgCapHTML(it)}
+    <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-sgok="${it.id}">Onayla</button><button class="btn ghost sm" data-sgplay="${it.id}">▶ İzle</button><button class="btn ghost sm" data-sgfix="${it.id}">Düzelt</button><button class="btn ghost sm" data-sgno="${it.id}">Reddet</button></div></div>`;
+}
+function sgItemHTML(it) {
+  const run = SG.busy.has(it.id);
+  const share = it.durum === "onaylandi" ? `<div class="row" style="margin-top:8px;flex-wrap:wrap">${it.platformlar.map(p => `<button class="btn ${it.paylasim[p] ? "ghost" : ""} sm" data-sgshare="${it.id}:${p}">${SG_PLAT[p].ic} ${SG_PLAT[p].ad}${it.paylasim[p] ? " ✓" : ""}</button>`).join("")}</div><div class="hint">Düğme açıklamayı kopyalar ve uygulamayı videoyla açar; yapıştırıp Paylaş'a bas.${it.tarz === "seedance" ? " Gerçekçi yapay zekâ videosu olduğu için uygulamadaki 'Yapay zekâ ile oluşturuldu' etiketini aç." : ""}</div>` : "";
+  const dream = it.durum === "dreamina" ? `<div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-sgseed="${it.id}">🎬 Seedance çekimlerini aç</button><button class="btn ghost sm" data-sgadd="${it.id}">📎 Bitmiş videoyu ekle</button></div>` : "";
+  const pick = it.tarz === "kendi" && it.durum === "uretim" && !run ? `<div class="row" style="margin-top:8px"><button class="btn sm" data-sgfiles="${it.id}">📎 Videoları seç ve kurgula</button></div>` : "";
+  return `<div class="item" style="align-items:flex-start"><div class="ic">🎬</div><div class="t"><div class="h">${esc((it.meta && it.meta.baslik) || it.konu.slice(0, 70))}</div>
+    <div class="meta">${SG_DUR[it.durum] || it.durum} · ${esc(SG_TARZ[it.tarz])} · ${it.platformlar.map(p => SG_PLAT[p].ad).join(", ")}</div>
+    <div class="hint" data-sgstat="${it.id}" style="margin:2px 0 0">${it.adim ? "⏳ " + esc(it.adim) : ""}</div>${it.hata ? `<div class="hint err">${esc(it.hata)}</div>` : ""}
+    ${it.durum === "onaylandi" ? sgThumbHTML(it) : ""}${share}${dream}${pick}
+    <div class="row" style="margin-top:6px">${(it.durum === "hata" || (it.durum === "uretim" && !run && it.tarz !== "kendi")) ? `<button class="btn ghost sm" data-sgretry="${it.id}">Yeniden dene</button>` : ""}${!run ? `<button class="btn ghost sm" data-sgdel="${it.id}">Sil</button>` : ""}</div></div></div>`;
+}
+function sgCardHTML() {
+  const l = sgAll();
+  return `<div class="card" id="sgCard"><h3 style="margin:0">🎬 SİNEGÖZ MEDYA <span class="meta" style="font-family:monospace">MDY-01</span></h3>
+    <div class="hint" style="margin-top:6px">Konu ve tarzı ver: Titus metni yazar, videoyu üretir, platform açıklamalarını hazırlar. Video Onay Kutusu'na düşer; onaylayınca YouTube, Instagram ve TikTok'u videoyla açar, son Paylaş dokunuşu senin.</div>
+    <div class="form"><textarea id="sgKonu" rows="3" placeholder="Konu… (ör. 'Oyuncuların seçmelerde yaptığı 3 komik hata')" style="width:100%;min-height:70px"></textarea>
+      <div class="row"><select id="sgTarz"><option value="animasyon">Karikatür animasyon</option><option value="seedance">Gerçekçi (Seedance)</option><option value="kendi">Kendi videolarım</option></select><select id="sgFmt"><option value="9:16">Dikey 9:16</option><option value="16:9">Yatay 16:9</option><option value="1:1">Kare 1:1</option></select><input id="sgSure" type="number" min="10" max="120" value="30" title="Süre (sn)"></div>
+      <input id="sgTon" placeholder="Tarz/ton (ör. esprili, samimi, dramatik, bilgilendirici)">
+      <div class="row" style="flex-wrap:wrap">${Object.entries(SG_PLAT).map(([k, p]) => `<label class="hint" style="flex:0 0 auto;margin:0 10px 0 0"><input type="checkbox" data-sgp="${k}" checked style="width:auto"> ${p.ad}</label>`).join("")}</div>
+      <button class="btn" id="sgGo">🎬 Video üret</button></div>
+    ${l.length ? `<div style="margin-top:10px"><b class="meta">YAYIN MASASI</b>${l.map(sgItemHTML).join("")}</div>` : ""}</div>`;
+}
+{
+  const baseHDraw = hDraw;
+  hDraw = function () {
+    baseHDraw();
+    const wait = sgAll().filter(x => x.durum === "onay"); const tot = hPending().length + wait.length;
+    const chip = $("#hChip"); if (chip) chip.textContent = "🏛 Holding" + (tot ? ` (${tot})` : "");
+    const o = $("#hOnay"); if (o) { const h = o.querySelector("h3"); if (h) h.textContent = "ONAY KUTUSU · " + tot; if (wait.length) { const em = o.querySelector(".card .hint"); if (em && /Bekleyen onay yok/.test(em.textContent)) em.remove(); o.insertAdjacentHTML("beforeend", wait.map(sgOnayHTML).join("")); } }
+    const v = $("#b-holding"); if (!v) return; const old = $("#sgCard"); const keep = old && { k: ($("#sgKonu") || {}).value, t: ($("#sgTon") || {}).value, tz: ($("#sgTarz") || {}).value, f: ($("#sgFmt") || {}).value, s: ($("#sgSure") || {}).value, p: [...document.querySelectorAll("[data-sgp]")].map(x => x.checked) };
+    const html = sgCardHTML(); if (old) old.outerHTML = html; else { const first = v.querySelector(".card"); first ? first.insertAdjacentHTML("afterend", html) : v.insertAdjacentHTML("afterbegin", html); }
+    if (keep) { if (keep.k) $("#sgKonu").value = keep.k; if (keep.t) $("#sgTon").value = keep.t; if (keep.tz) $("#sgTarz").value = keep.tz; if (keep.f) $("#sgFmt").value = keep.f; if (keep.s) $("#sgSure").value = keep.s; document.querySelectorAll("[data-sgp]").forEach((x, i) => { if (keep.p[i] !== undefined) x.checked = keep.p[i]; }); }
+  };
+}
+function sgPlay(it) {
+  const b = SG.blobs[it.id];
+  if (b) { const u = URL.createObjectURL(b); $("#modalBox").innerHTML = `<video src="${u}" controls autoplay playsinline style="width:100%;max-height:70vh;border-radius:10px;background:#000"></video><div class="row" style="margin-top:10px"><button class="btn" id="mNo">Kapat</button></div>`; $("#modal").classList.add("on"); $("#mNo").onclick = () => { $("#modal").classList.remove("on"); URL.revokeObjectURL(u); }; return; }
+  if (Jarvis && it.video && it.video.uri) Jarvis.share({ uri: it.video.uri, mime: it.video.mime || "video/mp4" }); else toast("Video bu oturumda yok; galeriden açabilirsin: " + ((it.video && it.video.yer) || ""));
+}
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("#sgGo,[data-sgok],[data-sgno],[data-sgfix],[data-sgplay],[data-sgshare],[data-sgseed],[data-sgadd],[data-sgfiles],[data-sgretry],[data-sgdel]"); if (!t) return;
+  try {
+    if (t.id === "sgGo") {
+      const konu = $("#sgKonu").value.trim(); if (!konu) { $("#sgKonu").focus(); return; }
+      if (!SET.geminiKey) return toast("Önce Ayarlar → Beyin'e Gemini anahtarını gir.");
+      const platformlar = [...document.querySelectorAll("[data-sgp]")].filter(x => x.checked).map(x => x.dataset.sgp);
+      const it = sgCreate({ konu, tarz: $("#sgTarz").value, format: $("#sgFmt").value, sure: +$("#sgSure").value, ton: $("#sgTon").value.trim(), platformlar });
+      $("#sgKonu").value = ""; hDraw(); sgProduce(it); return;
+    }
+    const [id, p] = (Object.values(t.dataset)[0] || "").split(":"); const it = sgGet(id); if (!it) return;
+    if (t.dataset.sgplay) sgPlay(it);
+    else if (t.dataset.sgok) { it.durum = "onaylandi"; it.onayAt = Date.now(); save(); hDraw(); toast("✓ Onaylandı. Yayın masasından platformları tek tek aç.", 5000); const c = $("#sgCard"); if (c) c.scrollIntoView({ behavior: "smooth" }); }
+    else if (t.dataset.sgno) { it.durum = "reddedildi"; save(); hDraw(); }
+    else if (t.dataset.sgfix) {
+      const notu = await hAsk("Neyi değiştirsin?", "Ör: 'açıklamalar daha esprili olsun' ya da 'videoda 2. sahne daha hızlı olsun'"); if (!notu) return;
+      const video = /video|sahne|karakter|müzik|muzik|kurgu|hız|hiz|renk|ses/i.test(notu);
+      if (video && it.tarz === "animasyon" && it.animId && anGet(it.animId)) {
+        it.durum = "uretim"; hDraw(); SG.busy.add(it.id);
+        try { sgStat(it, "Animasyon düzeltiliyor"); const pr = anGet(it.animId); await anRevise(pr, notu); const r = await anRecord(pr, { onP: x => sgStat(it, `Yeniden kaydediliyor %${Math.round(x * 100)}`) }); SG.busy.delete(it.id); await sgSetVideo(it, r.blob, r.ext); }
+        catch (e) { it.durum = "hata"; it.hata = friendlyErr(e); } finally { SG.busy.delete(it.id); save(); hDraw(); }
+      } else {
+        sgStat(it, "Metinler düzeltiliyor");
+        const j = await seedJSON(`Sinegöz Medya paylaşım metinlerini Burak'ın isteğine göre düzelt. İstek: "${notu}". Mevcut: ${JSON.stringify({ youtube: it.meta.youtube, instagram: it.meta.instagram, tiktok: it.meta.tiktok })}. Aynı JSON yapısında döndür: {"youtube":{"baslik":"","aciklama":"","etiketler":[]},"instagram":{"metin":""},"tiktok":{"metin":""}}`, 3000);
+        for (const k of ["youtube", "instagram", "tiktok"]) if (j[k]) it.meta[k] = Object.assign({}, it.meta[k], j[k]);
+        sgStat(it, ""); save(); hDraw(); toast(video ? "Bu tarzda video düzeltmesi için videoyu yeniden ekle; metinler güncellendi." : "✓ Metinler güncellendi", 5000);
+      }
+    }
+    else if (t.dataset.sgshare) await sgShare(it, p);
+    else if (t.dataset.sgseed) { SEED.open = it.seedId; SEED.clips = []; go("studio"); openSec("studio", "seed"); }
+    else if (t.dataset.sgadd) { const [f] = await pickFiles("video/*"); if (f) await sgSetVideo(it, f, (f.name.split(".").pop() || "mp4").toLowerCase()); }
+    else if (t.dataset.sgfiles) { const fs = await pickFiles("video/*,image/*,audio/*", true); if (fs.length) { it.files = fs; sgProduce(it); } }
+    else if (t.dataset.sgretry) sgProduce(it);
+    else if (t.dataset.sgdel) { if (await confirmBox("Bu video Yayın masasından silinsin mi? (Galerideki dosya kalır)", "Sil")) { S.sinegoz = sgAll().filter(x => x.id !== it.id); delete SG.blobs[it.id]; save(); hDraw(); } }
+  } catch (er) { toast("✗ " + friendlyErr(er), 6000); }
+});
+
+/* ---------- Genel Müdür'e yeni şirket + sohbet aracı ---------- */
+H_AG.sinegoz = { ad: "Sinegöz Medya", kod: "MDY-01", ey: ["video"], rol: "Holding'in medya şirketi: verilen konu ve tarza göre YouTube, Instagram ve TikTok için video üretim planı çıkarır (animasyon, gerçekçi Seedance ya da kendi videolarından kurgu). Paylaşım Burak'ın onayından sonra yapılır." };
+H_EY.video = "🎬 Video";
+H_EY_TARIF.video = `{"tur":"video","konu":"videonun konusu, ayrıntılı","tarz":"animasyon | seedance | kendi","ton":"esprili/samimi/…","format":"9:16 | 16:9 | 1:1","sure":30,"platformlar":["youtube","instagram","tiktok"]}`;
+TOOLS.push(
+  T("sinegoz_video", "Tunçbilek Holding'in Sinegöz Medya şirketine video ürettirir: konu ve tarza göre metni ve platform açıklamalarını yazar, videoyu üretir (animasyon / Seedance / kendi videolarından Kesit kurgusu), bitince Holding Onay Kutusu'na koyar. Onaydan sonra YouTube, Instagram ve TikTok uygulamaları videoyla açılır. 'Sinegöz şu konuda video yapsın', 'YouTube/TikTok için video üret' gibi isteklerde kullan.", { konu: str("Videonun konusu, tüm ayrıntılarla"), tarz: str("Üretim tarzı", ["animasyon", "seedance", "kendi"]), ton: str("Ton/tarz (esprili, samimi, dramatik…)"), format: str("Oran", ["9:16", "16:9", "1:1"]), sure: num("Süre sn (varsayılan 30)"), platformlar: { type: "array", items: { type: "string", enum: ["youtube", "instagram", "tiktok"] }, description: "Paylaşılacak platformlar (varsayılan üçü)" } }, ["konu"],
+    async a => { const it = sgCreate(a); go("holding"); hDraw(); sgProduce(it); return { ok: true, not: `Sinegöz Medya üretime başladı (${SG_TARZ[it.tarz]}). ${it.tarz === "animasyon" ? "Video kaydı sırasında ekran açık kalmalı." : it.tarz === "seedance" ? "Çekim prompt'ları hazırlanınca Dreamina'da üretmen gerekecek." : "Kurgulanacak videoları seçmen gerekecek."} Bitince Holding Onay Kutusu'na düşer; onaysız paylaşılmaz.` }; }),
+  T("sinegoz_durum", "Sinegöz Medya'daki videoların durumunu söyler (üretimde, onay bekleyen, paylaşılan).", {}, [], () => ({ videolar: sgAll().slice(0, 10).map(x => ({ baslik: (x.meta && x.meta.baslik) || x.konu.slice(0, 60), durum: SG_DUR[x.durum] || x.durum, paylasilan: Object.keys(x.paylasim || {}).map(p => SG_PLAT[p].ad) })) }))
+);
+Object.assign(ACT_TR, { sinegoz_video: "🎬 Sinegöz", sinegoz_durum: "🎬 Sinegöz durumu" });
+TOOL_GROUPS.push([/sinegöz|sinegoz|youtube|instagram|tiktok|reels|shorts|video üret|video uret|içerik üret|icerik uret/, ["sinegoz_video", "sinegoz_durum"]]);
+FN.sinegoz = { input: "Video konusu (boş bırakırsan Holding → Sinegöz açılır)", run: async g => { go("holding"); hDraw(); if (!g) return { metin: "Sinegöz Medya açıldı." }; const it = sgCreate({ konu: g }); hDraw(); sgProduce(it); return { ok: true, metin: "Sinegöz Medya üretime başladı. Bitince Holding Onay Kutusu'na düşecek." }; } };
 
 boot();
 })();

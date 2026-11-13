@@ -1,5 +1,7 @@
 # T.I.T.U.S. — Burak'ın Kişisel Asistanı
 
+**v4.4:** Sinegöz Medya (Tunçbilek Holding alt şirketi): konu ve tarza göre video üretir (animasyon, Seedance ya da Kesit kurgusu), YouTube/Instagram/TikTok açıklamalarını yazar, Onay Kutusu'na koyar; onaydan sonra her uygulamayı videoyla ve kopyalanmış açıklamayla açar.
+
 **v4.3:** Animasyon stüdyosu (Stüdyo → Animasyon): Titus hikâyeden senaryo yazar, kendi karakter kitiyle canlandırır (pozlar, yürüme, ifadeler, seslendirmeye göre ağız hareketi), karelerini kendi kontrol edip düzeltir, telifsiz müzik besteler ve video olarak kaydeder. Karakterler kadroya kaydolur.
 
 **v4.2:** Kesit kurgu programı Titus'un içinde (Stüdyo → Kesit): Titus talimatını kurgu komutlarına çevirip Kesit'te canlı kurgular, dışa aktarıp kaydeder; geri bildirimlerinden kurgu tarzını öğrenir. Seedance klipleri tek dokunuşla Kesit'e dizilir.

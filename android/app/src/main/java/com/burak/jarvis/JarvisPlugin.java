@@ -897,10 +897,26 @@ public class JarvisPlugin extends Plugin {
             String text = call.getString("text", null);
             if (text != null) i.putExtra(Intent.EXTRA_TEXT, text);
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // Sinegöz Medya: belirli bir uygulamayı (YouTube/Instagram/TikTok) doğrudan aç; yüklü değilse seçici göster
+            String pkgs = call.getString("pkg", "");
+            if (pkgs != null && !pkgs.isEmpty()) {
+                for (String p : pkgs.split(",")) {
+                    try {
+                        Intent d = new Intent(i);
+                        d.setPackage(p.trim());
+                        d.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        getContext().startActivity(d);
+                        JSObject o = new JSObject(); o.put("ok", true); o.put("app", p.trim());
+                        call.resolve(o);
+                        return;
+                    } catch (android.content.ActivityNotFoundException ignored) { }
+                }
+            }
             Intent ch = Intent.createChooser(i, "Paylaş");
             ch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(ch);
-            call.resolve();
+            JSObject o = new JSObject(); o.put("ok", true); o.put("app", "secici");
+            call.resolve(o);
         } catch (Exception e) {
             call.reject("Paylaşılamadı: " + e.getMessage());
         }
