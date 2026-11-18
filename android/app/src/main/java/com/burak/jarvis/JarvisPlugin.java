@@ -1200,4 +1200,24 @@ public class JarvisPlugin extends Plugin {
         if (ri != null) o.put("app", String.valueOf(ri.loadLabel(getContext().getPackageManager())));
         call.resolve(o);
     }
+
+    /* ---------------- v4.8 uzak ekran: yatay mod + ekranı açık tut + tam ekran ---------------- */
+    @PluginMethod
+    public void screenMode(PluginCall call) {
+        final boolean land = Boolean.TRUE.equals(call.getBoolean("landscape", false));
+        final boolean awake = Boolean.TRUE.equals(call.getBoolean("awake", false));
+        final android.app.Activity act = getActivity();
+        if (act == null) { call.reject("etkinlik yok"); return; }
+        act.runOnUiThread(() -> {
+            try {
+                act.setRequestedOrientation(land ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                if (awake) act.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                else act.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                android.view.View d = act.getWindow().getDecorView();
+                if (land) d.setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                else d.setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_VISIBLE);
+                JSObject o = new JSObject(); o.put("ok", true); call.resolve(o);
+            } catch (Exception e) { call.reject(e.getMessage()); }
+        });
+    }
 }

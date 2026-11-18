@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "3.1"
+GUI_VERSION = "3.2"
 
 
 def open_window():
@@ -544,6 +544,8 @@ body.dragging #drop{display:flex}
 <div class="tg"><span>Kesintisiz canlı sohbet<small>Tek bağlantı, doğal akış, araya girebilirsin (önerilen)</small></span><input type="checkbox" class="sw" id="canli"></div>
 <div class="tg"><span>Kulaklık kullanıyorum<small>Titus konuşurken hafif sesle de sözünü kesebilirsin</small></span><input type="checkbox" class="sw" id="kulaklik"></div>
 <label class="f">Sessiz kalınca sohbet kaç saniyede kapansın</label><input type="text" id="live_idle">
+<div class="tg"><span>Telefondan uzak ekran<small>Telefondaki Titus ekranı görüp tıklayabilir (Ctrl+Alt+Q keser)</small></span><input type="checkbox" class="sw" id="uzak_ekran"></div>
+<div class="tg"><span>Uyku moduna geçme<small>Titus açıkken bilgisayar uyumaz; uzaktan bağlanabilirsin</small></span><input type="checkbox" class="sw" id="uzak_uyanik"></div>
 <div class="tg"><span>Windows açılınca başlat<small>Arka planda hazır bekler</small></span><input type="checkbox" class="sw" id="autostart"></div>
 </div>
 <div class="row" style="margin-top:14px"><button class="btn" id="save" style="flex:1">Kaydet</button></div>
@@ -571,7 +573,7 @@ const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
-const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space"];
+const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart","uzak_ekran","uzak_uyanik"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space"];
 const TOOL={fotograf_montaj:"montaj yapılıyor",model_kaydet:"model kaydediliyor",modeller:"modeller",konusan_video:"konuşan video hazırlanıyor",mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
 function show(v){view=v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
   if(v==="apps")loadApps(); if(v==="skills")loadSkills(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}

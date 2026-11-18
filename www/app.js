@@ -3924,7 +3924,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.7", APP_RUN = "__RUN__";
+const APP_VER = "4.8", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6068,7 +6068,7 @@ async function boot() {
     AppP && AppP.addListener("pause", () => { if (SET.lock) META.unlockedAt = Math.min(META.unlockedAt || 0, Date.now()); saveMeta(); });
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();
-    AppP && AppP.addListener("backButton", () => { if ($("#modal").classList.contains("on")) $("#modal").classList.remove("on"); else if (!$("#v-home").classList.contains("on")) go("home"); else AppP.minimizeApp(); });
+    AppP && AppP.addListener("backButton", () => { if (typeof uzBackKey === "function" && uzBackKey()) return; if ($("#modal").classList.contains("on")) $("#modal").classList.remove("on"); else if (!$("#v-home").classList.contains("on")) go("home"); else AppP.minimizeApp(); });
     await nat(() => Jarvis.setWakeOptions({ strict: !!SET.wakeStrict, conf: Number(SET.wakeConf) || 0.92 }));
     if (SET.wake) nat(() => Jarvis.startWake());
     const la = await nat(() => Jarvis.getLaunchAction(), {}); if (la && la.action) handleLaunch(la.action);

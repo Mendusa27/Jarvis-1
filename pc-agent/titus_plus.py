@@ -544,4 +544,9 @@ def setup(jd):
         titus_extra.setup(jd, P)
     except Exception as e:
         jd.log("hata", f"ek araçlar yüklenemedi: {e}")
+    try:
+        import titus_remote  # v3.2: telefondan uzak ekran (görüntü + fare/klavye)
+        titus_remote.setup(jd, P)
+    except Exception as e:
+        jd.log("hata", f"uzak ekran yüklenemedi: {e}")
     jd.log("bilgi", f"Titus {jd.VERSION} hazır — {len(jd.TOOLS)} araç")

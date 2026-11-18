@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
-VERSION = "3.1"
+VERSION = "3.2"
 CFG = Path.home() / ".jarvis_desktop.json"
 DATA = Path.home() / ".titus"
 DATA.mkdir(exist_ok=True)
@@ -86,7 +86,7 @@ except Exception:
 
 
 # ---------------- ayarlar ----------------
-DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False, "city": "İstanbul", "lat": 41.0082, "lon": 28.9784, "ntfy": "", "groq_model": ""}
+DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False, "city": "İstanbul", "lat": 41.0082, "lon": 28.9784, "ntfy": "", "groq_model": "", "uzak_ekran": True, "uzak_uyanik": True}
 GUI = bool(os.environ.get("TITUS_GUI"))
 
 
@@ -867,6 +867,7 @@ TRIGGER = threading.Event()
 LIVE_STOP = threading.Event()  # canlı sohbeti dışarıdan bitirmek için
 LIVE_CHAT = None
 BUSY = threading.Lock()
+PHONE_ACTIONS = {}  # eklentilerin telefondan gelen özel komutları (ör. uzak ekran: remote_offer)
 
 
 def ensure_vosk():
@@ -946,6 +947,8 @@ def phone_queue_loop():
                     if cmd.get("action") == "ask":  # telefondan serbest komut: "bilgisayarda şunu yap"
                         with BUSY:
                             res = {"ok": True, "cevap": think(cmd.get("arg", ""))}
+                    elif cmd.get("action") in PHONE_ACTIONS:
+                        res = PHONE_ACTIONS[cmd["action"]](cmd)
                     else:
                         res = agent.run(AG, cmd)
                 except Exception as e:

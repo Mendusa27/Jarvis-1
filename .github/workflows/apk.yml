@@ -33,6 +33,7 @@ jobs:
       - name: JS sözdizimi kontrolü
         run: |
           node --check www/app.js
+          node --check www/uzak.js
           grep -q 'plug("Jarvis")' www/app.js || (echo "Yerel eklenti adı bozulmuş" && exit 1)
           node -e "const s=require('./www/skills.json'); if(s.length<360) process.exit(1); console.log(s.length+' yetenek')"
       - name: Sürüm numarasını göm (otomatik güncelleme için)
