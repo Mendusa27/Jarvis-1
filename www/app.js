@@ -3595,6 +3595,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) setT
       await base();
       box.insertAdjacentHTML("beforeend", `
       <div class="card"><h3>UYGULAMA ADRESLERİ</h3><div class="form"><div class="lbl">KADRO adresi (Netlify)</div><input data-set="kadroUrl" value="${esc(SET.kadroUrl || "")}" placeholder="https://kadro….netlify.app/#KODUN"><div class="lbl">Recast Audition adresi (Netlify)</div><input data-set="auditionUrl" value="${esc(SET.auditionUrl || "")}" placeholder="https://recast-audition.netlify.app/#KODUN"><div class="hint">Bunları bir kez yaz; Stüdyo → Uygulamalar'dan ya da “Titus, KADRO'yu aç” diyerek açarsın.</div></div></div>
+      ${typeof window.uzSettingsHTML === "function" ? window.uzSettingsHTML() : ""}
       <div class="card"><h3>BİLGİSAYARI BAĞLA</h3><div class="hint" style="margin-top:0">Bilgisayardaki Titus'u tek kodla bağla: Gmail, takvim, KADRO, görevler ve anahtarların hepsi bilgisayara geçer. Kodu kimseyle paylaşma.</div><button class="btn ghost sm" id="pairMake" style="margin-top:8px">Bağlantı kodu oluştur</button>
         <div id="pairBox" style="display:none;margin-top:8px"><textarea id="pairOut" readonly style="min-height:70px;font-size:11px"></textarea><div class="row" style="margin-top:6px"><button class="btn ghost sm" id="pairCopy">Kopyala</button><button class="btn ghost sm" id="pairMail">Kendime mail at</button></div><div class="hint">Bilgisayarda Titus → Ayarlar → “Telefondan bağlantı kodu” kutusuna yapıştır.</div></div></div>
       <div class="card"><h3>SON HATALAR</h3><div class="hint" style="margin-top:0">${(S.issues || []).slice(-8).reverse().map(i => `${esc((i.at || "").slice(5, 16).replace("T", " "))} · ${esc(i.detail)}`).join("<br>") || "Kayıtlı hata yok."}</div></div>`);
@@ -3924,7 +3925,7 @@ GÖRSEL VE DOSYALAR: Burak dosya/fotoğraf eklediğinde (mesajında görsel/PDF 
    Tüm yetenekler tek katalogda (skills.json): her biri ya davranış kuralı (mode),
    ya yapay zekâ görevi (ask), ya mevcut bir araç (tool), ya da özel bir fonksiyon (fn).
    ===================================================================== */
-const APP_VER = "4.9", APP_RUN = "__RUN__";
+const APP_VER = "4.10", APP_RUN = "__RUN__";
 const X = () => (S.x && typeof S.x === "object" ? S.x : (S.x = {}));
 const XL = k => (Array.isArray(X()[k]) ? X()[k] : (X()[k] = []));
 const deacc = s => trLower(s).replace(/[çğıöşüâîû]/g, c => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" }[c]));
@@ -6068,7 +6069,7 @@ async function boot() {
     AppP && AppP.addListener("pause", () => { if (SET.lock) META.unlockedAt = Math.min(META.unlockedAt || 0, Date.now()); saveMeta(); });
     Jarvis.addListener("headset", () => voiceTurn(true));
     lockCheck();
-    AppP && AppP.addListener("backButton", () => { if (typeof uzBackKey === "function" && uzBackKey()) return; if ($("#modal").classList.contains("on")) $("#modal").classList.remove("on"); else if (!$("#v-home").classList.contains("on")) go("home"); else AppP.minimizeApp(); });
+    AppP && AppP.addListener("backButton", () => { if (typeof window.uzBackKey === "function" && window.uzBackKey()) return; if ($("#modal").classList.contains("on")) $("#modal").classList.remove("on"); else if (!$("#v-home").classList.contains("on")) go("home"); else AppP.minimizeApp(); });
     await nat(() => Jarvis.setWakeOptions({ strict: !!SET.wakeStrict, conf: Number(SET.wakeConf) || 0.92 }));
     if (SET.wake) nat(() => Jarvis.startWake());
     const la = await nat(() => Jarvis.getLaunchAction(), {}); if (la && la.action) handleLaunch(la.action);
@@ -6926,6 +6927,10 @@ TOOLS.push(
 Object.assign(ACT_TR, { sinegoz_video: "🎬 Sinegöz", sinegoz_durum: "🎬 Sinegöz durumu" });
 TOOL_GROUPS.push([/sinegöz|sinegoz|youtube|instagram|tiktok|reels|shorts|video üret|video uret|içerik üret|icerik uret/, ["sinegoz_video", "sinegoz_durum"]]);
 FN.sinegoz = { input: "Video konusu (boş bırakırsan Holding → Sinegöz açılır)", run: async g => { go("holding"); hDraw(); if (!g) return { metin: "Sinegöz Medya açıldı." }; const it = sgCreate({ konu: g }); hDraw(); sgProduce(it); return { ok: true, metin: "Sinegöz Medya üretime başladı. Bitince Holding Onay Kutusu'na düşecek." }; } };
+
+/* v4.10 — Uzak Ekran köprüsü: uzak.js bu kapalı bloğun dışında çalıştığı için gerekenler buradan verilir */
+window.__TITUS = { get SET() { return SET; }, saveSet, toast, script, sleep, esc, T, TOOLS, TOOL_GROUPS, ACT_TR, Jarvis,
+  wrapApps: f => { const o = appsHTML; appsHTML = function () { return f() + o.apply(this, arguments); }; } };
 
 boot();
 })();

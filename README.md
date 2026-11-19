@@ -1,5 +1,7 @@
 # T.I.T.U.S. — Burak'ın Kişisel Asistanı
 
+**v4.10:** 🖥 Bilgisayar düğmesine basınca ekran açılmama hatası düzeltildi. Ayarlar → **Uzak Ekran** bölümü eklendi: eşleştirme kodu, tek dokunuşla bağlan, görüntü kalitesi, kontrol modu, touchpad hızı, gelişmiş (TURN, eşleştirme sunucusu).
+
 **v4.9 (bilgisayar v3.3): Uzak Ekran artık Google gerektirmiyor.** Bilgisayardaki Titus → Ayarlar → Uzak Ekran'daki eşleştirme kodunu telefonda 🖥 Bilgisayar ekranına bir kez yaz, o kadar. El sıkışma koddan türetilen gizli konu adıyla ve AES-GCM şifreli olarak ücretsiz ntfy.sh üzerinden geçer; görüntü yine WebRTC ile doğrudan akar. Kod yoksa ve Google bağlantısı kuruluysa eski yol çalışmaya devam eder.
 
 **v4.8 (bilgisayar v3.2): Uzak Ekran.** Telefondan bilgisayar ekranını canlı gör, dokunarak tıkla, yaz, oyun oyna (FM gibi). Ana ekranda **🖥 Bilgisayar** düğmesi ya da "Titus, bilgisayar ekranını aç". Ek program yok: bağlantı mevcut Apps Script kuyruğundan kurulur, görüntü WebRTC ile doğrudan ve şifreli akar. 🖱 Touchpad modu (imleç, üzerine gelme, sürükleme) ve 👆 Dokun modu; iki parmakla yakınlaştırma, ekran durunca tam çözünürlükte keskin kare (küçük yazılar okunur), ▶ Devam (Space), Esc, kaydırma, F tuşları, kısayollar, klavye. 💬 ile Titus'a görev ver ("FM'yi aç, son kaydı yükle"), canlı izle; ekrana dokunduğun an kontrol sana geçer. Bilgisayar Titus açıkken uyumaz; Ctrl+Alt+Q bağlantıyı anında keser.

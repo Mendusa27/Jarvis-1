@@ -4,13 +4,19 @@
    - Görüntü ve komutlar WebRTC veri kanalıyla doğrudan, şifreli akar (aynı Wi-Fi'da yerel ağdan).
    - İki mod: 👆 Dokun (dokunduğun yere tıklar) · 🖱 Touchpad (imleci parmağınla gezdirirsin; FM'de üzerine gelme için ideal).
    - Ekran durunca bilgisayar tam çözünürlükte "keskin kare" yollar: küçük yazılar yakınlaştırınca okunur.
-   app.js'ten sonra yüklenir; script(), SET, saveSet, toast, Jarvis, TOOLS, T, str, TOOL_GROUPS, ACT_TR kullanır. */
+   app.js'ten sonra yüklenir. app.js kendi kapalı bloğunda çalıştığı için ihtiyaç duyulanlar
+   window.__TITUS köprüsünden alınır (SET, saveSet, toast, script, Jarvis, TOOLS, T, TOOL_GROUPS, ACT_TR). */
+(() => {
+"use strict";
+const A = window.__TITUS;
+if (!A) { console.warn("uzak ekran: Titus köprüsü yok"); return; }
+const { saveSet, toast, script, sleep, esc, T, TOOLS, TOOL_GROUPS, ACT_TR, Jarvis } = A;
 const UZ = {
   open: false, pc: null, ctl: null, scr: null, info: null, img: null, imgW: 0, imgH: 0, sharp: false,
   hdr: null, parts: [], cur: { x: 0.5, y: 0.5 }, curT: 0, z: 1, px: 0, py: 0, rot: false, agent: false,
   dirty: true, raf: 0, stat: "", lastMsg: 0, panel: "", tries: 0, connecting: false, closing: false
 };
-const uzSet = () => (SET.uzak = Object.assign({ code: "", ntfy: "", mode: "pad", q: "dengeli", turnUrl: "", turnUser: "", turnPass: "", speed: 1.6, help: true }, SET.uzak || {}));
+const uzSet = () => (A.SET.uzak = Object.assign({ code: "", ntfy: "", mode: "pad", q: "dengeli", turnUrl: "", turnUser: "", turnPass: "", speed: 1.6, help: true }, A.SET.uzak || {}));
 const uzEl = id => document.getElementById(id);
 
 function uzCss() {
@@ -82,7 +88,7 @@ async function uzOpen() {
   try { if (typeof Jarvis !== "undefined" && Jarvis && Jarvis.screenMode) await Jarvis.screenMode({ landscape: true, awake: true }); } catch {}
   try { if (navigator.wakeLock) UZ.wl = await navigator.wakeLock.request("screen"); } catch {}
   setTimeout(uzLayout, 350); uzLayout(); uzModeUI();
-  if (!UZ.ctl || UZ.ctl.readyState !== "open") { if (uzSet().code || SET.scriptUrl) uzConnect(); else uzPair(); }
+  if (!UZ.ctl || UZ.ctl.readyState !== "open") { if (uzSet().code || A.SET.scriptUrl) uzConnect(); else uzPair(); }
   uzLoop();
   return { ok: true, metin: "Uzak ekran açıldı." };
 }
@@ -471,6 +477,45 @@ try {
   Object.assign(ACT_TR, { uzak_ekran_ac: "🖥 uzak ekran", uzak_ekran_kapat: "🖥 kapat" });
 } catch (e) { console.warn("uzak ekran aracı eklenemedi", e); }
 try {
-  const _apps = appsHTML;
-  appsHTML = function () { return `<div class="card"><h3>BİLGİSAYAR</h3><div class="appgrid"><button class="app" data-uzopen="1"><i>🖥</i><b>Uzak Ekran</b><small>ekranı gör, dokun, oyna</small></button></div></div>` + _apps(); };
+  A.wrapApps(() => `<div class="card"><h3>BİLGİSAYAR</h3><div class="appgrid"><button class="app" data-uzopen="1"><i>🖥</i><b>Uzak Ekran</b><small>ekranı gör, dokun, oyna</small></button></div></div>`);
 } catch {}
+
+/* ---------------- Ayarlar → Uzak Ekran kartı ---------------- */
+function uzSettingsHTML() {
+  const s = uzSet(); const o = (v, l, cur) => `<option value="${v}"${cur === v ? " selected" : ""}>${l}</option>`;
+  return `<div class="card"><h3>UZAK EKRAN (BİLGİSAYARI TELEFONDAN KONTROL)</h3>
+<div class="hint" style="margin-top:0">Bilgisayarın ekranını telefonda canlı gör, dokunarak tıkla, yaz, oyun oyna. Google gerekmez: bilgisayardaki Titus → Ayarlar → <b>Uzak Ekran</b> bölümündeki kodu buraya bir kez yaz.</div>
+<button class="btn" id="uzsConnect" style="width:100%;margin:10px 0">🖥 Bilgisayara bağlan</button>
+<div class="form">
+<div class="lbl">Eşleştirme kodu</div><input id="uzsCode" value="${esc(s.code || "")}" placeholder="ABCD-1234" autocapitalize="characters" autocomplete="off" style="font-size:20px;letter-spacing:3px;font-weight:800;text-align:center">
+<div class="lbl">Görüntü</div><select id="uzsQ">${o("akici", "Akıcı (hareketli oyunlar)", s.q)}${o("dengeli", "Dengeli (önerilen)", s.q)}${o("net", "Net (yazı ağırlıklı)", s.q)}${o("veri", "Veri tasarrufu (mobil veri)", s.q)}</select>
+<div class="lbl">Kontrol modu</div><select id="uzsMode">${o("pad", "🖱 Touchpad (imleç; FM için önerilen)", s.mode)}${o("touch", "👆 Dokun (dokunduğun yere tıklar)", s.mode)}</select>
+<div class="lbl">Touchpad hızı</div><select id="uzsSpeed">${o("1", "Yavaş", String(s.speed))}${o("1.6", "Normal", String(s.speed))}${o("2.4", "Hızlı", String(s.speed))}</select>
+<details style="margin-top:8px"><summary class="meta" style="cursor:pointer">Gelişmiş (mobil veride bağlanmıyorsa)</summary>
+<div class="lbl">TURN sunucusu (virgülle birden çok)</div><input id="uzsTurnU" value="${esc(s.turnUrl || "")}" placeholder="turn:adres:3478">
+<div class="lbl">TURN kullanıcı adı</div><input id="uzsTurnN" value="${esc(s.turnUser || "")}">
+<div class="lbl">TURN şifresi</div><input id="uzsTurnP" type="password" value="${esc(s.turnPass || "")}">
+<div class="lbl">Eşleştirme sunucusu (boş = ntfy.sh)</div><input id="uzsNtfy" value="${esc(s.ntfy || "")}" placeholder="https://ntfy.sh">
+</details>
+<div class="row" style="margin-top:10px"><button class="btn ghost sm" id="uzsSave">Kaydet</button><button class="btn ghost sm" id="uzsHelp">Nasıl kullanılır</button></div>
+</div></div>`;
+}
+function uzSettingsSave(silent) {
+  const s = uzSet(), v = id => (uzEl(id) || {}).value;
+  const raw = uzNorm(v("uzsCode"));
+  if (raw && raw.length !== 8) { toast("Kod 8 karakter olmalı (ör. ABCD-1234)"); return false; }
+  s.code = raw ? raw.slice(0, 4) + "-" + raw.slice(4) : "";
+  s.q = v("uzsQ") || s.q; s.mode = v("uzsMode") || s.mode; s.speed = Number(v("uzsSpeed")) || 1.6;
+  s.turnUrl = (v("uzsTurnU") || "").trim(); s.turnUser = (v("uzsTurnN") || "").trim(); s.turnPass = v("uzsTurnP") || ""; s.ntfy = (v("uzsNtfy") || "").trim();
+  saveSet(); if (uzEl("uzsCode")) uzEl("uzsCode").value = s.code; if (!silent) toast("✓ Uzak ekran ayarları kaydedildi");
+  return true;
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("#uzsConnect,#uzsSave,#uzsHelp"); if (!t) return;
+  if (t.id === "uzsSave") uzSettingsSave();
+  else if (t.id === "uzsConnect") { if (uzSettingsSave(true)) uzOpen(); }
+  else if (t.id === "uzsHelp") { uzSettingsSave(true); uzOpen().then(() => setTimeout(() => uzPanel("help"), 400)); }
+});
+
+window.uzOpen = uzOpen; window.uzClose = uzClose; window.uzBackKey = uzBackKey; window.uzSettingsHTML = uzSettingsHTML;
+})();
