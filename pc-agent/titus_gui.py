@@ -12,7 +12,7 @@ os.environ["TITUS_GUI"] = "1"
 HERE = Path(__file__).resolve().parent
 PORT = 47821
 URL = f"http://127.0.0.1:{PORT}/"
-GUI_VERSION = "3.2"
+GUI_VERSION = "3.3"
 
 
 def open_window():
@@ -516,6 +516,10 @@ body.dragging #drop{display:flex}
 <label class="f">Groq anahtarı (isteğe bağlı — hızlı ses tanıma + Gemini kotası dolunca yedek beyin)</label><input type="password" id="groq_key" placeholder="gsk_…">
 <div class="note">Ücretsiz: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></div>
 </div>
+<div class="card"><h3>UZAK EKRAN (TELEFONDAN KONTROL)</h3>
+<label class="f">Eşleştirme kodu: telefonda Titus → 🖥 Bilgisayar ekranına bir kez yaz</label><input type="text" id="uzak_kod" style="font-size:22px;letter-spacing:3px;font-weight:800;text-align:center" readonly>
+<div class="row" style="margin-top:8px"><button class="btn ghost" id="uzNewCode" style="flex:1">Yeni kod oluştur</button></div>
+<div class="note">Google hesabı gerekmez. Kodu bilen her cihaz bağlanabilir: kimseyle paylaşma. Yeni kod oluşturursan eski kodlu telefonlar bağlanamaz.</div></div>
 <div class="card"><h3>TELEFONLA BAĞLANTI (İSTEĞE BAĞLI)</h3>
 <label class="f">Apps Script adresi (…/exec)</label><input type="text" id="url" placeholder="https://script.google.com/macros/s/…/exec">
 <label class="f">Gizli anahtar (TOKEN)</label><input type="password" id="token">
@@ -573,7 +577,7 @@ const $=s=>document.querySelector(s), log=$("#log"); let since=0, cfg={}, first=
 const api=(p,b)=>fetch("/api/"+p,{method:b?"POST":"GET",headers:{"Content-Type":"application/json"},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function add(cls,txt,tag){const d=document.createElement("div");d.className="m "+cls;if(tag){const b=document.createElement("b");b.textContent=tag;d.appendChild(b);}d.appendChild(document.createTextNode(txt));log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
-const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart","uzak_ekran","uzak_uyanik"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space"];
+const BOOLS=["sesli","wake","wake_strict","canli","kulaklik","autostart","uzak_ekran","uzak_uyanik"], TEXTS=["gemini_key","groq_key","url","token","name","hotkey","voice","live_idle","city","ntfy","cf_account","cf_token","kadro_url","audition_url","kadro_sheet","hf_token","edit_space","talk_space","uzak_kod"];
 const TOOL={fotograf_montaj:"montaj yapılıyor",model_kaydet:"model kaydediliyor",modeller:"modeller",konusan_video:"konuşan video hazırlanıyor",mailleri_oku:"mailler okunuyor",mail_taslagi:"mail taslağı hazırlanıyor",takvim:"takvim",takvime_ekle:"takvime ekleniyor",kadro_ara:"kadroda arıyor",telefonda_yap:"telefona iletiliyor",gorsel_uret:"görsel üretiliyor",video_olustur:"video hazırlanıyor",uygulamam_ac:"uygulama açılıyor",uygulama_ac:"uygulama açılıyor",site_ac:"site açılıyor",dosya_ara:"dosya aranıyor",dosya_ac:"dosya açılıyor",dosyayi_maile_ekle:"maile ekleniyor",yazi_yaz:"yazıyor",tusa_bas:"tuşa basılıyor",pencere:"pencere",ekrana_bak:"ekrana bakıyor",ekranda_tikla:"tıklıyor",medya:"medya",pano:"pano",ekrani_kilitle:"kilitleniyor",guc:"güç",hatirlatici_ekle:"hatırlatıcı kuruluyor",gorev_ekle:"görev",not_al:"not",liste:"liste",hafizaya_al:"hafızaya alındı",hafizadan_sil:"hafızadan silindi",hafiza_listele:"hafıza",internette_ara:"internette arıyor",belge_oku:"belge okunuyor",klasor_duzenle:"klasör düzenleniyor",klasor_geri_al:"geri alınıyor",ekran_gorevi:"ekranda çalışıyor (Esc: dur)",hatirlaticilar:"hatırlatıcılar",hatirlatici_kapat:"hatırlatıcı kapatıldı",zamanlayici_kur:"zamanlayıcı kuruldu",sabah_brifingi:"brifing hazırlanıyor",hava_durumu:"hava durumu",telefona_gonder:"telefona gönderiliyor",sistem_kontrolu:"sistem kontrolü"};
 function show(v){view=v;document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
   if(v==="apps")loadApps(); if(v==="skills")loadSkills(); if(v==="tasks")loadTasks(true); if(v==="mem")loadMem(); if(v==="logs")loadLogs(); if(v==="set")fillSet(); if(v==="chat")setTimeout(()=>$("#q").focus(),50);}
@@ -611,6 +615,7 @@ $("#orb").onclick=()=>api("listen",{}).then(r=>{if(r.hata){add("e",r.hata);show(
 function fillSet(){for(const k of TEXTS)$("#"+k).value=cfg[k]??"";for(const k of BOOLS)$("#"+k).checked=!!cfg[k];$("#ver").textContent="Sürüm "+(cfg.version||"");}
 $("#save").onclick=async()=>{const b={};for(const k of TEXTS)b[k]=$("#"+k).value.trim();b.live_idle=Math.max(10,Math.min(300,+$("#live_idle").value||45));for(const k of BOOLS)b[k]=$("#"+k).checked;
   const r=await api("config",b);if(r.hata){alert(r.hata);return;}cfg=r.ayar;const w=log.querySelector(".welcome");if(w){w.remove();add("t","Hazırım "+(cfg.name||"")+". Konuşmak için kırmızı küreye tıkla, “Titus” de ya da yaz.","TITUS");} else add("a","✓ Ayarlar kaydedildi");show("chat");};
+$("#uzNewCode").onclick=()=>{const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",r=crypto.getRandomValues(new Uint8Array(8));let c="";r.forEach((x,i)=>{c+=A[x%32];if(i===3)c+="-";});if(confirm("Yeni kod: "+c+"\nEski kod geçersiz olacak. Kaydet'e basmayı unutma."))$("#uzak_kod").value=c;};
 $("#clear").onclick=async()=>{await api("clear",{});log.innerHTML="";since=0;show("chat");};
 $("#quit").onclick=async()=>{await api("quit",{});document.body.innerHTML='<div class="welcome" style="margin-top:40vh">Titus kapatıldı. Bu pencereyi kapatabilirsin.</div>';};
 document.addEventListener("keydown",e=>{if(e.key==="Escape")api("stop",{});});

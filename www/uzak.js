@@ -1,6 +1,6 @@
-/* ================= UZAK EKRAN (v4.8) =================
+/* ================= UZAK EKRAN (v4.9) =================
    Telefondan bilgisayar ekranını canlı görme ve kontrol etme. Ek program yok:
-   - Bağlantı kurulumu mevcut Apps Script kuyruğundan (pcPush/pcResult) geçer.
+   - Bağlantı kurulumu eşleştirme koduyla (Google gerekmez; şifreli el sıkışma ntfy.sh üzerinden) ya da Apps Script kuyruğundan geçer.
    - Görüntü ve komutlar WebRTC veri kanalıyla doğrudan, şifreli akar (aynı Wi-Fi'da yerel ağdan).
    - İki mod: 👆 Dokun (dokunduğun yere tıklar) · 🖱 Touchpad (imleci parmağınla gezdirirsin; FM'de üzerine gelme için ideal).
    - Ekran durunca bilgisayar tam çözünürlükte "keskin kare" yollar: küçük yazılar yakınlaştırınca okunur.
@@ -10,7 +10,7 @@ const UZ = {
   hdr: null, parts: [], cur: { x: 0.5, y: 0.5 }, curT: 0, z: 1, px: 0, py: 0, rot: false, agent: false,
   dirty: true, raf: 0, stat: "", lastMsg: 0, panel: "", tries: 0, connecting: false, closing: false
 };
-const uzSet = () => (SET.uzak = Object.assign({ mode: "pad", q: "dengeli", turnUrl: "", turnUser: "", turnPass: "", speed: 1.6, help: true }, SET.uzak || {}));
+const uzSet = () => (SET.uzak = Object.assign({ code: "", ntfy: "", mode: "pad", q: "dengeli", turnUrl: "", turnUser: "", turnPass: "", speed: 1.6, help: true }, SET.uzak || {}));
 const uzEl = id => document.getElementById(id);
 
 function uzCss() {
@@ -53,7 +53,7 @@ function uzBuild() {
   uzCss();
   ov = document.createElement("div"); ov.id = "uzOv";
   ov.innerHTML = `<canvas id="uzCv"></canvas><div class="uzstat" id="uzStat"></div><div class="uzsay" id="uzSay"></div>
-<div class="uzcenter" id="uzCenter"><div class="reactor" style="pointer-events:none;transform:scale(.6)"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span></div><p id="uzMsg">Bilgisayara bağlanıyor…</p><button class="btn" id="uzRetry" style="display:none">Tekrar dene</button><button class="btn ghost" id="uzBack2">← Titus'a dön</button></div>
+<div class="uzcenter" id="uzCenter"><div class="reactor" style="pointer-events:none;transform:scale(.6)"><span class="r r1"></span><span class="r r2"></span><span class="r r3"></span><span class="c"></span></div><p id="uzMsg">Bilgisayara bağlanıyor…</p><div id="uzPairF" style="display:none;width:min(320px,90%)"><input id="uzCode" placeholder="ABCD-1234" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:100%;box-sizing:border-box;font-size:26px;letter-spacing:4px;text-align:center;font-weight:800;padding:10px;border-radius:12px;border:1px solid #ff4a55;background:#120304;color:#fff;margin-bottom:10px"><button class="btn" id="uzPairGo" style="width:100%">Bağlan</button></div><button class="btn" id="uzRetry" style="display:none">Tekrar dene</button><button class="btn ghost" id="uzBack2">← Titus'a dön</button></div>
 <div class="uzbar" id="uzBar">
  <button id="uzMin">⋮</button>
  <button id="uzClose" title="Kapat">✕</button>
@@ -78,12 +78,11 @@ function uzBuild() {
 
 /* ---------------- açma / kapama ---------------- */
 async function uzOpen() {
-  if (!SET.scriptUrl) { toast("Önce bilgisayarı bağla (Ayarlar → Google / Bilgisayar)", 4500); return { hata: "Google/bilgisayar bağlantısı yok." }; }
   uzSet(); const ov = uzBuild(); UZ.open = true; ov.classList.add("on");
   try { if (typeof Jarvis !== "undefined" && Jarvis && Jarvis.screenMode) await Jarvis.screenMode({ landscape: true, awake: true }); } catch {}
   try { if (navigator.wakeLock) UZ.wl = await navigator.wakeLock.request("screen"); } catch {}
   setTimeout(uzLayout, 350); uzLayout(); uzModeUI();
-  if (!UZ.ctl || UZ.ctl.readyState !== "open") uzConnect();
+  if (!UZ.ctl || UZ.ctl.readyState !== "open") { if (uzSet().code || SET.scriptUrl) uzConnect(); else uzPair(); }
   uzLoop();
   return { ok: true, metin: "Uzak ekran açıldı." };
 }
@@ -102,6 +101,64 @@ function uzBackKey() { if (UZ.panel) { uzPanel(""); return true; } if (UZ.open) 
 function uzMsg(t, retry = false) {
   const c = uzEl("uzCenter"); if (!c) return;
   c.style.display = t ? "flex" : "none"; uzEl("uzMsg").textContent = t || ""; uzEl("uzRetry").style.display = retry ? "" : "none";
+  uzEl("uzPairF").style.display = "none";
+}
+function uzPair(note) {
+  uzMsg((note ? note + "\n\n" : "") + "Bilgisayardaki Titus'ta Ayarlar → Uzak Ekran bölümündeki eşleştirme kodunu yaz. Bir kez yazman yeter.");
+  uzEl("uzMsg").style.whiteSpace = "pre-line";
+  uzEl("uzPairF").style.display = ""; const i = uzEl("uzCode"); i.value = uzSet().code || ""; setTimeout(() => i.focus(), 80);
+}
+async function uzPairGo() {
+  const raw = uzNorm(uzEl("uzCode").value);
+  if (raw.length !== 8) return toast("Kod 8 karakter olmalı (ör. ABCD-1234)");
+  uzSet().code = raw.slice(0, 4) + "-" + raw.slice(4); saveSet(); uzEl("uzCode").blur(); uzConnect();
+}
+
+/* ---- eşleştirme kodu + ntfy sinyali (Google gerekmez). Konu adları ve AES-GCM anahtarı koddan türetilir. ---- */
+const uzNorm = c => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const uzHex = u8 => [...u8].map(b => b.toString(16).padStart(2, "0")).join("");
+const uzB64e = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
+const uzB64d = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+async function uzSha(s) { return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))); }
+async function uzTopic(kind, code, sid) { return "titus" + uzHex(await uzSha(kind === "pc" ? "uzak-pc:" + uzNorm(code) : "uzak-ph:" + uzNorm(code) + ":" + sid)).slice(0, 28); }
+async function uzKeyOf(code) { return crypto.subtle.importKey("raw", await uzSha("titus-uzak-anahtar:" + uzNorm(code)), "AES-GCM", false, ["encrypt", "decrypt"]); }
+async function uzZ(u8, compress) { const st = new Blob([u8]).stream().pipeThrough(compress ? new CompressionStream("deflate") : new DecompressionStream("deflate")); return new Uint8Array(await new Response(st).arrayBuffer()); }
+async function uzSeal(code, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12)); const data = await uzZ(new TextEncoder().encode(JSON.stringify(obj)), true);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await uzKeyOf(code), data));
+  const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12); return uzB64e(out);
+}
+async function uzUnseal(code, b64) {
+  const raw = uzB64d(b64); const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, await uzKeyOf(code), raw.slice(12));
+  return JSON.parse(new TextDecoder().decode(await uzZ(new Uint8Array(pt), false)));
+}
+async function uzSignalNtfy(cmd, pc) {
+  const code = uzSet().code, base = (uzSet().ntfy || "https://ntfy.sh").replace(/\/$/, "");
+  const sid = uzHex(crypto.getRandomValues(new Uint8Array(6)));
+  const blob = await uzSeal(code, { ...cmd, ts: Date.now() }); const parts = blob.match(/[\s\S]{1,3000}/g) || [""];
+  const tpc = await uzTopic("pc", code);
+  for (let i = 0; i < parts.length; i++) { const r = await fetch(`${base}/${tpc}`, { method: "POST", body: JSON.stringify({ s: sid, i, n: parts.length, d: parts[i] }) }); if (!r.ok) throw new Error("ntfy " + r.status); }
+  uzMsg("Bilgisayardaki Titus'a ulaşılıyor… (Titus bilgisayarda açık olmalı)");
+  const tph = await uzTopic("ph", code, sid), got = {};
+  for (let k = 0; k < 24 && UZ.open && UZ.pc === pc; k++) {
+    await sleep(k < 2 ? 1300 : 1500);
+    let txt = ""; try { txt = await (await fetch(`${base}/${tph}/json?poll=1&since=3m`)).text(); } catch { continue; }
+    for (const line of txt.split("\n")) { let ev, m; try { ev = JSON.parse(line); m = JSON.parse(ev.message || "{}"); } catch { continue; } if (ev.event === "message" && m.s === sid) { got[m.i] = m.d; got.n = m.n; } }
+    if (got.n && Object.keys(got).length - 1 >= got.n) return uzUnseal(code, Array.from({ length: got.n }, (_, i) => got[i]).join(""));
+    if (k === 6) uzMsg("Bilgisayar henüz cevap vermedi… Titus bilgisayarda açık mı, kod doğru mu? (Bilgisayar uykudaysa bağlanılamaz.)");
+  }
+  return null;
+}
+async function uzSignalScript(cmd, pc) {
+  uzMsg("Bilgisayardaki Titus'a ulaşılıyor… (Titus bilgisayarda açık olmalı)");
+  const q = await script("pcPush", { cmd });
+  for (let i = 0; i < 30 && UZ.open && UZ.pc === pc; i++) {
+    await sleep(i < 3 ? 1500 : 1200);
+    const r = await script("pcResult", { id: q.id });
+    if (r.result) return r.result;
+    if (i === 6) uzMsg("Bilgisayar cevap vermedi henüz… Bilgisayar uykuda ya da Titus kapalı olabilir.");
+  }
+  return null;
 }
 function uzIce() {
   const s = uzSet(); const l = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, { urls: ["stun:stun.cloudflare.com:3478"] }];
@@ -124,17 +181,11 @@ async function uzConnect() {
     pc.onconnectionstatechange = () => { if (pc.connectionState === "failed" && UZ.pc === pc && UZ.open) uzMsg("Doğrudan bağlantı kurulamadı. İnternetin (özellikle mobil veri) engelliyor olabilir. Wi-Fi'ı dene ya da ⚙ → TURN sunucusu ekle.", true); };
     await pc.setLocalDescription(await pc.createOffer());
     await new Promise(res => { if (pc.iceGatheringState === "complete") return res(); const t = setTimeout(res, 3500); pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") { clearTimeout(t); res(); } }; });
-    uzMsg("Bilgisayardaki Titus'a ulaşılıyor… (Titus bilgisayarda açık olmalı)");
-    const q = await script("pcPush", { cmd: { action: "remote_offer", sdp: pc.localDescription.sdp, ice: uzSet().turnUrl ? ice.slice(-1) : [] } });
-    let ans = null;
-    for (let i = 0; i < 30 && UZ.open && UZ.pc === pc; i++) {
-      await sleep(i < 3 ? 1500 : 1200);
-      const r = await script("pcResult", { id: q.id });
-      if (r.result) { ans = r.result; break; }
-      if (i === 6) uzMsg("Bilgisayar cevap vermedi henüz… Bilgisayar uykuda ya da Titus kapalı olabilir.");
-    }
+    const cmd = { action: "remote_offer", sdp: pc.localDescription.sdp, ice: uzSet().turnUrl ? ice.slice(-1) : [] };
+    const viaCode = !!uzSet().code;
+    const ans = viaCode ? await uzSignalNtfy(cmd, pc) : await uzSignalScript(cmd, pc);
     if (!UZ.open || UZ.pc !== pc) return;
-    if (!ans) return uzMsg("Bilgisayardan cevap gelmedi. Bilgisayar açık mı, Titus çalışıyor mu? (Windows uyku modundaysa bağlanılamaz.)", true);
+    if (!ans) { if (viaCode) return uzPair("Bilgisayardan cevap gelmedi. Bilgisayar açık mı, Titus çalışıyor mu, kod doğru mu?"); return uzMsg("Bilgisayardan cevap gelmedi. Bilgisayar açık mı, Titus çalışıyor mu? (Windows uyku modundaysa bağlanılamaz.)", true); }
     if (!ans.ok || !ans.sdp) return uzMsg(ans.hata || "Bilgisayar bağlantıyı kabul etmedi.", true);
     uzMsg("Görüntü bekleniyor…");
     await pc.setRemoteDescription({ type: "answer", sdp: ans.sdp });
@@ -229,12 +280,13 @@ function uzDraw() {
 UZ.mode = () => uzSet().mode;
 
 /* ---------------- dokunma hareketleri ---------------- */
+const UZ_UI = ".uzbar,.uzpanel,.uzcenter button,.uzcenter input"; // dokunuşu bilgisayara değil arayüze bırak
 function uzLocal(t) { // ekrandaki dokunuş → kaplamanın kendi koordinatları (çevrilmiş olabilir)
   return UZ.rot ? { x: t.clientY, y: innerWidth - t.clientX } : { x: t.clientX, y: t.clientY };
 }
 const G = { n: 0, t0: 0, sx: 0, sy: 0, lx: 0, ly: 0, moved: false, long: null, longFired: false, drag: false, lastTapT: 0, lastTapX: 0, lastTapY: 0, d0: 0, z0: 1, mx0: 0, my0: 0, px0: 0, py0: 0, pinch: false, acc: 0, two: false, twoMoved: false, twoT: 0, mvT: 0 };
 function uzTouchStart(e) {
-  if (e.target.closest(".uzbar,.uzpanel,.uzcenter button")) return;
+  if (e.target.closest(UZ_UI)) return;
   e.preventDefault(); if (uzEl("uzPanel").classList.contains("on")) uzPanel("");
   const ts = [...e.touches].map(uzLocal);
   if (ts.length === 1) {
@@ -253,7 +305,7 @@ function uzTouchStart(e) {
   }
 }
 function uzTouchMove(e) {
-  if (e.target.closest(".uzbar,.uzpanel")) return;
+  if (e.target.closest(UZ_UI)) return;
   e.preventDefault(); const ts = [...e.touches].map(uzLocal);
   if (ts.length === 1 && G.n === 1) {
     const p = ts[0]; const dx = p.x - G.lx, dy = p.y - G.ly;
@@ -288,7 +340,7 @@ function uzTouchMove(e) {
   }
 }
 function uzTouchEnd(e) {
-  if (e.target.closest(".uzbar,.uzpanel")) return;
+  if (e.target.closest(UZ_UI)) return;
   e.preventDefault();
   const left = e.touches.length;
   if (G.n === 2) { // parmaklar nadiren aynı anda kalkar: ilk kalkışta karar ver
@@ -342,7 +394,7 @@ function uzPanel(name) {
     h = `<h4>GÖRÜNTÜ</h4><div class="uzrow">${q("akici", "Akıcı")}${q("dengeli", "Dengeli")}${q("net", "Net")}${q("veri", "Veri tasarrufu")}</div>
 <div class="hint" style="margin-bottom:10px">Ekran durunca her modda tam çözünürlükte keskin kare gelir. Mobil veride "Veri tasarrufu" önerilir.</div>
 <h4>TOUCHPAD HIZI</h4><div class="uzrow">${[1.0, 1.6, 2.4].map((v, i) => `<button data-uzsp="${v}" class="${(s.speed || 1.6) === v ? "on" : ""}">${["Yavaş", "Normal", "Hızlı"][i]}</button>`).join("")}</div>
-<h4>BAĞLANTI</h4><div class="uzrow"><button id="uzReconn">Yeniden bağlan</button><button id="uzRefresh">Görüntüyü yenile</button><button id="uzHelpB">Nasıl kullanılır</button></div>
+<h4>BAĞLANTI</h4><div class="hint" style="margin-bottom:6px">Eşleştirme kodu: <b>${esc(s.code || "yok")}</b></div><div class="uzrow"><button id="uzCodeB">Kodu değiştir</button><button id="uzReconn">Yeniden bağlan</button><button id="uzRefresh">Görüntüyü yenile</button><button id="uzHelpB">Nasıl kullanılır</button></div>
 <div class="hint">Mobil veride bağlanmıyorsa (bazı operatörler doğrudan bağlantıyı engeller) bir TURN sunucusu ekle. Ücretsiz katmanı olan bir TURN servisinden adresi, kullanıcıyı ve şifreyi yaz:</div>
 <input id="uzTurnU" placeholder="turn:adres:3478 (virgülle birden çok)" value="${esc(s.turnUrl || "")}"><input id="uzTurnN" placeholder="Kullanıcı adı" value="${esc(s.turnUser || "")}"><input id="uzTurnP" placeholder="Şifre" type="password" value="${esc(s.turnPass || "")}">
 <div class="uzrow"><button id="uzTurnSave" class="on">Kaydet</button></div>`;
@@ -383,6 +435,8 @@ function uzBind(ov) {
     const id = t.id;
     if (id === "uzClose" || id === "uzBack2") uzClose();
     else if (id === "uzRetry" || id === "uzReconn") { uzPanel(""); uzConnect(); }
+    else if (id === "uzPairGo") uzPairGo();
+    else if (id === "uzCodeB") { uzPanel(""); uzPair(); }
     else if (id === "uzMin") { uzEl("uzBar").classList.toggle("min"); uzFit(true); }
     else if (id === "uzModeB") { const s = uzSet(); s.mode = s.mode === "pad" ? "touch" : "pad"; saveSet(); uzModeUI(); uzSay(s.mode === "pad" ? "🖱 Touchpad modu: parmağınla imleci gezdir, dokun = tık" : "👆 Dokun modu: dokunduğun yere tıklar, uzun bas = sağ tık", 2500); }
     else if (id === "uzKbB") uzKbOpen();
@@ -405,7 +459,7 @@ function uzBind(ov) {
     else if (t.dataset.uzq2) { uzSet().q = t.dataset.uzq2; saveSet(); uzSend({ t: "q", mode: t.dataset.uzq2 }); uzPanel("set"); }
     else if (t.dataset.uzsp) { uzSet().speed = Number(t.dataset.uzsp); saveSet(); uzPanel("set"); }
   });
-  ov.addEventListener("keydown", e => { if (e.target.id === "uzAskT" && e.key === "Enter") { e.preventDefault(); uzAsk(e.target.value); } });
+  ov.addEventListener("keydown", e => { if (e.target.id === "uzAskT" && e.key === "Enter") { e.preventDefault(); uzAsk(e.target.value); } if (e.target.id === "uzCode" && e.key === "Enter") { e.preventDefault(); uzPairGo(); } });
 }
 
 /* ---------------- Titus'a bağla: düğme, sesli komut, uygulamalar ---------------- */

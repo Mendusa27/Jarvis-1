@@ -4,8 +4,10 @@ T.I.T.U.S. — Uzak Ekran (v3.2)
 
 Telefondaki Titus bilgisayarın ekranını canlı görür, dokunarak tıklar, yazı yazar.
 Ek program yok: görüntü WebRTC veri kanalıyla doğrudan (şifreli, DTLS) telefona akar.
-Bağlantı kurulumu (sinyal) mevcut Apps Script kuyruğundan geçer (pcPush → pcPull → pcDone),
-yani Apps Script'te değişiklik gerekmez.
+Bağlantı kurulumu (sinyal) iki yoldan biriyle olur:
+  1) Eşleştirme kodu (v1.1, Google gerekmez): şifreli el sıkışma ücretsiz ntfy.sh üzerinden geçer.
+     Konu adları ve AES-GCM anahtarı koddan türetilir; kodu bilmeyen ne bulabilir ne okuyabilir.
+  2) Apps Script kuyruğu (pcPush → pcPull → pcDone), Google bağlantısı kuruluysa.
 
 Görüntü: JPEG kareler. Ekran değişmiyorsa hiç kare gitmez; hareket varken akıcı (küçük, hafif),
 ekran durunca tam çözünürlükte "keskin kare" gider — FM gibi yazı ağırlıklı oyunlarda yazılar okunur.
@@ -20,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 J = None  # jarvis_desktop modülü
 OS = platform.system()
-VERSION = "1.0"
+VERSION = "1.1"
 CHUNK = 16000
 STUN = [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}, {"urls": ["stun:stun.cloudflare.com:3478"]}]
 MODES = {  # hareket halindeki kare: genişlik, kalite, kare/sn
@@ -634,6 +636,119 @@ def status():
     return {"bagli": bool(s and s.alive), "paket": deps_ok(), "kuruluyor": STATE["installing"], "acik": J.C.get("uzak_ekran", True)}
 
 
+# ============================ eşleştirme kodu + ntfy sinyali (Google gerekmez) ============================
+import base64, hashlib, secrets
+NTFY = "https://ntfy.sh"
+ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def norm_code(c):
+    return "".join(ch for ch in str(c or "").upper() if ch.isalnum())
+
+
+def new_code():
+    c = "".join(secrets.choice(ALPHA) for _ in range(8))
+    return c[:4] + "-" + c[4:]
+
+
+def _h(s):
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def topic_pc(code):
+    return "titus" + _h("uzak-pc:" + norm_code(code))[:28]
+
+
+def topic_ph(code, sid):
+    return "titus" + _h("uzak-ph:" + norm_code(code) + ":" + str(sid))[:28]
+
+
+def _key(code):
+    return hashlib.sha256(("titus-uzak-anahtar:" + norm_code(code)).encode()).digest()
+
+
+def seal(code, obj):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    iv = secrets.token_bytes(12)
+    data = zlib.compress(json.dumps(obj, ensure_ascii=False).encode(), 9)
+    return base64.b64encode(iv + AESGCM(_key(code)).encrypt(iv, data, None)).decode()
+
+
+def unseal(code, b64):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    raw = base64.b64decode(b64)
+    return json.loads(zlib.decompress(AESGCM(_key(code)).decrypt(raw[:12], raw[12:], None)))
+
+
+def ntfy_base():
+    return (J.C.get("uzak_ntfy") or NTFY).rstrip("/")
+
+
+def publish(topic, text_blob, sid):
+    import requests
+    parts = [text_blob[i:i + 3000] for i in range(0, len(text_blob), 3000)] or [""]
+    for i, d in enumerate(parts):
+        requests.post(f"{ntfy_base()}/{topic}", data=json.dumps({"s": sid, "i": i, "n": len(parts), "d": d}).encode(), timeout=15)
+
+
+def ntfy_listener():
+    """Bilgisayarın eşleştirme konusunu dinler; şifreli teklif gelince cevap verir."""
+    import requests
+    buf, last_id, cur = {}, None, None
+    while True:
+        code = J.C.get("uzak_kod")
+        if not code or not J.C.get("uzak_ekran", True):
+            time.sleep(5)
+            continue
+        if code != cur:
+            cur, last_id, buf = code, None, {}
+        url = f"{ntfy_base()}/{topic_pc(code)}/json" + (f"?since={last_id}" if last_id else "")
+        try:
+            with requests.get(url, stream=True, timeout=(10, 70)) as r:
+                for line in r.iter_lines():
+                    if J.C.get("uzak_kod") != cur:
+                        break
+                    if not line:
+                        continue
+                    ev = json.loads(line)
+                    if ev.get("event") != "message":
+                        continue
+                    last_id = ev.get("id")
+                    if time.time() - ev.get("time", 0) > 120:
+                        continue
+                    try:
+                        m = json.loads(ev.get("message") or "{}")
+                        sid, i, n = str(m["s"])[:32], int(m["i"]), int(m["n"])
+                    except Exception:
+                        continue
+                    if not 0 < n <= 20:
+                        continue
+                    b = buf.setdefault(sid, {})
+                    b[i] = m.get("d", "")
+                    if len(b) == n:
+                        blob = "".join(b[k] for k in range(n))
+                        buf.pop(sid, None)
+                        threading.Thread(target=_answer_ntfy, args=(cur, sid, blob), daemon=True).start()
+        except Exception as e:
+            log("uyarı", f"eşleştirme dinleyici: {e}")
+            time.sleep(5)
+
+
+def _answer_ntfy(code, sid, blob):
+    try:
+        cmd = unseal(code, blob)
+    except Exception:
+        log("uyarı", "uzak ekran: çözülemeyen istek (yanlış kod?) yok sayıldı")
+        return
+    if abs(time.time() - float(cmd.get("ts", 0)) / 1000) > 180:
+        return  # eski/tekrarlanan istek
+    res = handle_offer(cmd)
+    try:
+        publish(topic_ph(code, sid), seal(code, res), sid)
+    except Exception as e:
+        log("hata", f"uzak ekran cevabı gönderilemedi: {e}")
+
+
 # ============================ kurulum ============================
 def setup(jd, P=None):
     global J
@@ -658,8 +773,18 @@ def setup(jd, P=None):
         kb.add_hotkey("ctrl+alt+q", stop_session)
     except Exception:
         pass
+    if not jd.C.get("uzak_kod"):
+        try:
+            jd.save_cfg({"uzak_kod": new_code()})
+        except Exception:
+            jd.C["uzak_kod"] = new_code()
+    try:
+        jd.register("uzak_ekran_kodu", "Telefondan uzak ekran için eşleştirme kodunu söyler (telefonda 🖥 Bilgisayar ekranına bir kez yazılır).", {}, [], lambda a: {"kod": jd.C.get("uzak_kod"), "not": "Telefonda Titus → 🖥 Bilgisayar → bu kodu yaz."})
+    except Exception:
+        pass
+    threading.Thread(target=ntfy_listener, daemon=True, name="titus-eslestirme").start()
     if jd.C.get("uzak_uyanik", True):
         awake_thread()
     if jd.C.get("uzak_ekran", True):
         ensure_deps(block=False)
-    log("bilgi", f"hazır (paket: {'var' if deps_ok() else 'kuruluyor'})")
+    log("bilgi", f"hazır (paket: {'var' if deps_ok() else 'kuruluyor'}) · eşleştirme kodu: {jd.C.get('uzak_kod')}")

@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import jarvis_pc as agent  # dosya arama, uygulama açma, mail eki, kilit, telefon kuyruğu
 
-VERSION = "3.2"
+VERSION = "3.3"
 CFG = Path.home() / ".jarvis_desktop.json"
 DATA = Path.home() / ".titus"
 DATA.mkdir(exist_ok=True)
@@ -86,7 +86,7 @@ except Exception:
 
 
 # ---------------- ayarlar ----------------
-DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False, "city": "İstanbul", "lat": 41.0082, "lon": 28.9784, "ntfy": "", "groq_model": "", "uzak_ekran": True, "uzak_uyanik": True}
+DEFAULTS = {"gemini_key": "", "groq_key": "", "url": "", "token": "", "name": "Burak", "hotkey": "ctrl+alt+j", "wake": True, "voice": "Charon", "sesli": True, "canli": True, "kulaklik": False, "live_idle": 45, "wake_strict": False, "city": "İstanbul", "lat": 41.0082, "lon": 28.9784, "ntfy": "", "groq_model": "", "uzak_ekran": True, "uzak_uyanik": True, "uzak_kod": ""}
 GUI = bool(os.environ.get("TITUS_GUI"))
 
 
